@@ -1,13 +1,11 @@
 const { Sequelize } = require('sequelize');
 const dotenv = require('dotenv');
 const config  = require ('../config/database.js');
-
 const Employee = require('./Employees.js');
 const UserSession = require('./UserSession.js')
 const Content = require('./Content.js');
 const ServiceRequest = require('./ServiceRequest.js');
 dotenv.config()
-
 const node_env = process.env.NODE_ENV || 'development'
 const dbConfig = config[node_env]
 const sequelize = new Sequelize(process.env.PG_DATABASE_URL, {

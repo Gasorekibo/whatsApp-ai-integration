@@ -5,7 +5,6 @@ const morgan = require('morgan');
 const bookMeetingHandler = require('./src/controllers/bookMeeting');
 const { oauth2Client } = require('./src/utils/auth');
 const { verifyWebhook, handleWebhook } = require('./src/controllers/whatsappController');
-const { initializeServices } = require('./src/utils/googleSheets');
 const adminRoutes = require('./src/routes/admin');
 const { paymentWebhookHandler } = require('./src/helpers/paymentWebhookHandler');
 const { syncServicesHandler } = require('./src/helpers/syncServicesHandler');
@@ -16,10 +15,10 @@ const { zohoAuthCallbackHandler } = require('./src/helpers/zoho/zohoAuthCallback
 const { zohoGetAllContactsHandler } = require('./src/helpers/zoho/zohoGetAllContactsHandler');
 const { successfulPaymentPageHandler } = require('./src/helpers/successfulPaymentPageHandler');
 const { syncDatabase, db } = require('./src/models');
+const { initializeServices } = require('./src/utils/googlesheets');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

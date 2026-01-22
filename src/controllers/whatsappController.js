@@ -1,6 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const getCalendarData = require('../utils/getCalendarData');
-const { getActiveServices } = require('../utils/googleSheets');
+const { getActiveServices } = require('../utils/googlesheets.js');
 const {db}  = require('../models/index.js');
 require('dotenv').config();
 
