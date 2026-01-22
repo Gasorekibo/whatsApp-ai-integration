@@ -1,4 +1,3 @@
-const Employee = require('../models/Employees');
 const getCalendarData = require('../utils/getCalendarData');
 const dotenv = require('dotenv');
 dotenv.config();
