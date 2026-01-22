@@ -266,7 +266,7 @@ async function processWithGemini(phoneNumber, message, history = [], userEmail =
             tx_ref,
             amount: parseInt(process.env.DEPOSIT_AMOUNT || 5000),
             currency: process.env.CURRENCY || "RWF",
-            redirect_url: "https://catherin-postsaccular-rosann.ngrok-free.dev/payment-success",
+            redirect_url: "https://whatsapp-ai-integration.onrender.com/payment-success",
             customer: {
               email: data.email || "customer@example.com",
               phone_number: phoneNumber.replace('+', ''),
