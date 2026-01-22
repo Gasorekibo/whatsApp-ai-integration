@@ -1,6 +1,6 @@
 const dotenv = require('dotenv');
-const { syncServicesFromSheet } = require('../utils/googleSheets');
 const {db}  = require('../models/index.js');
+const { syncServicesFromSheet } = require('../utils/googlesheets.js');
 dotenv.config();
 
 async function googleSheetsWebhookHandler(req, res) {

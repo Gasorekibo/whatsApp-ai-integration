@@ -1,5 +1,5 @@
 const dotenv = require('dotenv');
-const { syncServicesFromSheet } = require('../utils/googleSheets');
+const { syncServicesFromSheet } = require('../utils/googlesheets');
 const { db } = require('../models/index');
 
 dotenv.config();
