@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moyo Tech Admin Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: white;
+      box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      height: 100vh;
+      z-index: 1000;
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar-header {
+      padding: 30px 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .sidebar-header h2 {
+      font-size: 20px;
+      margin-bottom: 5px;
+    }
+
+    .sidebar-header p {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .sidebar-menu {
+      flex: 1;
+      padding: 20px 0;
+      overflow-y: auto;
+    }
+
+    .menu-item {
+      padding: 15px 25px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #4a5568;
+      font-weight: 500;
+      border-left: 4px solid transparent;
+    }
+
+    .menu-item:hover {
+      background: #f7fafc;
+      border-left-color: #667eea;
+      color: #667eea;
+    }
+
+    .menu-item.active {
+      background: #edf2f7;
+      border-left-color: #667eea;
+      color: #667eea;
+    }
+
+    .menu-item .icon {
+      font-size: 20px;
+    }
+
+    .menu-section {
+      padding: 10px 25px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #a0aec0;
+      margin-top: 20px;
+    }
+
+    .main-content {
+      flex: 1;
+      margin-left: 280px;
+      padding: 20px;
+      width: calc(100% - 280px);
+    }
+
+    .header {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .header h1 {
+      color: #667eea;
+      font-size: 28px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-success {
+      background: #48bb78;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #38a169;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
+    }
+
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #4a5568;
+    }
+
+    .btn-secondary:hover {
+      background: #cbd5e0;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      text-align: center;
+      transition: transform 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+    }
+
+    .stat-card h3 {
+      color: #718096;
+      font-size: 14px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .stat-card .number {
+      color: #667eea;
+      font-size: 36px;
+      font-weight: bold;
+    }
+
+    .content-section {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      display: none;
+    }
+
+    .content-section.active {
+      display: block;
+    }
+
+    .content-section h2 {
+      color: #2d3748;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 24px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      background: #f7fafc;
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+      color: #4a5568;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    td {
+      padding: 15px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #4a5568;
+    }
+
+    tr:hover {
+      background: #f7fafc;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-active {
+      background: #c6f6d5;
+      color: #22543d;
+    }
+
+    .badge-inactive {
+      background: #fed7d7;
+      color: #742a2a;
+    }
+
+    .badge-user {
+      background: #bee3f8;
+      color: #2c5282;
+    }
+
+    .badge-model {
+      background: #fbd38d;
+      color: #7c2d12;
+    }
+
+    .history-item {
+      background: #f7fafc;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 40px;
+      color: #a0aec0;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      max-width: 500px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 25px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #667eea;
+    }
+
+    .spinner {
+      border: 3px solid #f3f4f6;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      padding: 15px 25px;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      display: none;
+      align-items: center;
+      gap: 10px;
+      z-index: 3000;
+    }
+
+    .toast.show {
+      display: flex;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .toast-success { border-left: 4px solid #48bb78; }
+    .toast-error { border-left: 4px solid #f56565; }
+
+    .welcome-message {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      text-align: center;
+    }
+
+    .welcome-message h2 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 28px;
+    }
+
+    .welcome-message p {
+      color: #718096;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    .refresh-notice {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      background: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: #4a5568;
+      border-left: 4px solid #667eea;
+      animation: bounce 2s ease-in-out infinite;
+      z-index: 1500;
+    }
+
+    .refresh-notice .icon {
+      font-size: 20px;
+      animation: rotate 2s linear infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .btn-refresh {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-refresh:hover {
+      background: #5568d3;
+      transform: scale(1.05);
+    }
+
+    .hamburger {
+      display: none;
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1100;
+      background: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .hamburger span {
+      display: block;
+      width: 25px;
+      height: 3px;
+      background: #667eea;
+      margin: 5px 0;
+      transition: 0.3s;
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.active { display: block; }
+      .main-content { margin-left: 0; width: 100%; }
+      .hamburger { display: block; }
+      .header { flex-direction: column; align-items: stretch; }
+      .header-actions { flex-direction: column; }
+      .btn { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  
+  <button class="hamburger" onclick="toggleSidebar()">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>Moyo Tech</h2>
+      <p>Admin Dashboard</p>
+    </div>
+    <div class="sidebar-menu">
+      <div class="menu-section">Main</div>
+      <div class="menu-item" onclick="showSection('overview')">
+        <span class="icon">Overview</span>
+      </div>
+      
+      <div class="menu-section">Management</div>
+      <div class="menu-item" onclick="showSection('users')">
+        <span class="icon">Users</span>
+      </div>
+      <div class="menu-item" onclick="showSection('services')">
+        <span class="icon">Services</span>
+      </div>
+      <div class="menu-item" onclick="showSection('appointments')">
+        <span class="icon">Appointments</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="header">
+      <h1>Admin Dashboard</h1>
+      <div class="header-actions">
+        <!-- CHANGED: now opens confirmation modal -->
+        <button class="btn btn-primary" onclick="openReminderModal()">
+          BroadCast Message
+        </button>
+        <button class="btn btn-success" onclick="syncServices()">
+          Sync Services
+        </button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Total Users</h3>
+        <div class="number" id="totalUsers">-</div>
+      </div>
+      <div class="stat-card">
+        <h3>Active Services</h3>
+        <div class="number" id="activeServices">-</div>
+      </div>
+      <div class="stat-card">
+        <h3>Upcoming Appointments</h3>
+        <div class="number" id="upcomingAppointments">-</div>
+      </div>
+    </div>
+
+    <div class="content-section active" id="overview">
+      <div class="welcome-message">
+        <h2>Welcome to Moyo Tech Admin Dashboard</h2>
+        <p>Select an option from the sidebar to view and manage users, services, or appointments.</p>
+        <p style="margin-top: 10px;">Use the action buttons above to broadcast messages or sync services.</p>
+      </div>
+    </div>
+
+    <div class="content-section" id="users">
+      <h2>Users Management</h2>
+      <div id="usersContent">
+        <div class="loading">
+          <div class="spinner"></div>
+          Loading users...
+        </div>
+      </div>
+    </div>
+
+    <div class="content-section" id="services">
+      <h2>Services Management</h2>
+      <div id="servicesContent">
+        <div class="loading">
+          <div class="spinner"></div>
+          Loading services...
+        </div>
+      </div>
+    </div>
+
+    <div class="content-section" id="appointments">
+      <h2>Appointments Management</h2>
+      <div id="appointmentsContent">
+        <div class="loading">
+          <div class="spinner"></div>
+          Loading appointments...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW: Confirmation Modal (replaces the old broadcast modal) -->
+  <div class="modal" id="reminderModal">
+    <div class="modal-content">
+      <h3>BroadCast Message</h3>
+      <p>Send the <strong>General Message</strong> to all eligible users?</p>
+      <p style="color:#718096; font-size:14px; margin:15px 0;">
+        This will notify users with Basic information about MOYOTECH Solutions.
+      </p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeReminderModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="sendReminderBroadcast()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <span id="toastMessage"></span>
+  </div>
+
+  <div class="refresh-notice">
+    <span class="icon">Refresh</span>
+    <span>Updated your services with fresh data? click Sync Services and Refresh your browser!</span>
+    <button class="btn-refresh" onclick="location.reload()">Refresh Now</button>
+  </div>
+
+  <script>
+    const API_BASE = 'https://catherin-postsaccular-rosann.ngrok-free.dev/api';
+    let cachedData = {
+      users: null,
+      services: null,
+      appointments: null
+    };
+
+    async function fetchData() {
+      try {
+        const [usersRes, servicesRes, appointmentsRes] = await Promise.all([
+          fetch(`${API_BASE}/outreach/users`),
+          fetch(`${API_BASE}/outreach/services`),
+          fetch(`${API_BASE}/outreach/appointments`)
+        ]);
+
+        cachedData.users = await usersRes.json();
+        cachedData.services = await servicesRes.json();
+        cachedData.appointments = await appointmentsRes.json();
+
+        displayStats(cachedData.users, cachedData.services, cachedData.appointments);
+      } catch (err) {
+        console.error('Failed to fetch data:', err);
+        showToast('Failed to load dashboard data', 'error');
+      }
+    }
+
+    function displayStats(users, services, appointments) {
+      document.getElementById('totalUsers').textContent = users?.users?.length || 0;
+      
+      let activeCount = 0;
+      services.forEach(doc => {
+        if (doc.services) activeCount += doc.services.filter(s => s.active).length;
+      });
+      document.getElementById('activeServices').textContent = activeCount;
+      document.getElementById('upcomingAppointments').textContent = appointments?.appointments?.length || 0;
+    }
+
+    function showSection(section) {
+      document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+      
+      document.getElementById(section).classList.add('active');
+      event.target.closest('.menu-item').classList.add('active');
+
+      if (window.innerWidth <= 768) toggleSidebar();
+
+      if (section === 'users' && cachedData.users) displayUsers(cachedData.users);
+      else if (section === 'services' && cachedData.services) displayServices(cachedData.services);
+      else if (section === 'appointments' && cachedData.appointments) displayAppointments(cachedData.appointments);
+    }
+
+    /* Your original display functions (unchanged) */
+    function displayUsers(users) {
+      const container = document.getElementById('usersContent');
+      if (!users || users?.users?.length === 0) {
+        container.innerHTML = '<div class="no-data">No users found</div>';
+        return;
+      }
+      let html = '<div class="table-container"><table><thead><tr><th>Name</th><th>Phone</th><th>Selected Service</th><th>Conversations</th><th>Last Access</th></tr></thead><tbody>';
+      users.users.forEach(user => {
+        html += `<tr>
+          <td><strong>${user.name||'N/A'}</strong></td>
+          <td>${user.phone||'N/A'}</td>
+          <td>${user.state?.selectedService||'None'}</td>
+          <td><span class="badge badge-user">${user.history?.length||0} messages</span></td>
+          <td>${user.lastAccess ? new Date(user.lastAccess).toLocaleString() : 'N/A'}</td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
+
+    function displayServices(servicesData) {
+      const container = document.getElementById('servicesContent');
+      if (!servicesData?.length) { container.innerHTML = '<div class="no-data">No services found</div>'; return; }
+      let html = '<div class="table-container"><table><thead><tr><th>Service Name</th><th>Short</th><th>Details</th><th>Status</th></tr></thead><tbody>';
+      servicesData.forEach(doc => {
+        doc.services?.forEach(s => {
+          html += `<tr>
+            <td><strong>${s.name||'N/A'}</strong></td>
+            <td>${s.short||'N/A'}</td>
+            <td>${s.details||'N/A'}</td>
+            <td><span class="badge ${s.active?'badge-active':'badge-inactive'}">${s.active?'Active':'Inactive'}</span></td>
+          </tr>`;
+        });
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
+
+    function displayAppointments(appointments) {
+      const container = document.getElementById('appointmentsContent');
+      if (!appointments?.appointments?.length) { container.innerHTML = '<div class="no-data">No upcoming appointments</div>'; return; }
+      let html = '<div class="table-container"><table><thead><tr><th>Title</th><th>Date & Time</th><th>Attendee</th><th>Status</th></tr></thead><tbody>';
+      appointments.appointments.forEach(apt => {
+        const d = new Date(apt.createdAt);
+        html += `<tr>
+          <td><strong>${apt.service||'N/A'}</strong></td>
+          <td>${d.toLocaleString('en-US', {timeZone:'Africa/Kigali'})}</td>
+          <td>${apt.email||'N/A'}</td>
+          <td><span class="badge badge-active">${apt.status||'Scheduled'}</span></td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+    }
+
+    /* NEW: Confirmation modal functions */
+    function openReminderModal() {
+      document.getElementById('reminderModal').classList.add('active');
+    }
+
+    function closeReminderModal() {
+      document.getElementById('reminderModal').classList.remove('active');
+    }
+
+    async function sendReminderBroadcast() {
+      closeReminderModal();
+      try {
+        const res = await fetch(`${API_BASE}/outreach/template`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateName: "mconsultation_reminder" })
+        });
+
+        const result = await res.json();
+
+        if (res.ok) {
+          showToast(`Message sent to ${result.sent || result.count || 'many'} users`, 'success');
+          fetchData();
+        } else {
+          showToast(result.error || 'Failed to send message', 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Network error – could not send message', 'error');
+      }
+    }
+
+    async function syncServices() {
+      try {
+        const res = await fetch(`${API_BASE}/sync-services`, { method: 'POST' });
+        if (res.ok) showToast('Services synced successfully', 'success');
+        else showToast('Failed to sync services', 'error');
+        fetchData();
+      } catch (err) {
+        showToast('Sync failed', 'error');
+      }
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMessage').textContent = message;
+      toast.className = `toast toast-${type} show`;
+      setTimeout(() => toast.classList.remove('show'), 4000);
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('reminderModal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeReminderModal();
+    });
+
+    // Initial load
+    fetchData();
+  </script>
+</body>
+</html>
