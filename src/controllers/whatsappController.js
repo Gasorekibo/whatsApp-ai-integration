@@ -370,12 +370,10 @@ const handleWebhook = async (req, res) => {
 
     const msg = value.messages?.[0];
     if (!msg) return;
-
     const from = msg.from;
-    
     let session = await db.UserSession.findOne({where:{ phone: from }});
     const isNewUser = !session;
-    console.log('Is there any existing session?: ', session)
+    
     if (!session) {
       session = await db.UserSession?.create({
         name: value.contacts?.[0]?.profile?.name || 'Client',
@@ -413,7 +411,8 @@ const handleWebhook = async (req, res) => {
         await sendServiceList(from);
         session.history.push({ role: 'user', content: msg.text.body, timestamp: new Date() });
         session.history.push({ role: 'model', content: 'Service list shown', timestamp: new Date() });
-        await session.save();
+       session.changed('history', true);
+       await session.save();
         return;
       }
 
@@ -431,6 +430,7 @@ const handleWebhook = async (req, res) => {
 
         session.history.push({ role: 'user', content: msg.text.body, timestamp: new Date() });
         session.history.push({ role: 'model', content: response.reply, timestamp: new Date() });
+        session.changed('history', true);
         await session.save();
       }
     }
@@ -445,7 +445,8 @@ const handleWebhook = async (req, res) => {
         session.state.selectedService = service.id;
         session.history.push({ role: 'user', content: `Selected: ${service.name}`, timestamp: new Date() });
         session.history.push({ role: 'model', content: response.reply || 'Service selected', timestamp: new Date() });
-        await session.save();
+        session.changed('history', true);
+       await session.save();
       } else {
         await sendWhatsAppMessage(from, "Sorry, that service is no longer available. Let me show you our current services.");
         await sendServiceList(from);
