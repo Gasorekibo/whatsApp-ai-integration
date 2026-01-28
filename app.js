@@ -4,7 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const bookMeetingHandler = require('./src/controllers/bookMeeting');
 const { oauth2Client } = require('./src/utils/auth');
-const { verifyWebhook, handleWebhook } = require('./src/controllers/whatsappController');
+const {handleWebhook } = require('./src/controllers/whatsappController');
 const adminRoutes = require('./src/routes/admin');
 const { paymentWebhookHandler } = require('./src/helpers/paymentWebhookHandler');
 const { syncServicesHandler } = require('./src/helpers/syncServicesHandler');
@@ -16,6 +16,8 @@ const { zohoGetAllContactsHandler } = require('./src/helpers/zoho/zohoGetAllCont
 const { successfulPaymentPageHandler } = require('./src/helpers/successfulPaymentPageHandler');
 const { syncDatabase, db } = require('./src/models');
 const { initializeServices } = require('./src/utils/googlesheets');
+const { googleAuthSuccessMessage, googleAuthFailureMessage } = require('./src/constants/constantMessages');
+const { verifyWebhook } = require('./src/helpers/whatsapp/verifyWebHook');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -91,84 +93,10 @@ app.get('/oauth/callback', async (req, res) => {
     }
 
     // Success page
-    res.send(`
-      <html>
-        <head>
-          <title>Authentication Success</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              max-width: 600px; 
-              margin: 50px auto; 
-              padding: 20px; 
-              text-align: center; 
-            }
-            h2 { color: #4CAF50; }
-            .info { 
-              background: #f5f5f5; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin: 20px 0; 
-            }
-            a {
-              display: inline-block;
-              margin-top: 20px;
-              padding: 10px 20px;
-              background: #4CAF50;
-              color: white;
-              text-decoration: none;
-              border-radius: 5px;
-            }
-            a:hover {
-              background: #45a049;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>✅ Authentication Successful!</h2>
-          <div class="info">
-            <p><strong>Connected as:</strong> ${userInfo.name}</p>
-            <p><strong>Email:</strong> ${userInfo.email}</p>
-          </div>
-          <p>You can now use the sync services endpoint.</p>
-          <a href="/">Go to Dashboard</a>
-        </body>
-      </html>
-    `);
+    res.send(googleAuthSuccessMessage(userInfo));
   } catch (err) {
     console.error('❌ OAuth error:', err);
-    res.status(500).send(`
-      <html>
-        <head>
-          <title>Authentication Failed</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              max-width: 600px; 
-              margin: 50px auto; 
-              padding: 20px; 
-              text-align: center; 
-            }
-            h2 { color: #f44336; }
-            .error { 
-              background: #ffebee; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin: 20px 0; 
-              color: #c62828;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>❌ Authentication Failed</h2>
-          <div class="error">
-            <p>There was an error during authentication.</p>
-            <p>Please try again.</p>
-          </div>
-          <a href="/auth">Retry Authentication</a>
-        </body>
-      </html>
-    `);
+    res.status(500).send(googleAuthFailureMessage);
   }
 });
 
@@ -248,24 +176,14 @@ app.use((err, req, res, next) => {
 // Server initialization
 (async () => {
   try {
-    // Sync database with PostgreSQL
-    console.log('🔄 Syncing database...');
-    await syncDatabase({ alter: true }); // Use { force: true } only in dev to reset DB
+    await syncDatabase({ alter: false });
     console.log('✅ Database synced successfully');
-
-    // Initialize default services
-    console.log('🔄 Initializing services...');
     await initializeServices();
     console.log('✅ Services initialized');
 
     // Start server
     app.listen(PORT, () => {
-      console.log('════════════════════════════════════════');
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🗄️  Database: PostgreSQL (Sequelize)`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-      console.log('════════════════════════════════════════');
+      console.log(`🚀❤️‍🔥 Server running on port ${PORT}`);
     });
 
   } catch (error) {

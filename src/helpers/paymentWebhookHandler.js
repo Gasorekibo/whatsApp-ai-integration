@@ -1,5 +1,6 @@
-const  { sendWhatsAppMessage } = require( "../controllers/whatsappController");
+
 const {db}  = require('../models/index.js');
+const { sendWhatsAppMessage } = require('./whatsapp/sendWhatsappMessage.js');
 require('dotenv').config();
 
 
