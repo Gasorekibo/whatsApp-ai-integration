@@ -1,5 +1,5 @@
-import { getActiveServices } from '../../utils/googlesheets';
-import { sendWhatsAppMessage } from './sendWhatsappMessage';
+import { getActiveServices } from '../../utils/googlesheets.js';
+import { sendWhatsAppMessage } from './sendWhatsappMessage.js';
 import dotenv from 'dotenv';
 dotenv.config();
 export async function sendServiceList(to) {

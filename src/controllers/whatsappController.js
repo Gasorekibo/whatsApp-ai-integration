@@ -3,6 +3,8 @@ import { db } from '../models/index.js';
 import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
 import { processWithGemini } from '../helpers/whatsapp/processWithGemini.js';
 import dotenv from 'dotenv';
+import {sendServiceList} from '../helpers/whatsapp/sendServiceList.js';
+import { Op } from 'sequelize';
 dotenv.config();
 
 export const whatsappSessions = new Map();
