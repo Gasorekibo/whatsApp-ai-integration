@@ -18,6 +18,8 @@ const { syncDatabase, db } = require('./src/models');
 const { initializeServices } = require('./src/utils/googlesheets');
 const { googleAuthSuccessMessage, googleAuthFailureMessage } = require('./src/constants/constantMessages');
 const { verifyWebhook } = require('./src/helpers/whatsapp/verifyWebHook');
+const { syncServicesMicrosoftHandler } = require('./src/utils/syncServicesMicrosoftHandler');
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -126,7 +128,6 @@ app.get('/employees', async (req, res) => {
   }
 });
 
-// Payment & Calendar Webhooks
 app.post('/webhook/flutterwave', express.json(), paymentWebhookHandler);
 app.get('/payment-success', successfulPaymentPageHandler);
 app.post('/calendar-data', calendarDataHandler);
@@ -134,7 +135,32 @@ app.post('/calendar-data', calendarDataHandler);
 // Google Sheets Sync
 app.post('/api/sync-services', syncServicesHandler);
 app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler);
-
+app.get('/api/sync-services/microsoft', async (req, res) => {
+  try {
+    const services = await syncServicesMicrosoftHandler();
+   let content = await db.Content.findOne()
+   if (content) {
+      content.services = services;
+      content.updatedAt = new Date();
+      await content.save();
+    } else {
+      content = await db.Content.create({
+        services,
+        updatedAt: new Date()
+      });
+    }
+    res.json({
+      success: true,
+      services: content.services
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync services from Microsoft',
+      error: error.message
+    });
+  }
+});
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
@@ -219,3 +245,33 @@ process.on('SIGTERM', async () => {
 });
 
 module.exports = app;
+// import { getAuthenticatedClient, readExcelFromSharePoint } from "./src/utils/readExcelFromSharePoint.js";
+// async function getDriveId() {
+//   const client = getAuthenticatedClient();
+//   const user = 'hello@moyotech.solutions'; // Your user email
+  
+//   const drive = await client
+//     .api(`/users/${user}/drive`)
+//     .get();
+    
+//   console.log('Drive ID:', drive.id);
+//   return drive.id;
+// }
+// async function syncServices() {
+//   const services = await readExcelFromSharePoint()
+//   console.log('Services:', services);
+// }
+// async function listFiles() {
+//   const client = getAuthenticatedClient();
+//   const user = 'hello@moyotech.solutions';
+  
+//   const files = await client
+//     .api(`/users/${user}/drive/root/children`)
+//     .get();
+    
+//   console.log('Files:', files.value);
+//   return files.value;
+// }
+// //listFiles();
+// syncServices();
+// // getDriveId()
