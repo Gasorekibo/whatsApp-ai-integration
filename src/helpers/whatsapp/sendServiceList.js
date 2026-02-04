@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 export async function sendServiceList(to) {
   const services = await getActiveServices();
-  
   if (services.length === 0) {
     await sendWhatsAppMessage(to, "Sorry, no services are currently available. Please contact us directly.");
     return;
@@ -13,7 +12,7 @@ export async function sendServiceList(to) {
   const LIST_ROWS = services.map(s => ({
     id: s.id,
     title: s.short || s.name,
-    description: s.details || `Professional ${s.name}`
+    description: s.details?.slice(0, 40) + "..." || `Professional ${s.name}`
   }));
 
   const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
