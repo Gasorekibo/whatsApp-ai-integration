@@ -761,12 +761,19 @@
 
     async function syncServices() {
       try {
-        const res = await fetch(`${API_BASE}/sync-services`, { method: 'POST' });
+        //Google sheet endpoint
+        // const res = await fetch(`${API_BASE}/sync-services`, { method: 'POST' });
+        //Microsoft Excel endpoint
+        const res = await fetch(`${API_BASE}/sync-services/microsoft`, { method: 'GET', signal: AbortSignal.timeout(30000) });
         if (res.ok) showToast('Services synced successfully', 'success');
         else showToast('Failed to sync services', 'error');
         fetchData();
       } catch (err) {
-        showToast('Sync failed', 'error');
+       if (err.name === 'TimeoutError') {
+      showToast('Sync is taking longer than expected, but may still complete', 'error');
+    } else {
+      showToast('Sync failed', 'error');
+    }
       }
     }
 
