@@ -62,6 +62,33 @@ async function syncServicesMicrosoftHandler() {
     };
   }
 }
+// OHTER USEFUL FUNCTIONS
+async function getDriveId() {
+  const client = getAuthenticatedClient();
+  const user = process.env.MICROSOFT_USER_EMAIL;
+  
+  const drive = await client
+    .api(`/users/${user}/drive`)
+    .get();
+    
+  console.log('Drive:', drive);
+  return drive.id;
+}
+async function listServices() {
+  const services = await syncServicesMicrosoftHandler()
+  console.log('Services:', services);
+}
+async function listFiles() {
+  const client = getAuthenticatedClient();
+  const user = process.env.MICROSOFT_USER_EMAIL;
+  
+  const files = await client
+    .api(`/users/${user}/drive/root/children`)
+    .get();
+    
+  console.log('Files:', files.value?.map(file => ({ name: file.name, id: file.id })) ?? []);
+  return files.value;
+}
 
 module.exports = {
   getAuthenticatedClient,

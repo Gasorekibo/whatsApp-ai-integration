@@ -245,33 +245,3 @@ process.on('SIGTERM', async () => {
 });
 
 module.exports = app;
-// import { getAuthenticatedClient, readExcelFromSharePoint } from "./src/utils/readExcelFromSharePoint.js";
-// async function getDriveId() {
-//   const client = getAuthenticatedClient();
-//   const user = 'hello@moyotech.solutions'; // Your user email
-  
-//   const drive = await client
-//     .api(`/users/${user}/drive`)
-//     .get();
-    
-//   console.log('Drive ID:', drive.id);
-//   return drive.id;
-// }
-// async function syncServices() {
-//   const services = await readExcelFromSharePoint()
-//   console.log('Services:', services);
-// }
-// async function listFiles() {
-//   const client = getAuthenticatedClient();
-//   const user = 'hello@moyotech.solutions';
-  
-//   const files = await client
-//     .api(`/users/${user}/drive/root/children`)
-//     .get();
-    
-//   console.log('Files:', files.value);
-//   return files.value;
-// }
-// //listFiles();
-// syncServices();
-// // getDriveId()
