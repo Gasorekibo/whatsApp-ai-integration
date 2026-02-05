@@ -1,7 +1,7 @@
-const { google } = require('googleapis');
-const {db}  = require('../models/index.js');
-const { OAuth2Client: GoogleOAuth2Client } = require('google-auth-library');
-const dotenv = require('dotenv');
+import  google  from 'googleapis';
+import  dbConfig  from '../models/index.js';
+import { OAuth2Client as  GoogleOAuth2Client } from 'google-auth-library';
+import dotenv from 'dotenv';
 dotenv.config();
 const bookMeetingHandler = async (req, res) => {
   const { 
@@ -21,7 +21,7 @@ const bookMeetingHandler = async (req, res) => {
   }
 
   try {
-    const employee = await db.Employee.findOne({where: { email: employeeEmail }});
+    const employee = await dbConfig.db.Employee.findOne({where: { email: employeeEmail }});
     if (!employee) {
       return res.status(404).json({ error: 'Employee not found - run /auth first' });
     }
@@ -122,5 +122,4 @@ const bookMeetingHandler = async (req, res) => {
     });
   }
 };
-
-module.exports = bookMeetingHandler;
+export default bookMeetingHandler;

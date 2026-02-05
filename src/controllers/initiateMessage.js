@@ -1,4 +1,4 @@
-const dotenv = require('dotenv');
+import dotenv from 'dotenv';
 dotenv.config();
 async function initiateWhatsappMessage(to, templateName, params = []) {
   const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
@@ -38,4 +38,4 @@ async function initiateWhatsappMessage(to, templateName, params = []) {
   }
 }
 
-module.exports = { initiateWhatsappMessage };
+export default  initiateWhatsappMessage ;
