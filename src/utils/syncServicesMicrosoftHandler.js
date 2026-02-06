@@ -1,7 +1,7 @@
-const { Client } = require('@microsoft/microsoft-graph-client');
-const { ClientSecretCredential } = require('@azure/identity');
-const dotenv = require('dotenv');
-dotenv.config();
+import { Client } from '@microsoft/microsoft-graph-client';
+import { ClientSecretCredential } from '@azure/identity';
+import dotenv from 'dotenv';
+dotenv.config()
 
 const config = {
   clientId: process.env.MICROSOFT_CLIENT_ID,
@@ -90,9 +90,10 @@ async function listFiles() {
   return files.value;
 }
 
-module.exports = {
-  getAuthenticatedClient,
-  syncServicesMicrosoftHandler
-};
-
+export {
+  syncServicesMicrosoftHandler,
+  getDriveId,
+  listServices,
+  listFiles
+}
 

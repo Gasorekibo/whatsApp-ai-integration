@@ -1,6 +1,5 @@
-const { DataTypes } = require('sequelize');
-
-module.exports = (sequelize) => {
+import { DataTypes } from 'sequelize';
+export default (sequelize) => {
   const ServiceRequest = sequelize.define('ServiceRequest', {
      id: {
       type: DataTypes.UUID,

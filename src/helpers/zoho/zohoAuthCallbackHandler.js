@@ -1,4 +1,4 @@
-const dotenv = require('dotenv');
+import dotenv from 'dotenv';
 dotenv.config();
 
 async function zohoAuthCallbackHandler(req, res) {
@@ -194,5 +194,4 @@ async function zohoAuthCallbackHandler(req, res) {
     `);
   }
 }
-
-module.exports = { zohoAuthCallbackHandler };
+export { zohoAuthCallbackHandler };

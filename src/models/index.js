@@ -1,10 +1,11 @@
-const { Sequelize } = require('sequelize');
-const dotenv = require('dotenv');
-const config  = require ('../config/database.js');
-const Employee = require('./Employees.js');
-const UserSession = require('./UserSession.js')
-const Content = require('./Content.js');
-const ServiceRequest = require('./ServiceRequest.js');
+import { Sequelize } from 'sequelize';
+import dotenv from 'dotenv';
+import config from '../config/database.js';
+import Employee from './Employees.js';
+import UserSession from './UserSession.js';
+import Content from './Content.js';
+import ServiceRequest from './ServiceRequest.js';
+
 dotenv.config()
 const node_env = process.env.NODE_ENV || 'development'
 const dbConfig = config[node_env]
@@ -45,4 +46,4 @@ const syncDatabase = async (options = {}) => {
   }
 };
 
-module.exports = { db, syncDatabase };
+export default { db, syncDatabase };

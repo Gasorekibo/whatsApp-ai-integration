@@ -1,6 +1,6 @@
-const dotenv = require('dotenv');
-const { syncServicesFromSheet } = require('../utils/googlesheets');
-const { db } = require('../models/index');
+import dotenv from 'dotenv';
+import googlesheets from '../utils/googlesheets.js';
+import dbConfig from '../models/index.js';
 
 dotenv.config();
 
@@ -14,7 +14,7 @@ async function syncServicesHandler (req, res){
       });
     }
 
-    const employee = await db.Employee.findOne({ where: { email: process.env.EMPLOYEE_EMAIL } });
+    const employee = await dbConfig.db.Employee.findOne({ where: { email: process.env.EMPLOYEE_EMAIL } });
     if (!employee) {
       return res.status(404).json({ 
         success: false, 
@@ -30,7 +30,7 @@ async function syncServicesHandler (req, res){
       });
     }
 
-    const result = await syncServicesFromSheet(spreadsheetId, token);
+    const result = await googlesheets.syncServicesFromSheet(spreadsheetId, token);
     res.json(result);
 
   } catch (error) {
@@ -42,4 +42,4 @@ async function syncServicesHandler (req, res){
   }
 };
 
-module.exports = { syncServicesHandler };
+export default syncServicesHandler;

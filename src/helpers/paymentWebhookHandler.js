@@ -1,9 +1,9 @@
 
-const {db}  = require('../models/index.js');
-const { sendWhatsAppMessage } = require('./whatsapp/sendWhatsappMessage.js');
-require('dotenv').config();
-
-
+import dbConfig  from '../models/index.js';
+import {sendWhatsAppMessage} from './whatsapp/sendWhatsappMessage.js';
+import dotenv from 'dotenv';
+import logger from '../logger/logger.js'
+dotenv.config();
  async function paymentWebhookHandler(req, res) {
   const secretHash = process.env.FLW_WEBHOOK_SECRET;
   const signature = req.headers['verif-hash'];
@@ -18,6 +18,14 @@ require('dotenv').config();
     const payload = req.body;
 
     if (payload.event === 'charge.completed' && payload.data?.status === 'successful') {
+      logger.payment('info',
+      message = 'Received successful payment webhook',
+        tx_ref= payload.data.tx_ref,
+        amount= payload.data.amount,
+        currency= payload.data.currency,
+        payment_type= payload.data.payment_type,
+
+      )
       const meta = payload.meta_data;
       
 
@@ -28,7 +36,7 @@ require('dotenv').config();
       const booking = JSON.parse(meta.booking_details);
       let phone = meta.phone || booking.phone;;
       const normalizedPhone = phone.toString().replace(/^\+/, '');
-      const session = await db.UserSession.findOne({ where: { phone: normalizedPhone } });
+      const session = await dbConfig.db.UserSession.findOne({ where: { phone: normalizedPhone } });
       
       if (!session) {
         try {
@@ -120,4 +128,4 @@ require('dotenv').config();
     res.status(200).json({ success: false, error: err.message });
   }
 }
-module.exports = { paymentWebhookHandler };
+export default paymentWebhookHandler;
