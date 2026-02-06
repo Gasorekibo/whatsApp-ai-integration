@@ -1,5 +1,5 @@
-const { OAuth2Client } = require('google-auth-library');
-const dotenv = require('dotenv');
+import { OAuth2Client } from 'google-auth-library';
+import dotenv from 'dotenv';
 dotenv.config();
 
 const oauth2Client = new OAuth2Client(
@@ -8,4 +8,4 @@ const oauth2Client = new OAuth2Client(
   process.env.GOOGLE_REDIRECT_URI
 );
 
-module.exports = { oauth2Client };
+export default oauth2Client;

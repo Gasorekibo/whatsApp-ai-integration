@@ -1,8 +1,8 @@
 
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const { initiateWhatsappMessage } = require('../controllers/initiateMessage');
-const {db}  = require('../models/index.js')
+import  initiateWhatsappMessage  from '../controllers/initiateMessage.js';
+import  dbConfig from '../models/index.js'
 
 router.post('/template', async (req, res) => {
   const contacts = await fetch('http://localhost:3000/api/zoho/contacts')
@@ -33,7 +33,7 @@ router.post('/template', async (req, res) => {
 
 router.get('/users', async (req, res) => {
   try {
-    const users = await db.UserSession?.findAll();
+    const users = await dbConfig.db.UserSession?.findAll();
     res.json({ users });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -42,7 +42,7 @@ router.get('/users', async (req, res) => {
 
 router.get('/appointments', async(req, res)=> {
   try {
-    const appointments = await db.ServiceRequest?.findAll();
+    const appointments = await dbConfig.db.ServiceRequest?.findAll();
     res.json({ appointments });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -51,11 +51,12 @@ router.get('/appointments', async(req, res)=> {
 
 router.get('/services', async(req, res)=> {
   try {
-    const services = await db.Content?.findAll();
+    const services = await dbConfig.db.Content?.findAll();
     res.json(services || []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 })
-module.exports = router;
+
+export default router;
 

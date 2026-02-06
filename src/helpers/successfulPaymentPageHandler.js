@@ -58,4 +58,4 @@ function successfulPaymentPageHandler(req, res) {
     </html>
   `);
 };
-module.exports = { successfulPaymentPageHandler };
+export default successfulPaymentPageHandler;

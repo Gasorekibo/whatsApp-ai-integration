@@ -1,5 +1,4 @@
-
-const dotenv = require('dotenv');
+import dotenv from 'dotenv';
 dotenv.config();
 
 const ZOHO_CONFIG = {
@@ -311,7 +310,7 @@ async function updateZohoContact(contactId, updateData) {
   }
 }
 
-module.exports = {
+export  {
   getValidZohoAccessToken,
   fetchZohoContacts,
   searchZohoContactByPhone,

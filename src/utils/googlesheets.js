@@ -1,5 +1,5 @@
-const { google } = require('googleapis');
-const { db } = require('../models');
+import { google } from 'googleapis';
+import dbConfig from '../models/index.js';
 
 /**
  * Sync services from Google Sheet to PostgreSQL
@@ -40,7 +40,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
       .filter(s => s.id && s.name);
 
     // Find existing content or get first record
-    let content = await db.Content.findOne();
+    let content = await dbConfig.db.Content.findOne();
     
     if (content) {
       // Update existing record
@@ -49,7 +49,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
       await content.save();
     } else {
       // Create new record
-      content = await db.Content.create({
+      content = await dbConfig.db.Content.create({
         services,
         updatedAt: new Date()
       });
@@ -79,7 +79,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
  */
 async function getActiveServices() {
   try {
-    const content = await db.Content.findOne();
+    const content = await dbConfig.db.Content.findOne();
     
     if (content && content.services && content.services.length > 0) {
       // Filter active services
@@ -101,7 +101,7 @@ async function getActiveServices() {
  */
 async function getAllServices() {
   try {
-    const content = await db.Content.findOne();
+    const content = await dbConfig.db.Content.findOne();
     
     if (content && content.services && content.services.length > 0) {
       return content.services;
@@ -154,7 +154,7 @@ function getDefaultServices() {
 
 async function initializeServices() {
   try {
-    let content = await db.Content.findOne();
+    let content = await dbConfig.db.Content.findOne();
     
     if (!content || !content.services || content.services.length === 0) {
       const defaultServices = getDefaultServices();
@@ -166,7 +166,7 @@ async function initializeServices() {
         await content.save();
       } else {
         // Create new record
-        content = await db.Content.create({
+        content = await dbConfig.db.Content.create({
           services: defaultServices,
           updatedAt: new Date()
         });
@@ -179,10 +179,9 @@ async function initializeServices() {
   }
 }
 
-module.exports = { 
-  syncServicesFromSheet, 
+export default {
+  syncServicesFromSheet,
   getActiveServices,
   getAllServices,
-  initializeServices,
-  getDefaultServices
-};
+  initializeServices
+}

@@ -1,4 +1,4 @@
-const dotenv = require('dotenv');
+import dotenv from 'dotenv';
 dotenv.config();
 
 async function zohoAuthenticationRedirect(req, res) {
@@ -20,4 +20,4 @@ async function zohoAuthenticationRedirect(req, res) {
   res.redirect(authUrl);
 }
 
-module.exports = { zohoAuthenticationRedirect };
+export { zohoAuthenticationRedirect };
