@@ -1,14 +1,21 @@
 import dotenv from 'dotenv';
 import { systemInstruction } from  '../../constants/constantMessages.js';
 import googleSheets from '../../utils/googlesheets.js';
+import { systemInstruction } from '../../constants/constantMessages.js';
+import { getActiveServices } from '../../utils/googlesheets.js';
 import getCalendarData from '../../utils/getCalendarData.js';
 import dbConfig from '../../models/index.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { whatsappSessions } from '../../controllers/whatsappController.js';
 import logger from '../../logger/logger.js';
+import ragService from '../../services/rag.service.js';
+
 dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const EMPLOYEE_EMAIL = process.env.EMPLOYEE_EMAIL;
+
+// Flag to enable/disable RAG (for gradual rollout)
+const USE_RAG = process.env.USE_RAG !== 'false'; // Default to true
 
 export async function processWithGemini(phoneNumber, message, history = [], userEmail = null) {
    const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
@@ -49,18 +56,18 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       const start = new Date(s.start);
       const end = new Date(s.end);
       const slotStart = start > kigaliTime ? start : kigaliTime;
-      
+
       return {
         isoStart: slotStart.toISOString(),
         isoEnd: end.toISOString(),
-        display: slotStart.toLocaleString('en-US', { 
+        display: slotStart.toLocaleString('en-US', {
           weekday: 'long',
           year: 'numeric',
-          month: 'long', 
+          month: 'long',
           day: 'numeric',
-          hour: 'numeric', 
+          hour: 'numeric',
           minute: '2-digit',
-          timeZone: 'Africa/Kigali' 
+          timeZone: 'Africa/Kigali'
         }),
         dayName: slotStart.toLocaleString('en-US', { weekday: 'long', timeZone: 'Africa/Kigali' }),
         date: slotStart.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Kigali' }),
@@ -76,8 +83,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     const servicesList = services.map(s => 
       `• ${s.name}${s.details ? ' - ' + s.details : ''}`
     ).join('\n');
-
-    const slotDetails = freeSlots.map((s, i) => 
+    const slotDetails = freeSlots.map((s, i) =>
       `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`
     ).join('\n');
 
@@ -90,21 +96,46 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       minute: '2-digit',
       timeZone: 'Africa/Kigali'
     });
-    
-    let prompt = systemInstruction
-      .replace('{{SERVICES_LIST}}', servicesList)
-      .replace('{{AVAILABLE_SLOTS}}', slotDetails)
-      .replace('{{CURRENT_DATE}}', currentDate)
-      .replace('{{DEPOSIT_AMOUNT}}', process.env.DEPOSIT_AMOUNT || '5,000')
-      .replace('{{CURRENCY}}', process.env.CURRENCY || 'RWF');
+
+    let prompt;
+
+    // RAG-based approach
+    if (USE_RAG) {
+      try {
+        console.log('🤖 Using RAG for context retrieval...');
+
+        // Retrieve relevant context using RAG
+        const retrievedData = await ragService.retrieveContext(message, history);
+
+        // Build dynamic data that changes frequently
+        const dynamicData = {
+          availableSlots: slotDetails,
+          currentDate: currentDate,
+          depositInfo: `All consultations require a commitment deposit of ${process.env.DEPOSIT_AMOUNT} ${process.env.CURRENCY} to confirm booking.`
+        };
+
+        // Build augmented prompt
+        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData);
+
+        console.log(`✅ RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
+      } catch (ragError) {
+        console.error('⚠️ RAG failed, falling back to original prompt:', ragError.message);
+        // Fallback to original approach
+        prompt = buildFallbackPrompt(slotDetails, currentDate);
+      }
+    } else {
+      // Original approach (fallback)
+      console.log('📝 Using original prompt approach...');
+      prompt = buildFallbackPrompt(slotDetails, currentDate);
+    }
 
     let chat = whatsappSessions.get(phoneNumber);
     if (!chat) {
       chat = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }).startChat({
         systemInstruction: { parts: [{ text: prompt }] },
-        history: history.map(h => ({ 
-          role: h.role === 'user' ? 'user' : 'model', 
-          parts: [{ text: h.content }] 
+        history: history.map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.content }]
         }))
       });
       whatsappSessions.set(phoneNumber, chat);
@@ -221,10 +252,10 @@ export async function processWithGemini(phoneNumber, message, history = [], user
             linkGenerated: true
           });
           reply = `Great! To secure your consultation slot, please pay a commitment deposit of *${process.env.DEPOSIT_AMOUNT} ${process.env.CURRENCY}*.\n\n` +
-                  `This ensures we're both serious about the meeting.\n\n` +
-                  `👉 *Tap to pay securely (Mobile Money or Card):*\n${paymentLink}\n\n` +
-                  `After payment, your booking will be automatically confirmed and you'll receive a Google Meet link via email.\n\n` +
-                  `Thank you for choosing Moyo Tech Solutions! 🚀`;
+            `This ensures we're both serious about the meeting.\n\n` +
+            `👉 *Tap to pay securely (Mobile Money or Card):*\n${paymentLink}\n\n` +
+            `After payment, your booking will be automatically confirmed and you'll receive a Google Meet link via email.\n\n` +
+            `Thank you for choosing Moyo Tech Solutions! 🚀`;
         } else {
           logger.payment('error', 'Flutterwave payment link generation failed', {
             phone: sanitizedPhone,
@@ -297,8 +328,8 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       return { 
         reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.",
         showServices: false,
-        showSlots: false, 
-        freeSlots: [] 
+        showSlots: false,
+        freeSlots: []
       };
     }else {
       logger.error('Gemini unexpected error', {
@@ -313,4 +344,22 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     };
   }
   }
+}
+
+/**
+ * Build fallback prompt using original approach
+ * Used when RAG is disabled or fails
+ */
+async function buildFallbackPrompt(slotDetails, currentDate) {
+  const services = await getActiveServices();
+  const servicesList = services.map(s =>
+    `• ${s.name}${s.details ? ' - ' + s.details : ''}`
+  ).join('\n');
+
+  return systemInstruction
+    .replace('{{SERVICES_LIST}}', servicesList)
+    .replace('{{AVAILABLE_SLOTS}}', slotDetails)
+    .replace('{{CURRENT_DATE}}', currentDate)
+    .replace('{{DEPOSIT_AMOUNT}}', process.env.DEPOSIT_AMOUNT || '5,000')
+    .replace('{{CURRENCY}}', process.env.CURRENCY || 'RWF');
 }
