@@ -14,6 +14,12 @@ import { zohoAuthenticationRedirect } from './src/helpers/zoho/zohoAuthenticatio
 import { zohoAuthCallbackHandler } from './src/helpers/zoho/zohoAuthCallbackHandler.js';
 import { zohoGetAllContactsHandler } from './src/helpers/zoho/zohoGetAllContactsHandler.js';
 import  successfulPaymentPageHandler  from './src/helpers/successfulPaymentPageHandler.js';
+import knowledgeBaseRoutes from './src/routes/knowledge-base.js';
+import { syncDatabase, db } from './src/models';
+import { initializeServices } from './src/utils/googlesheets';
+import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/constants/constantMessages.js';
+import { verifyWebhook } from './src/helpers/whatsapp/verifyWebHook.js';
+import { syncServicesMicrosoftHandler } from './src/utils/syncServicesMicrosoftHandler.js';
 
 import dbConfig  from './src/models/index.js';
 import googleSheetServices  from './src/utils/googlesheets.js';
@@ -45,6 +51,7 @@ app.use(express.static('src/public'));
 // API Routes
 app.post('/api/chat/book', bookMeetingHandler);
 app.use('/api/outreach', adminRoutes);
+app.use('/api', knowledgeBaseRoutes); // RAG knowledge base routes
 
 // WhatsApp Webhook
 app.get('/webhook', verifyWebhook);
@@ -76,7 +83,7 @@ app.get('/oauth/callback', async (req, res) => {
     hasCode: !!code
   });
   const { code } = req.query;
-  
+
   try {
     // Exchange authorization code for tokens
     const tokenStartTime = Date.now();
@@ -113,7 +120,7 @@ logger.info('Google user info retrieved', {
       if (tokens.refresh_token) {
         employee.refreshToken = tokens.refresh_token;
       }
-      
+
       await employee.save();
       logger.info('Employee record updated', {
         requestId: req.requestId,
