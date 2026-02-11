@@ -2,6 +2,7 @@
   "name": "whatsapp-ai",
   "version": "1.0.0",
   "main": "app.js",
+  "type": "module",
   "scripts": {
     "dev": "nodemon app.js",
     "start": "node app.js"
@@ -30,7 +31,10 @@
     "morgan": "^1.10.1",
     "pg": "^8.17.2",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.7"
+    "sequelize": "^6.37.7",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11",

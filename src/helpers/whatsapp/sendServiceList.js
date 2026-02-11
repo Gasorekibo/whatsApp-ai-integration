@@ -1,9 +1,9 @@
-import { getActiveServices } from '../../utils/googlesheets.js';
+import googleSheet  from '../../utils/googlesheets.js';
 import { sendWhatsAppMessage } from './sendWhatsappMessage.js';
 import dotenv from 'dotenv';
 dotenv.config();
 export async function sendServiceList(to) {
-  const services = await getActiveServices();
+  const services = await googleSheet.getActiveServices();
   if (services.length === 0) {
     await sendWhatsAppMessage(to, "Sorry, no services are currently available. Please contact us directly.");
     return;

@@ -1,6 +1,7 @@
-const {DataTypes} = require('sequelize');
-const CryptoJS = require('crypto-js');
-module.exports = (sequelize) => {
+import { DataTypes } from 'sequelize';
+import CryptoJS from 'crypto-js';
+
+export default (sequelize) => {
   const Employee = sequelize.define('Employee', {
      id: {
       type: DataTypes.UUID,
