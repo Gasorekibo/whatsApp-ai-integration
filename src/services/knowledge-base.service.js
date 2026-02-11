@@ -1,7 +1,7 @@
 import vectorDBService from './vector-db.service.js';
 import embeddingService from './embedding.service.js';
 import documentProcessor from './document-processor.service.js';
-import { getActiveServices } from '../utils/googlesheets.js';
+import googleSheets from '../utils/googlesheets.js';
 import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHandler.js';
 import ragConfig from '../config/rag.config.js';
 
@@ -45,17 +45,18 @@ class KnowledgeBaseService {
         try {
             console.log('🔄 Syncing services from Google Sheets...');
 
-            const services = await getActiveServices();
+            const services = await googleSheets.getActiveServices();
 
             if (!services || services.length === 0) {
                 console.warn('⚠️ No services found in Google Sheets');
                 return 0;
             }
 
-            await this.upsertServices(services, 'google-sheets');
+            const upsertedDocs = await this.upsertServices(services, 'google-sheets');
 
-            console.log(`✅ Synced ${services.length} services from Google Sheets`);
-            return services.length;
+            const count = upsertedDocs?.length || 0;
+            console.log(`✅ Synced ${count} services from Google Sheets`);
+            return count;
         } catch (error) {
             console.error('❌ Error syncing from Google Sheets:', error.message);
             throw error;
@@ -77,11 +78,11 @@ class KnowledgeBaseService {
                 return 0;
             }
 
-            const upsertedServices = await this.upsertServices(services, 'microsoft-excel');
+            const upsertedDocs = await this.upsertServices(services, 'microsoft-excel');
 
-            console.log(`✅ Synced ${upsertedServices.length} services from Microsoft Excel`);
-            console.log('upsertedServices',upsertedServices);
-            return upsertedServices.length;
+            const count = upsertedDocs?.length || 0;
+            console.log(`✅ Synced ${count} services from Microsoft Excel`);
+            return count;
         } catch (error) {
             console.error('❌ Error syncing from Microsoft Excel:', error.message);
             throw error;
@@ -124,7 +125,8 @@ class KnowledgeBaseService {
             // Upsert to vector DB
             await vectorDBService.upsertDocuments(documents, 'default');
 
-            console.log(`✅ Upserted ${documents.length} service documents`);
+            console.log(`✅ Upserted ${documents.length} service documents from ${source}`);
+            return documents;
         } catch (error) {
             console.error('❌ Error upserting services:', error.message);
             throw error;

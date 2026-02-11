@@ -46,4 +46,4 @@ const syncDatabase = async (options = {}) => {
   }
 };
 
-export default { db, syncDatabase };
+export default { db , syncDatabase };

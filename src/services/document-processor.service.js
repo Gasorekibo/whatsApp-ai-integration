@@ -54,20 +54,26 @@ class DocumentProcessorService {
      * @returns {string} - Formatted content
      */
     buildServiceContent(service) {
+        // Handle case-insensitive keys (Name vs name, etc.)
+        const name = service.name || service.Name || service.NAME;
+        const details = service.details || service.Details || service.DETAILS || service.description;
+        const category = service.category || service.Category || service.CATEGORY;
+        const keywords = service.keywords || service.Keywords || service.KEYWORDS;
+
         const parts = [
-            `Service: ${service.name}`,
+            `Service: ${name}`,
         ];
 
-        if (service.details) {
-            parts.push(`Description: ${service.details}`);
+        if (details) {
+            parts.push(`Description: ${details}`);
         }
 
-        if (service.category) {
-            parts.push(`Category: ${service.category}`);
+        if (category) {
+            parts.push(`Category: ${category}`);
         }
 
-        if (service.keywords) {
-            parts.push(`Keywords: ${Array.isArray(service.keywords) ? service.keywords.join(', ') : service.keywords}`);
+        if (keywords) {
+            parts.push(`Keywords: ${Array.isArray(keywords) ? keywords.join(', ') : keywords}`);
         }
 
         return parts.join('\\n');
