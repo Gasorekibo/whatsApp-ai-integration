@@ -6,11 +6,12 @@
  * Usage: node src/scripts/setup-rag.js
  */
 
-require('dotenv').config();
-const vectorDBService = require('../services/vector-db.service');
-const embeddingService = require('../services/embedding.service');
-const knowledgeBaseService = require('../services/knowledge-base.service');
-const ragService = require('../services/rag.service');
+import dotenv from 'dotenv';
+dotenv.config();
+import vectorDBService from '../services/vector-db.service';
+import embeddingService from '../services/embedding.service';
+import knowledgeBaseService from '../services/knowledge-base.service';
+import ragService from '../services/rag.service';
 
 // Colors for console output
 const colors = {

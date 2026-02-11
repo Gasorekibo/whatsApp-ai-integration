@@ -1,5 +1,7 @@
-const { Pinecone } = require('@pinecone-database/pinecone');
-const ragConfig = require('../config/rag.config');
+// const { Pinecone } = require('@pinecone-database/pinecone');
+// const ragConfig = require('../config/rag.config');
+import { Pinecone } from '@pinecone-database/pinecone';
+import ragConfig from '../config/rag.config.js';
 
 /**
  * Vector Database Service
@@ -318,4 +320,4 @@ class VectorDBService {
 // Export singleton instance
 const vectorDBService = new VectorDBService();
 
-module.exports = vectorDBService;
+export default vectorDBService;

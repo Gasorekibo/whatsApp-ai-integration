@@ -1,7 +1,7 @@
-const embeddingService = require('./embedding.service');
-const vectorDBService = require('./vector-db.service');
-const documentProcessor = require('./document-processor.service');
-const ragConfig = require('../config/rag.config');
+import embeddingService from './embedding.service.js';
+import vectorDBService from './vector-db.service.js';
+import documentProcessor from './document-processor.service.js';
+import ragConfig from '../config/rag.config.js';
 
 /**
  * RAG (Retrieval-Augmented Generation) Service
@@ -317,4 +317,4 @@ CORE RULES:
 // Export singleton instance
 const ragService = new RAGService();
 
-module.exports = ragService;
+export default ragService;
