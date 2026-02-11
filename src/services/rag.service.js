@@ -25,16 +25,12 @@ class RAGService {
                 return;
             }
 
-            console.log('🚀 Initializing RAG service...');
-
-            //Initialize vector DB
+            // Initialize vector DB and test connection
             await vectorDBService.initialize();
-
-            // Test embedding service
             await embeddingService.testConnection();
 
             this.initialized = true;
-            console.log('✅ RAG service initialized successfully');
+            console.log('✅ RAG service initialized');
         } catch (error) {
             console.error('❌ Failed to initialize RAG service:', error.message);
             throw error;
@@ -42,64 +38,43 @@ class RAGService {
     }
 
     /**
-     * Classify user intent from message
+     * Classify user intent from message using LLM
      * @param {string} message - User message
-     * @returns {string} - Intent type
+     * @returns {Promise<string>} - Intent type (booking, service_inquiry, faq, general)
      */
-    classifyIntent(message) {
-        const lowerMsg = message.toLowerCase();
+    async classifyIntent(message) {
+        try {
+            // Simple check for very short greetings to save API calls
+            const greetingPatterns = /^(muraho|hello|hi|hey|hola|bonjour|salut)$/i;
+            if (greetingPatterns.test(message.trim())) {
+                return 'general';
+            }
 
-        // Service inquiry patterns
-        const servicePatterns = [
-            /what.*services?/i,
-            /tell.*about/i,
-            /interested in/i,
-            /what.*do.*offer/i,
-            /services?.*list/i,
-            /ese.*mutanga/i, // Kinyarwanda: what do you offer
-            /quels.*services/i // French: what services
-        ];
+            const model = embeddingService.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-        // Booking patterns
-        const bookingPatterns = [
-            /book/i,
-            /appointment/i,
-            /schedule/i,
-            /meeting/i,
-            /consultation/i,
-            /time.*slot/i,
-            /available/i,
-            /monday|tuesday|wednesday|thursday|friday|saturday|sunday/i,
-            /deposit/i,
-            /payment/i
-        ];
+            const prompt = `
+                Classify the following user message into one of these categories:
+                - booking: The user wants to schedule an appointment, meeting, or consultation.
+                - service_inquiry: The user is asking about specific services, what we offer, or technical capabilities.
+                - faq: The user is asking about pricing, location, how things work, or general company info.
+                - general: Greetings, generic questions, or anything else.
 
-        // FAQ/General patterns
-        const faqPatterns = [
-            /how.*work/i,
-            /what.*is/i,
-            /why/i,
-            /when/i,
-            /where/i,
-            /price|cost|pricing/i,
-            /location/i,
-            /contact/i
-        ];
+                User Message: "${message}"
 
-        // Check patterns in order of priority
-        if (bookingPatterns.some(pattern => pattern.test(lowerMsg))) {
-            return 'booking';
+                Respond with ONLY the category name.
+            `;
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const intent = response.text().trim().toLowerCase();
+
+            // Validate the result
+            const validIntents = ['booking', 'service_inquiry', 'faq', 'general'];
+            return validIntents.includes(intent) ? intent : 'general';
+        } catch (error) {
+            console.warn('⚠️ LLM Classification failed, falling back to general:', error.message);
+            return 'general';
         }
-
-        if (servicePatterns.some(pattern => pattern.test(lowerMsg))) {
-            return 'service_inquiry';
-        }
-
-        if (faqPatterns.some(pattern => pattern.test(lowerMsg))) {
-            return 'faq';
-        }
-
-        return 'general';
     }
 
     /**
@@ -137,11 +112,11 @@ class RAGService {
             }
 
             // Classify intent and detect language
-            const intent = this.classifyIntent(userMessage);
+            const intent = await this.classifyIntent(userMessage);
             const language = this.detectLanguage(userMessage);
             const retrievalTopK = topK || ragConfig.retrieval.topK;
 
-            console.log(`🔍 Intent: ${intent}, Language: ${language}`);
+            // console.log(`🔍 Intent: ${intent}, Language: ${language}`);
 
             // Generate query embedding
             const queryEmbedding = await embeddingService.generateEmbedding(
@@ -170,7 +145,7 @@ class RAGService {
                 relevantDocs: results.length
             };
         } catch (error) {
-            console.error('❌ Error retrieving context:', error.message);
+            console.error('❌ RAG Retrieval Error:', error.message);
 
             // Return minimal context on error
             return {
@@ -303,7 +278,7 @@ class RAGService {
             parts.push('');
         }
 
-        return parts.join('\\n');
+        return parts.join('\n');
     }
 
     /**
@@ -319,12 +294,7 @@ CORE RULES:
 - Be concise and helpful (max 3 sentences unless needed)
 - Use ONLY information provided in the context above
 - For bookings, verify slots from AVAILABLE_SLOTS list only
-- Never invent dates, times, or service details
-
-OUTPUT COMMANDS:
-- To show services list: Output ===SHOW_SERVICES===
-- To initiate payment: Output ===INITIATE_PAYMENT=== followed by JSON
-- To save inquiry: Output ===SAVE_REQUEST=== followed by JSON`;
+- Never invent dates, times, or service details`;
     }
 
     /**

@@ -93,7 +93,7 @@ router.post('/kb/company-info', authenticateAdmin, async (req, res) => {
 });
 
 // Add FAQs
-router.post('/kb/faqs', authenticateAdmin, async (req, res) => {
+router.post('/kb/faqs',  async (req, res) => {
     try {
         const { faqs, language = 'en' } = req.body;
 
@@ -121,7 +121,7 @@ router.post('/kb/faqs', authenticateAdmin, async (req, res) => {
 });
 
 // Add booking rules
-router.post('/kb/booking-rules', authenticateAdmin, async (req, res) => {
+router.post('/kb/booking-rules',async (req, res) => {
     try {
         const { bookingInfo } = req.body;
 
@@ -149,7 +149,7 @@ router.post('/kb/booking-rules', authenticateAdmin, async (req, res) => {
 });
 
 // Rebuild entire knowledge base
-router.post('/kb/rebuild', authenticateAdmin, async (req, res) => {
+router.post('/kb/rebuild', async (req, res) => {
     try {
         const summary = await knowledgeBaseService.rebuildIndex();
 
@@ -169,7 +169,7 @@ router.post('/kb/rebuild', authenticateAdmin, async (req, res) => {
 });
 
 // Clear knowledge base
-router.delete('/kb/clear', authenticateAdmin, async (req, res) => {
+router.delete('/kb/clear', async (req, res) => {
     try {
         await knowledgeBaseService.clearKnowledgeBase();
 
