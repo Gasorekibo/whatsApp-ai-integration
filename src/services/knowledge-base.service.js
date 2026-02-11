@@ -1,9 +1,9 @@
-const vectorDBService = require('./vector-db.service');
-const embeddingService = require('./embedding.service');
-const documentProcessor = require('./document-processor.service');
-const { getActiveServices } = require('../utils/googlesheets');
-const { syncServicesMicrosoftHandler } = require('../utils/syncServicesMicrosoftHandler');
-const ragConfig = require('../config/rag.config');
+import vectorDBService from './vector-db.service.js';
+import embeddingService from './embedding.service.js';
+import documentProcessor from './document-processor.service.js';
+import { getActiveServices } from '../utils/googlesheets.js';
+import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHandler.js';
+import ragConfig from '../config/rag.config.js';
 
 /**
  * Knowledge Base Management Service
@@ -371,4 +371,4 @@ class KnowledgeBaseService {
 // Export singleton instance
 const knowledgeBaseService = new KnowledgeBaseService();
 
-module.exports = knowledgeBaseService;
+export default knowledgeBaseService;

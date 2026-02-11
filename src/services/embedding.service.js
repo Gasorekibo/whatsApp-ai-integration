@@ -1,6 +1,6 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const NodeCache = require('node-cache');
-const ragConfig = require('../config/rag.config');
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import NodeCache from 'node-cache';
+import ragConfig from '../config/rag.config.js';
 
 /**
  * Embedding Service
@@ -180,4 +180,5 @@ class EmbeddingService {
 // Export singleton instance
 const embeddingService = new EmbeddingService();
 
-module.exports = embeddingService;
+export default embeddingService;
+

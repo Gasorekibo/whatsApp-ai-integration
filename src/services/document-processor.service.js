@@ -1,5 +1,5 @@
-const markdownIt = require('markdown-it');
-const ragConfig = require('../config/rag.config');
+import markdownIt from 'markdown-it';
+import ragConfig from '../config/rag.config.js';
 
 /**
  * Document Processor Service
@@ -334,4 +334,4 @@ class DocumentProcessorService {
 // Export singleton instance
 const documentProcessor = new DocumentProcessorService();
 
-module.exports = documentProcessor;
+export default documentProcessor;

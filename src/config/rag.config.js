@@ -1,11 +1,11 @@
-require('dotenv').config();
-
+import dotenv from 'dotenv';
+dotenv.config();   
 /**
  * RAG Configuration for WhatsApp Chatbot
  * Defines settings for vector database, embeddings, and retrieval
  */
 
-module.exports = {
+export default {
     // Vector Database Configuration
     vectorDB: {
         provider: process.env.VECTOR_DB_PROVIDER || 'pinecone',
