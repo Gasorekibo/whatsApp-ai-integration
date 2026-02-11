@@ -134,6 +134,16 @@ class RAGService {
                 filter
             );
 
+            // Log details for debugging
+            if (results.length > 0) {
+                console.log(`🔍 RAG retrieved ${results.length} docs for: "${userMessage?.slice(0, 30)}..."`);
+                results.forEach((match, i) => {
+                    console.log(`  [${i + 1}] Score: ${match.score.toFixed(4)} | Type: ${match.metadata?.type} | ID: ${match.id}`);
+                });
+            } else {
+                console.log(`⚠️ RAG found no relevant docs for: "${userMessage?.slice(0, 30)}..."`);
+            }
+
             // Extract and format context
             const context = this.formatContext(results);
 
@@ -287,14 +297,17 @@ class RAGService {
      * @returns {string} - Base instruction
      */
     getBaseInstruction(language) {
-        return `You are a professional AI assistant for Moyo Tech Solutions, an IT consultancy in Rwanda.
+        return `You are a warm, professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
 
-CORE RULES:
-- Respond in ${language === 'rw' ? 'Kinyarwanda' : language === 'fr' ? 'French' : 'English'}
-- Be concise and helpful (max 3 sentences unless needed)
-- Use ONLY information provided in the context above
-- For bookings, verify slots from AVAILABLE_SLOTS list only
-- Never invent dates, times, or service details`;
+        CORE RULES:
+        - Respond in ${language === 'rw' ? 'Kinyarwanda' : language === 'fr' ? 'French' : 'English'}
+        - Be friendly but brief and to-the-point
+        - Keep responses under 3 sentences unless needed
+        - Use ONLY information provided in the RELEVANT INFORMATION section above
+        - If a service is mentioned in RELEVANT INFORMATION, use its details strictly
+        - For bookings, ONLY use dates from the AVAILABLE CONSULTATION SLOTS list
+        - Never invent dates, times, or service details
+        - Maintain a natural, professional tone`;
     }
 
     /**

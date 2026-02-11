@@ -1,8 +1,6 @@
 import dotenv from 'dotenv';
-import { systemInstruction } from  '../../constants/constantMessages.js';
-import googleSheets from '../../utils/googlesheets.js';
 import { systemInstruction } from '../../constants/constantMessages.js';
-import { getActiveServices } from '../../utils/googlesheets.js';
+import googleSheets from '../../utils/googlesheets.js';
 import getCalendarData from '../../utils/getCalendarData.js';
 import dbConfig from '../../models/index.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -18,8 +16,8 @@ const EMPLOYEE_EMAIL = process.env.EMPLOYEE_EMAIL;
 const USE_RAG = process.env.USE_RAG !== 'false'; // Default to true
 
 export async function processWithGemini(phoneNumber, message, history = [], userEmail = null) {
-   const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
-  
+  const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
+
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
     phone: sanitizedPhone,
     messageLength: message.length,
@@ -31,7 +29,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       phone: sanitizedPhone,
       employeeEmail: EMPLOYEE_EMAIL
     });
-    const employee = await dbConfig.db.Employee.findOne({where: { email: EMPLOYEE_EMAIL }});
+    const employee = await dbConfig.db.Employee.findOne({ where: { email: EMPLOYEE_EMAIL } });
     if (!employee) {
       logger.error('Employee not found for calendar access', {
         phone: sanitizedPhone,
@@ -41,7 +39,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     };
 
     const token = employee.getDecryptedToken();
-  const calendarStartTime = Date.now();
+    const calendarStartTime = Date.now();
     const calendar = await getCalendarData(EMPLOYEE_EMAIL, token);
     const calendarDuration = Date.now() - calendarStartTime;
     logger.info('Calendar data retrieved', {
@@ -80,7 +78,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       phone: sanitizedPhone,
       servicesCount: services.length
     });
-    const servicesList = services.map(s => 
+    const servicesList = services.map(s =>
       `• ${s.name}${s.details ? ' - ' + s.details : ''}`
     ).join('\n');
     const slotDetails = freeSlots.map((s, i) =>
@@ -174,24 +172,22 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       tools: tools
     });
 
-    let chat = whatsappSessions.get(phoneNumber);
-    if (!chat) {
-      chat = model.startChat({
-        systemInstruction: { parts: [{ text: prompt }] },
-        history: history.map(h => ({
-          role: h.role === 'user' ? 'user' : 'model',
-          parts: [{ text: h.content }]
-        }))
-      });
-      whatsappSessions.set(phoneNumber, chat);
-    }
+    // Always start a fresh chat to ensure the systemInstruction (prompt) 
+    // is updated with the latest RAG context from this specific message.
+    const chat = model.startChat({
+      systemInstruction: { parts: [{ text: prompt }] },
+      history: history.map(h => ({
+        role: h.role === 'user' ? 'user' : 'model',
+        parts: [{ text: h.content }]
+      }))
+    });
 
     let result = await chat.sendMessage(message);
     let response = result.response;
     let text = response.text();
 
     // Loop to handle potential function calls
-    while (response.candidates[0].content.parts.some(part => part.functionCall)) {
+    while (response.candidates?.[0]?.content?.parts?.some(part => part.functionCall)) {
       const functionCalls = response.candidates[0].content.parts
         .filter(part => part.functionCall)
         .map(part => part.functionCall);
@@ -318,24 +314,24 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         phone: sanitizedPhone,
         status: 429
       });
-      return { 
+      return {
         reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.",
         showServices: false,
         showSlots: false,
         freeSlots: []
       };
-    }else {
+    } else {
       logger.error('Gemini unexpected error', {
         phone: sanitizedPhone,
         status: err.status
       });
-    return { 
-      reply: "I'm having trouble connecting right now. Please try again in a moment!", 
-      showServices: false,
-      showSlots: false, 
-      freeSlots: [] 
-    };
-  }
+      return {
+        reply: "I'm having trouble connecting right now. Please try again in a moment!",
+        showServices: false,
+        showSlots: false,
+        freeSlots: []
+      };
+    }
   }
 }
 
@@ -344,7 +340,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
  * Used when RAG is disabled or fails
  */
 async function buildFallbackPrompt(slotDetails, currentDate) {
-  const services = await getActiveServices();
+  const services = await googleSheets.getActiveServices();
   const servicesList = services.map(s =>
     `• ${s.name}${s.details ? ' - ' + s.details : ''}`
   ).join('\n');

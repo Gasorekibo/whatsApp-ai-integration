@@ -3,33 +3,23 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import bookMeetingHandler from './src/controllers/bookMeeting.js';
-import  oauth2Client  from './src/utils/auth.js';
+import oauth2Client from './src/utils/auth.js';
 import { handleWebhook } from './src/controllers/whatsappController.js';
 import adminRoutes from './src/routes/admin.js';
-import  paymentWebhookHandler  from './src/helpers/paymentWebhookHandler.js';
-import syncServicesHandler  from './src/helpers/syncServicesHandler.js';
+import paymentWebhookHandler from './src/helpers/paymentWebhookHandler.js';
+import syncServicesHandler from './src/helpers/syncServicesHandler.js';
 import googleSheetsWebhookHandler from './src/helpers/googleSheetsWebhookHandler.js';
-import  calendarDataHandler  from './src/helpers/calendarDataHandler.js';
+import calendarDataHandler from './src/helpers/calendarDataHandler.js';
 import { zohoAuthenticationRedirect } from './src/helpers/zoho/zohoAuthenticationRedirect.js';
 import { zohoAuthCallbackHandler } from './src/helpers/zoho/zohoAuthCallbackHandler.js';
 import { zohoGetAllContactsHandler } from './src/helpers/zoho/zohoGetAllContactsHandler.js';
-import  successfulPaymentPageHandler  from './src/helpers/successfulPaymentPageHandler.js';
+import successfulPaymentPageHandler from './src/helpers/successfulPaymentPageHandler.js';
 import knowledgeBaseRoutes from './src/routes/knowledge-base.js';
-import { syncDatabase, db } from './src/models';
-import { initializeServices } from './src/utils/googlesheets';
+import dbConfig from './src/models/index.js';
+import googleSheetServices from './src/utils/googlesheets.js';
 import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/constants/constantMessages.js';
 import { verifyWebhook } from './src/helpers/whatsapp/verifyWebHook.js';
 import { syncServicesMicrosoftHandler } from './src/utils/syncServicesMicrosoftHandler.js';
-
-import dbConfig  from './src/models/index.js';
-import googleSheetServices  from './src/utils/googlesheets.js';
-import {
-  googleAuthSuccessMessage,
-  googleAuthFailureMessage,
-} from './src/constants/constantMessages.js';
-
-import { verifyWebhook } from './src/helpers/whatsapp/verifyWebHook.js';
-import {syncServicesMicrosoftHandler}  from './src/utils/syncServicesMicrosoftHandler.js';
 import logger from './src/logger/logger.js';
 
 const app = express();
@@ -59,7 +49,7 @@ app.post('/webhook', handleWebhook);
 
 // Google OAuth Routes
 app.get('/auth', (req, res) => {
-   logger.info('Google OAuth authentication initiated', {
+  logger.info('Google OAuth authentication initiated', {
     requestId: req.requestId,
     ip: req.ip
   });
@@ -103,8 +93,8 @@ app.get('/oauth/callback', async (req, res) => {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
     const userInfo = await userInfoRes.json();
-const userInfoDuration = Date.now() - userInfoStartTime;
-logger.info('Google user info retrieved', {
+    const userInfoDuration = Date.now() - userInfoStartTime;
+    logger.info('Google user info retrieved', {
       requestId: req.requestId,
       duration: userInfoDuration,
       email: userInfo.email ? `${userInfo.email.substring(0, 3)}***` : 'none'
@@ -136,7 +126,7 @@ logger.info('Google user info retrieved', {
         email: userInfo.email,
         refreshToken: tokens.refresh_token || null
       });
-       logger.info('New employee record created', {
+      logger.info('New employee record created', {
         requestId: req.requestId,
         employeeId: employee.id,
         email: `${userInfo.email.substring(0, 3)}***`
@@ -163,11 +153,11 @@ app.get('/zoho/oauth/callback', zohoAuthCallbackHandler);
 app.get('/api/zoho/contacts', zohoGetAllContactsHandler);
 // Employee Routes
 app.get('/employees', async (req, res) => {
-   logger.info('Fetching all employees', {
+  logger.info('Fetching all employees', {
     requestId: req.requestId
   });
   try {
-    const employees = await dbConfig.db.Employee.findAll({ 
+    const employees = await dbConfig.db.Employee.findAll({
       attributes: ['id', 'name', 'email', 'createdAt'],
       order: [['createdAt', 'DESC']]
     });
@@ -181,7 +171,7 @@ app.get('/employees', async (req, res) => {
       employees
     });
   } catch (error) {
-     logger.error('Error fetching employees', {
+    logger.error('Error fetching employees', {
       requestId: req.requestId,
       error: error.message,
       stack: error.stack
@@ -203,24 +193,24 @@ app.post('/calendar-data', calendarDataHandler);
 app.post('/api/sync-services', syncServicesHandler);
 app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler);
 app.get('/api/sync-services/microsoft', async (req, res) => {
-   logger.info('Microsoft services sync initiated', {
+  logger.info('Microsoft services sync initiated', {
     requestId: req.requestId
   });
   try {
     const syncStartTime = Date.now();
     const services = await syncServicesMicrosoftHandler();
     const syncDuration = Date.now() - syncStartTime;
-        logger.info('Microsoft services synced', {
+    logger.info('Microsoft services synced', {
       requestId: req.requestId,
       duration: syncDuration,
       servicesCount: services?.length || 0
     });
-   let content = await dbConfig.db.Content.findOne()
-   if (content) {
+    let content = await dbConfig.db.Content.findOne()
+    if (content) {
       content.services = services;
       content.updatedAt = new Date();
       await content.save();
-       logger.info('Content updated with Microsoft services', {
+      logger.info('Content updated with Microsoft services', {
         requestId: req.requestId,
         contentId: content.id
       });
@@ -229,7 +219,7 @@ app.get('/api/sync-services/microsoft', async (req, res) => {
         services,
         updatedAt: new Date()
       });
-       logger.info('New content created with Microsoft services', {
+      logger.info('New content created with Microsoft services', {
         requestId: req.requestId,
         contentId: content.id
       });
@@ -244,7 +234,7 @@ app.get('/api/sync-services/microsoft', async (req, res) => {
       error: error.message,
       stack: error.stack
     });
-    
+
     res.status(500).json({
       success: false,
       message: 'Failed to sync services from Microsoft',
@@ -256,7 +246,7 @@ app.get('/api/sync-services/microsoft', async (req, res) => {
 app.get('/health', async (req, res) => {
   try {
     await dbConfig.db.sequelize.authenticate();
-     logger.info('Health check passed', {
+    logger.info('Health check passed', {
       requestId: req.requestId,
       database: 'connected'
     });
@@ -297,7 +287,7 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-   logger.error('Unhandled error', {
+  logger.error('Unhandled error', {
     requestId: req.requestId,
     error: err.message,
     stack: err.stack,
@@ -318,7 +308,7 @@ app.use((err, req, res, next) => {
     logger.info('Initializing database connection');
     await dbConfig.syncDatabase({ alter: false });
     logger.info('Database synced successfully');
-    
+
     logger.info('Initializing services from Google Sheets');
     await googleSheetServices.initializeServices();
     logger.info('Services initialized successfully');
@@ -348,7 +338,7 @@ app.use((err, req, res, next) => {
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, initiating graceful shutdown');
   console.log('\n🛑 Shutting down gracefully...');
-  
+
   try {
     await dbConfig.db.sequelize.close();
     logger.info('Database connections closed successfully');
@@ -367,7 +357,7 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, initiating graceful shutdown');
   console.log('\n🛑 SIGTERM received, shutting down...');
-  
+
   try {
     await dbConfig.db.sequelize.close();
     logger.info('Database connections closed successfully');
