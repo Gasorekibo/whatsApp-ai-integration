@@ -1,6 +1,6 @@
-const express = require('express');
-const knowledgeBaseService = require('../services/knowledge-base.service');
-const ragService = require('../services/rag.service');
+import express from 'express';
+import knowledgeBaseService from '../services/knowledge-base.service.js';
+import ragService from '../services/rag.service.js';
 const router = express.Router();
 
 /**
@@ -268,4 +268,4 @@ router.get('/kb/health', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

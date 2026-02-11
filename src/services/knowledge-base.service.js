@@ -77,10 +77,11 @@ class KnowledgeBaseService {
                 return 0;
             }
 
-            await this.upsertServices(services, 'microsoft-excel');
+            const upsertedServices = await this.upsertServices(services, 'microsoft-excel');
 
-            console.log(`✅ Synced ${services.length} services from Microsoft Excel`);
-            return services.length;
+            console.log(`✅ Synced ${upsertedServices.length} services from Microsoft Excel`);
+            console.log('upsertedServices',upsertedServices);
+            return upsertedServices.length;
         } catch (error) {
             console.error('❌ Error syncing from Microsoft Excel:', error.message);
             throw error;
