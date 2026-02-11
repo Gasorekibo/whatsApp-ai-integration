@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 export default (sequelize) => {
   const ServiceRequest = sequelize.define('ServiceRequest', {
-     id: {
+    id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
@@ -56,6 +56,27 @@ export default (sequelize) => {
     participants: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    startTime: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    endTime: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    txRef: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    paymentStatus: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'pending' // pending, paid, refunded
     },
     status: {
       type: DataTypes.STRING,
