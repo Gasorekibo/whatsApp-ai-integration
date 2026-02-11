@@ -143,9 +143,6 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     // RAG-based approach
     if (USE_RAG) {
       try {
-        // console.log('🤖 Using RAG for context retrieval...');
-
-        // Retrieve relevant context using RAG
         const retrievedData = await ragService.retrieveContext(message, history);
 
         // Build dynamic data that changes frequently
@@ -195,9 +192,10 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       const toolResults = [];
 
       for (const call of functionCalls) {
-        // console.log(`🛠️ Executing tool: ${call.name}`, call.args);
 
         if (call.name === "show_services") {
+          logger.info('Show services tool called', { call });
+          console.log('============ SHOW SERVICES CALLED =============')
           toolResults.push({
             functionResponse: {
               name: "show_services",
@@ -209,7 +207,9 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         }
 
         if (call.name === "initiate_payment") {
+          console.log('============ INITIATE PAYMENT CALLED =============')
           const data = call.args;
+          logger.info('Initiating payment tool called', { data });
           const requestedStart = new Date(data.start);
 
           const matchingSlot = freeSlots.find(slot => {
@@ -225,6 +225,24 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
           try {
             const tx_ref = `moyo-deposit-${phoneNumber.replace(/\+/g, '')}-${Date.now()}`;
+            const amount = parseInt(process.env.DEPOSIT_AMOUNT || 5000);
+
+            // Create a ServiceRequest record to track this booking attempt
+            await dbConfig.db.ServiceRequest.create({
+              service: data.service,
+              name: data.name,
+              email: data.email,
+              phone: phoneNumber,
+              company: data.company,
+              details: data.details,
+              startTime: matchingSlot.isoStart,
+              endTime: matchingSlot.isoEnd,
+              txRef: tx_ref,
+              amount: amount,
+              paymentStatus: 'pending',
+              status: 'pending_payment'
+            });
+
             const paymentApiResponse = await fetch('https://api.flutterwave.com/v3/payments', {
               method: 'POST',
               headers: {
@@ -269,13 +287,14 @@ export async function processWithGemini(phoneNumber, message, history = [], user
               toolResults.push({ functionResponse: { name: "initiate_payment", response: { success: false, error: "Payment gateway error" } } });
             }
           } catch (e) {
+            logger.error('Error in initiate_payment tool', { error: e.message, stack: e.stack });
             toolResults.push({ functionResponse: { name: "initiate_payment", response: { success: false, error: e.message } } });
           }
         }
 
         if (call.name === "save_inquiry") {
           try {
-            await db.ServiceRequest.create({
+            await dbConfig.db.ServiceRequest.create({
               ...call.args,
               phone: phoneNumber,
               status: 'new'
