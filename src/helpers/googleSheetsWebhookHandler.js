@@ -1,6 +1,6 @@
-const dotenv = require('dotenv');
-const {db}  = require('../models/index.js');
-const { syncServicesFromSheet } = require('../utils/googlesheets.js');
+import dotenv from 'dotenv';
+import dbConfig from '../models/index.js';
+import googleSheet from '../utils/googlesheets.js';
 dotenv.config();
 
 async function googleSheetsWebhookHandler(req, res) {
@@ -23,7 +23,7 @@ async function googleSheetsWebhookHandler(req, res) {
       });
     }
 
-    const employee = await db.Employee.findOne({ where: { email: process.env.EMPLOYEE_EMAIL } });
+    const employee = await dbConfig.db.Employee.findOne({ where: { email: process.env.EMPLOYEE_EMAIL } });
     if (!employee) {
       return res.status(404).json({ 
         success: false, 
@@ -32,7 +32,7 @@ async function googleSheetsWebhookHandler(req, res) {
     }
 
     const token = employee.getDecryptedToken();
-    const result = await syncServicesFromSheet(sheetId, token);
+    const result = await googleSheet.syncServicesFromSheet(sheetId, token);
 
     res.json(result);
 
@@ -44,4 +44,4 @@ async function googleSheetsWebhookHandler(req, res) {
     });
   }
 };
-module.exports = { googleSheetsWebhookHandler };
+export default  googleSheetsWebhookHandler ;

@@ -1,8 +1,8 @@
-const { google } = require('googleapis');
-const { DateTime } = require('luxon');
-const { oauth2Client } = require('./auth'); 
+import { google } from 'googleapis';
+import { DateTime } from 'luxon';
+import oauth2Client  from './auth.js'; 
 
-module.exports = async function getCalendarData(email, refreshToken, days = 7) {
+export default async function getCalendarData(email, refreshToken, days = 7) {
   try {
     const localAuth = new oauth2Client.constructor(
       process.env.GOOGLE_CLIENT_ID,

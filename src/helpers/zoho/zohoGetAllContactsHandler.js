@@ -1,5 +1,5 @@
-const dotenv = require('dotenv');
-const { fetchZohoContacts } = require('../../utils/zohoApi');
+import dotenv from 'dotenv';
+import {fetchZohoContacts} from '../../utils/zohoApi.js';
 dotenv.config();
 async function zohoGetAllContactsHandler (req, res) {
   try {
@@ -34,5 +34,4 @@ async function zohoGetAllContactsHandler (req, res) {
     });
   }
 };
-
-module.exports = { zohoGetAllContactsHandler };
+export { zohoGetAllContactsHandler };
