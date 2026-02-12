@@ -28,11 +28,22 @@ async function paymentWebhookHandler(req, res) {
 
       const meta = payload.meta || payload.meta_data;
 
+      logger.payment('debug', 'Webhook Meta Data', { meta });
+
       if (!meta?.booking_details) {
+        logger.payment('warn', 'Missing booking_details in webhook meta', { tx_ref: payload.data.tx_ref });
         return res.status(200).end();
       }
 
-      const booking = JSON.parse(meta.booking_details);
+      let booking;
+      try {
+        booking = typeof meta.booking_details === 'string' ? JSON.parse(meta.booking_details) : meta.booking_details;
+      } catch (e) {
+        logger.payment('error', 'Failed to parse booking_details', { error: e.message, booking_details: meta.booking_details });
+        return res.status(200).end();
+      }
+
+      logger.payment('info', 'Processing booking from webhook', { booking });
       let phone = meta.phone || booking.phone;
       const normalizedPhone = phone.toString().replace(/^\+/, '');
 
@@ -53,7 +64,6 @@ async function paymentWebhookHandler(req, res) {
             serviceRequest.status = 'confirmed';
             await serviceRequest.save({ transaction: t });
           }
-
           // 2. Create calendar booking directly via service
           const bookingResult = await bookingService.bookMeeting({
             title: booking.title || `Consultation - ${booking.name}`,
@@ -68,6 +78,7 @@ async function paymentWebhookHandler(req, res) {
               `Transaction Ref: ${payload.data.tx_ref}\n` +
               `Payment Method: ${payload.data.payment_type}`
           });
+console.log('📅 Booking result:', JSON.stringify(bookingResult, null, 2));
 
           if (!bookingResult.success) {
             throw new Error("Booking service failed to confirm booking");
