@@ -277,6 +277,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
             const paymentResponse = await paymentApiResponse.json();
             if (paymentResponse.status === "success") {
+
               toolResults.push({
                 functionResponse: {
                   name: "initiate_payment",

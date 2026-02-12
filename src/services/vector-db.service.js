@@ -189,6 +189,8 @@ class VectorDBService {
             return filteredResults;
         } catch (error) {
             console.error('❌ Error searching similar documents:', error.message);
+            console.error('Stack:', error.stack);
+            if (error.cause) console.error('Cause:', error.cause);
             throw error;
         }
     }
