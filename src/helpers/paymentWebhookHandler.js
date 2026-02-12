@@ -1,112 +1,152 @@
-
-import dbConfig  from '../models/index.js';
-import {sendWhatsAppMessage} from './whatsapp/sendWhatsappMessage.js';
+import dbConfig from '../models/index.js';
+import { sendWhatsAppMessage } from './whatsapp/sendWhatsappMessage.js';
 import dotenv from 'dotenv';
 import logger from '../logger/logger.js'
+import { flutterwaveUtil } from '../utils/flutterwave.js';
+import { bookingService } from '../services/booking.service.js';
+
 dotenv.config();
- async function paymentWebhookHandler(req, res) {
+
+async function paymentWebhookHandler(req, res) {
   const secretHash = process.env.FLW_WEBHOOK_SECRET;
   const signature = req.headers['verif-hash'];
 
   if (!signature || signature !== secretHash) {
-
     return res.status(401).end();
   }
-
 
   try {
     const payload = req.body;
 
     if (payload.event === 'charge.completed' && payload.data?.status === 'successful') {
-      logger.payment('info',
-      message = 'Received successful payment webhook',
-        tx_ref= payload.data.tx_ref,
-        amount= payload.data.amount,
-        currency= payload.data.currency,
-        payment_type= payload.data.payment_type,
+      logger.payment('info', 'Received successful payment webhook', {
+        tx_ref: payload.data.tx_ref,
+        amount: payload.data.amount,
+        currency: payload.data.currency,
+        payment_type: payload.data.payment_type,
+      });
 
-      )
-      const meta = payload.meta_data;
-      
+      const meta = payload.meta || payload.meta_data;
+
+      logger.payment('debug', 'Webhook Meta Data', { meta });
 
       if (!meta?.booking_details) {
+        logger.payment('warn', 'Missing booking_details in webhook meta', { tx_ref: payload.data.tx_ref });
         return res.status(200).end();
       }
 
-      const booking = JSON.parse(meta.booking_details);
-      let phone = meta.phone || booking.phone;;
+      let booking;
+      try {
+        booking = typeof meta.booking_details === 'string' ? JSON.parse(meta.booking_details) : meta.booking_details;
+      } catch (e) {
+        logger.payment('error', 'Failed to parse booking_details', { error: e.message, booking_details: meta.booking_details });
+        return res.status(200).end();
+      }
+
+      logger.payment('info', 'Processing booking from webhook', { booking });
+      let phone = meta.phone || booking.phone;
       const normalizedPhone = phone.toString().replace(/^\+/, '');
-      const session = await dbConfig.db.UserSession.findOne({ where: { phone: normalizedPhone } });
-      
-      if (!session) {
-        try {
-          const message = `✅ *Payment Received!*\n\n` +
-                        `Your deposit of ${payload.data.amount} ${payload.data.currency} was successful.\n\n` +
-                        `We're processing your booking now. You'll receive a confirmation email at ${booking.email} shortly.\n\n` +
-                        `Thank you for choosing Moyo Tech Solutions! 🚀`;
-          
-          await sendWhatsAppMessage(phone, message);
-        } catch (msgErr) {
-          console.error('❌ Could not send message:', msgErr);
-        }
-        
-        return res.status(200).end();
-      }
-
-      const startISO = booking.start;
-      const endISO = booking.end;
-      // Create calendar booking
-      const bookRes = await fetch('http://localhost:3000/api/chat/book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: booking.title || `Consultation - ${booking.name}`,
-          start: startISO,  
-          end: endISO,  
-          attendeeEmail: booking.email,
-          description: `Service: ${booking.service}\n` +
-                      `Phone: ${phone}\n` +
-                      `Company: ${booking.company || 'N/A'}\n` +
-                      `Details: ${booking.details || 'N/A'}\n` +
-                      `Deposit Paid: ${payload.data.amount} ${payload.data.currency}\n` +
-                      `Transaction Ref: ${booking.tx_ref}\n` +
-                      `Payment Method: ${payload.data.payment_type}`
-        })
-      });
-
-      const result = await bookRes.json();
-      const start = new Date(startISO);
-      const displayDate = start.toLocaleString('en-US', { 
-        timeZone: 'Africa/Kigali', 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric', 
-        hour: 'numeric', 
-        minute: '2-digit' 
-      });
 
       let message;
-      if (result.success) {
+      let success = false;
+      let bookingError = null;
+
+      try {
+        await dbConfig.db.sequelize.transaction(async (t) => {
+          // 1. Find and update the ServiceRequest record
+          const serviceRequest = await dbConfig.db.ServiceRequest.findOne({
+            where: { txRef: payload.data.tx_ref },
+            transaction: t
+          });
+
+          if (serviceRequest) {
+            serviceRequest.paymentStatus = 'paid';
+            serviceRequest.status = 'confirmed';
+            await serviceRequest.save({ transaction: t });
+          }
+          // 2. Create calendar booking directly via service
+          const bookingResult = await bookingService.bookMeeting({
+            title: booking.title || `Consultation - ${booking.name}`,
+            start: booking.slotStart || booking.start,
+            end: booking.slotEnd || booking.end,
+            attendeeEmail: booking.email,
+            description: `Service: ${booking.service}\n` +
+              `Phone: ${phone}\n` +
+              `Company: ${booking.company || 'N/A'}\n` +
+              `Details: ${booking.details || 'N/A'}\n` +
+              `Deposit Paid: ${payload.data.amount} ${payload.data.currency}\n` +
+              `Transaction Ref: ${payload.data.tx_ref}\n` +
+              `Payment Method: ${payload.data.payment_type}`
+          });
+console.log('📅 Booking result:', JSON.stringify(bookingResult, null, 2));
+
+          if (!bookingResult.success) {
+            throw new Error("Booking service failed to confirm booking");
+          }
+
+          success = true;
+        });
+      } catch (transactionError) {
+        bookingError = transactionError.message;
+        logger.payment('error', 'Transaction failed during webhook processing', {
+          tx_ref: payload.data.tx_ref,
+          error: transactionError.message
+        });
+
+        // Initiate automated refund
+        try {
+          await flutterwaveUtil.refundTransaction(payload.data.id, payload.data.amount);
+
+          // Update ServiceRequest status to reflect failed booking and refund
+          await dbConfig.db.ServiceRequest.update(
+            { paymentStatus: 'refunded', status: 'failed' },
+            { where: { txRef: payload.data.tx_ref } }
+          );
+        } catch (refundError) {
+          logger.payment('error', 'Auto-refund process failed', {
+            tx_ref: payload.data.tx_ref,
+            error: refundError.message
+          });
+        }
+
+        success = false;
+      }
+
+      const start = new Date(booking.slotStart || booking.start);
+      const displayDate = start.toLocaleString('en-US', {
+        timeZone: 'Africa/Kigali',
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+
+      if (success) {
         message = `✅ *Booking Confirmed!*\n\n` +
-                  `Thank you ${booking.name}! Your deposit of *${payload.data.amount} ${payload.data.currency}* was successful.\n\n` +
-                  `📅 *Consultation Details:*\n` +
-                  `• Service: ${booking.service}\n` +
-                  `• Date & Time: ${displayDate}\n` +
-                  `• Duration: 1 hour\n\n` +
-                  `📧 Check your email (*${booking.email}*) for:\n` +
-                  `✓ Calendar invite\n` +
-                  `✓ Google Meet link\n` +
-                  `✓ Pre-consultation form\n\n` +
-                  `We can't wait to help you grow! 🚀\n\n` +
-                  `_Type 'menu' anytime to see our services again._`;
+          `Thank you ${booking.name}! Your deposit of *${payload.data.amount} ${payload.data.currency}* was successful.\n\n` +
+          `📅 *Consultation Details:*\n` +
+          `• Service: ${booking.service}\n` +
+          `• Date & Time: ${displayDate}\n` +
+          `• Duration: 1 hour\n\n` +
+          `📧 Check your email (*${booking.email}*) for:\n` +
+          `✓ Calendar invite\n` +
+          `✓ Google Meet link\n` +
+          `✓ Pre-consultation form\n\n` +
+          `We can't wait to help you grow! 🚀\n\n` +
+          `_Type 'menu' anytime to see our services again._`;
       } else {
-        message = `⚠️ Payment Received\n\n` +
-                  `Your deposit of ${payload.data.amount} ${payload.data.currency} was successful, but the time slot was just taken.\n\n` +
-                  `Don't worry! Our team will:\n` +
-                  `✓ Process a full refund within 24 hours\n` +
-                  `✓ Contact you at ${booking.email} to reschedule\n\n` +
-                  `We apologize for the inconvenience!`;
+        const errorReason = bookingError?.toLowerCase().includes('already booked') || bookingError?.toLowerCase().includes('taken')
+          ? "the time slot was just taken"
+          : "we encountered an issue finalizing your booking";
+
+        message = `⚠️ *Payment Received*\n\n` +
+          `Your deposit of ${payload.data.amount} ${payload.data.currency} was successful, but ${errorReason}.\n\n` +
+          `Don't worry! Our team will:\n` +
+          `✓ Process a full refund within 24 hours\n` +
+          `✓ Contact you at ${booking.email} to reschedule\n\n` +
+          `We apologize for the inconvenience!`;
       }
 
       await sendWhatsAppMessage(phone, message);
@@ -114,18 +154,20 @@ dotenv.config();
     } else {
       // Payment not successful
       const failedPaymentMessage = `⚠️ *Payment Not Successful*\n\n` +
-                                   `We noticed that your recent payment did not go through successfully.\n\n` +
-                                   `Please try again or contact support if the issue persists.\n\n` +
-                                   `Thank you!`;
-      await sendWhatsAppMessage(meta.phone || 'Client', failedPaymentMessage);
+        `We noticed that your recent payment did not go through successfully.\n\n` +
+        `Please try again or contact support if the issue persists.\n\n` +
+        `Thank you!`;
 
+      const meta = req.body.meta || req.body.meta_data;
+      await sendWhatsAppMessage(meta?.phone || 'Client', failedPaymentMessage);
     }
 
     res.status(200).json({ success: true });
 
   } catch (err) {
-  console.log('Payment Webhook Error===========>:', err);
+    logger.error('Payment Webhook Error', { error: err.message, stack: err.stack });
     res.status(200).json({ success: false, error: err.message });
   }
 }
+
 export default paymentWebhookHandler;
