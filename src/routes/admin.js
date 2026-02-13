@@ -1,15 +1,15 @@
-
 import express from 'express';
 const router = express.Router();
-import  initiateWhatsappMessage  from '../controllers/initiateMessage.js';
-import  dbConfig from '../models/index.js'
+import initiateWhatsappMessage from '../controllers/initiateMessage.js';
+import dbConfig from '../models/index.js';
+import logger from '../logger/logger.js';
 
 router.post('/template', async (req, res) => {
   const contacts = await fetch('http://localhost:3000/api/zoho/contacts')
     .then(response => response.json())
     .then(data => data.contacts)
     .catch(error => {
-      console.error('Error fetching contacts from ZOHO CRM:', error);
+      logger.error('Error fetching contacts from ZOHO CRM', { error: error.message });
       return [];
     });
 
@@ -20,9 +20,9 @@ router.post('/template', async (req, res) => {
   }
   try {
 
-   await to.forEach(async (phoneNumber) => {
-    const username = [contacts.find(contact => contact.phone === phoneNumber)?.fullName] || ['Customer'];
-    const params = username;
+    await to.forEach(async (phoneNumber) => {
+      const username = [contacts.find(contact => contact.phone === phoneNumber)?.fullName] || ['Customer'];
+      const params = username;
       await initiateWhatsappMessage(phoneNumber, templateName, params);
     });
     res.json({ success: true, sent_to: to, template: templateName });
@@ -40,7 +40,7 @@ router.get('/users', async (req, res) => {
   }
 })
 
-router.get('/appointments', async(req, res)=> {
+router.get('/appointments', async (req, res) => {
   try {
     const appointments = await dbConfig.db.ServiceRequest?.findAll();
     res.json({ appointments });
@@ -49,7 +49,7 @@ router.get('/appointments', async(req, res)=> {
   }
 })
 
-router.get('/services', async(req, res)=> {
+router.get('/services', async (req, res) => {
   try {
     const services = await dbConfig.db.Content?.findAll();
     res.json(services || []);

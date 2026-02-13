@@ -4,6 +4,7 @@ import documentProcessor from './document-processor.service.js';
 import googleSheets from '../utils/googlesheets.js';
 import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHandler.js';
 import ragConfig from '../config/rag.config.js';
+import logger from '../logger/logger.js';
 
 /**
  * Knowledge Base Management Service
@@ -30,9 +31,9 @@ class KnowledgeBaseService {
             await vectorDBService.initialize();
             this.initialized = true;
 
-            console.log('✅ Knowledge Base service initialized');
+            logger.info('Knowledge Base service initialized');
         } catch (error) {
-            console.error('❌ Failed to initialize KB service:', error.message);
+            logger.error('Failed to initialize KB service', { error: error.message });
             throw error;
         }
     }
@@ -43,22 +44,22 @@ class KnowledgeBaseService {
      */
     async syncServicesFromSheets() {
         try {
-            console.log('🔄 Syncing services from Google Sheets...');
+            logger.info('Syncing services from Google Sheets');
 
             const services = await googleSheets.getActiveServices();
 
             if (!services || services.length === 0) {
-                console.warn('⚠️ No services found in Google Sheets');
+                logger.warn('No services found in Google Sheets');
                 return 0;
             }
 
             const upsertedDocs = await this.upsertServices(services, 'google-sheets');
 
             const count = upsertedDocs?.length || 0;
-            console.log(`✅ Synced ${count} services from Google Sheets`);
+            logger.info(`Synced ${count} services from Google Sheets`);
             return count;
         } catch (error) {
-            console.error('❌ Error syncing from Google Sheets:', error.message);
+            logger.error('Error syncing from Google Sheets', { error: error.message });
             throw error;
         }
     }
@@ -69,22 +70,22 @@ class KnowledgeBaseService {
      */
     async syncServicesFromMicrosoft() {
         try {
-            console.log('🔄 Syncing services from Microsoft Excel...');
+            logger.info('Syncing services from Microsoft Excel');
 
             const services = await syncServicesMicrosoftHandler();
 
             if (!services || services.length === 0) {
-                console.warn('⚠️ No services found in Microsoft Excel');
+                logger.warn('No services found in Microsoft Excel');
                 return 0;
             }
 
             const upsertedDocs = await this.upsertServices(services, 'microsoft-excel');
 
             const count = upsertedDocs?.length || 0;
-            console.log(`✅ Synced ${count} services from Microsoft Excel`);
+            logger.info(`Synced ${count} services from Microsoft Excel`);
             return count;
         } catch (error) {
-            console.error('❌ Error syncing from Microsoft Excel:', error.message);
+            logger.error('Error syncing from Microsoft Excel', { error: error.message });
             throw error;
         }
     }
@@ -125,10 +126,10 @@ class KnowledgeBaseService {
             // Upsert to vector DB
             await vectorDBService.upsertDocuments(documents, 'default');
 
-            console.log(`✅ Upserted ${documents.length} service documents from ${source}`);
+            logger.info(`Upserted ${documents.length} service documents from ${source}`);
             return documents;
         } catch (error) {
-            console.error('❌ Error upserting services:', error.message);
+            logger.error('Error upserting services', { error: error.message });
             throw error;
         }
     }
@@ -143,7 +144,7 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            console.log(`📝 Adding ${documents.length} company info documents...`);
+            logger.info(`Adding ${documents.length} company info documents`);
 
             const processedDocs = [];
 
@@ -180,9 +181,9 @@ class KnowledgeBaseService {
 
             await vectorDBService.upsertDocuments(vectorDocs, 'default');
 
-            console.log(`✅ Added ${vectorDocs.length} company info chunks`);
+            logger.info(`Added ${vectorDocs.length} company info chunks`);
         } catch (error) {
-            console.error('❌ Error adding company info:', error.message);
+            logger.error('Error adding company info', { error: error.message });
             throw error;
         }
     }
@@ -197,7 +198,7 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            console.log(`📝 Adding ${faqs.length} FAQs...`);
+            logger.info(`Adding ${faqs.length} FAQs`);
 
             const chunks = documentProcessor.processFAQs(faqs, { language });
 
@@ -220,9 +221,9 @@ class KnowledgeBaseService {
 
             await vectorDBService.upsertDocuments(vectorDocs, 'default');
 
-            console.log(`✅ Added ${vectorDocs.length} FAQ documents`);
+            logger.info(`Added ${vectorDocs.length} FAQ documents`);
         } catch (error) {
-            console.error('❌ Error adding FAQs:', error.message);
+            logger.error('Error adding FAQs', { error: error.message });
             throw error;
         }
     }
@@ -237,7 +238,7 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            console.log('📝 Adding booking rules...');
+            logger.info('Adding booking rules');
 
             const chunks = documentProcessor.processBookingRules(bookingInfo);
 
@@ -260,9 +261,9 @@ class KnowledgeBaseService {
 
             await vectorDBService.upsertDocuments(vectorDocs, 'default');
 
-            console.log(`✅ Added ${vectorDocs.length} booking rule documents`);
+            logger.info(`Added ${vectorDocs.length} booking rule documents`);
         } catch (error) {
-            console.error('❌ Error adding booking rules:', error.message);
+            logger.error('Error adding booking rules', { error: error.message });
             throw error;
         }
     }
@@ -278,9 +279,9 @@ class KnowledgeBaseService {
             }
 
             await vectorDBService.deleteDocuments(ids, 'default');
-            console.log(`✅ Deleted ${ids.length} documents`);
+            logger.info(`Deleted ${ids.length} documents`);
         } catch (error) {
-            console.error('❌ Error deleting documents:', error.message);
+            logger.error('Error deleting documents', { error: error.message });
             throw error;
         }
     }
@@ -294,11 +295,11 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            console.log('🗑️ Clearing entire knowledge base...');
+            logger.warn('Clearing entire knowledge base');
             await vectorDBService.deleteNamespace('default');
-            console.log('✅ Knowledge base cleared');
+            logger.info('Knowledge base cleared');
         } catch (error) {
-            console.error('❌ Error clearing knowledge base:', error.message);
+            logger.error('Error clearing knowledge base', { error: error.message });
             throw error;
         }
     }
@@ -309,7 +310,7 @@ class KnowledgeBaseService {
      */
     async rebuildIndex() {
         try {
-            console.log('🔄 Rebuilding knowledge base...');
+            logger.info('Rebuilding knowledge base');
             const summary = {
                 services: 0,
                 companyInfo: 0,
@@ -338,10 +339,10 @@ class KnowledgeBaseService {
                 }
             }
 
-            console.log('✅ Knowledge base rebuild complete:', summary);
+            logger.info('Knowledge base rebuild complete', { summary });
             return summary;
         } catch (error) {
-            console.error('❌ Error rebuilding index:', error.message);
+            logger.error('Error rebuilding index', { error: error.message });
             throw error;
         }
     }
@@ -365,7 +366,7 @@ class KnowledgeBaseService {
                 cache: cacheStats
             };
         } catch (error) {
-            console.error('❌ Error getting stats:', error.message);
+            logger.error('Error getting stats', { error: error.message });
             throw error;
         }
     }

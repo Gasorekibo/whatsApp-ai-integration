@@ -1,6 +1,7 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ClientSecretCredential } from '@azure/identity';
 import dotenv from 'dotenv';
+import logger from '../logger/logger.js';
 dotenv.config()
 
 const config = {
@@ -16,7 +17,7 @@ const credential = new ClientSecretCredential(
   config.clientSecret
 );
 
- const getAuthenticatedClient = () => {
+const getAuthenticatedClient = () => {
   return Client.initWithMiddleware({
     authProvider: {
       getAccessToken: async () => {
@@ -32,12 +33,12 @@ async function syncServicesMicrosoftHandler() {
     const client = getAuthenticatedClient();
     const driveId = process.env.MICROSOFT_DRIVE_ID;
     const itemId = process.env.MICROSOFT_ITEM_ID;
-    const worksheetName = 'Services'; 
+    const worksheetName = 'Services';
     const response = await client
       .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheetName}/usedRange`)
       .get();
     const rows = response.values;
-     if (!rows || rows.length === 0) {
+    if (!rows || rows.length === 0) {
       return {
         success: false,
         message: 'No data found in the worksheet'
@@ -54,9 +55,9 @@ async function syncServicesMicrosoftHandler() {
     return data;
 
   } catch (error) {
-    console.error('❌ Microsoft Sheets sync error:', error);
-    return { 
-      success: false, 
+    logger.error('Microsoft Sheets sync error', { error: error.message });
+    return {
+      success: false,
       message: error.message,
       error: error.toString()
     };
@@ -66,27 +67,27 @@ async function syncServicesMicrosoftHandler() {
 async function getDriveId() {
   const client = getAuthenticatedClient();
   const user = process.env.MICROSOFT_USER_EMAIL;
-  
+
   const drive = await client
     .api(`/users/${user}/drive`)
     .get();
-    
-  console.log('Drive:', drive);
+
+  logger.info('Drive info retrieved', { driveId: drive.id });
   return drive.id;
 }
 async function listServices() {
   const services = await syncServicesMicrosoftHandler()
-  console.log('Services:', services);
+  logger.info('Services listed', { count: services.length });
 }
 async function listFiles() {
   const client = getAuthenticatedClient();
   const user = process.env.MICROSOFT_USER_EMAIL;
-  
+
   const files = await client
     .api(`/users/${user}/drive/root/children`)
     .get();
-    
-  console.log('Files:', files.value?.map(file => ({ name: file.name, id: file.id })) ?? []);
+
+  logger.info('Files listed', { count: files.value?.length || 0 });
   return files.value;
 }
 

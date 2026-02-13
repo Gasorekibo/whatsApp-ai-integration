@@ -2,6 +2,7 @@ import embeddingService from './embedding.service.js';
 import vectorDBService from './vector-db.service.js';
 import documentProcessor from './document-processor.service.js';
 import ragConfig from '../config/rag.config.js';
+import logger from '../logger/logger.js';
 
 /**
  * RAG (Retrieval-Augmented Generation) Service
@@ -30,9 +31,10 @@ class RAGService {
             await embeddingService.testConnection();
 
             this.initialized = true;
-            console.log('✅ RAG service initialized');
+            this.initialized = true;
+            logger.info('RAG service initialized');
         } catch (error) {
-            console.error('❌ Failed to initialize RAG service:', error.message);
+            logger.error('Failed to initialize RAG service', { error: error.message });
             throw error;
         }
     }
@@ -72,7 +74,7 @@ class RAGService {
             const validIntents = ['booking', 'service_inquiry', 'faq', 'general'];
             return validIntents.includes(intent) ? intent : 'general';
         } catch (error) {
-            console.warn('⚠️ LLM Classification failed, falling back to general:', error.message);
+            logger.warn('LLM Classification failed, falling back to general', { error: error.message });
             return 'general';
         }
     }
@@ -116,7 +118,7 @@ class RAGService {
             const language = this.detectLanguage(userMessage);
             const retrievalTopK = topK || ragConfig.retrieval.topK;
 
-            // console.log(`🔍 Intent: ${intent}, Language: ${language}`);
+
 
             // Generate query embedding
             const queryEmbedding = await embeddingService.generateEmbedding(
@@ -136,12 +138,13 @@ class RAGService {
 
             // Log details for debugging
             if (results.length > 0) {
-                console.log(`🔍 RAG retrieved ${results.length} docs for: "${userMessage?.slice(0, 30)}..."`);
-                results.forEach((match, i) => {
-                    console.log(`  [${i + 1}] Score: ${match.score.toFixed(4)} | Type: ${match.metadata?.type} | ID: ${match.id}`);
+                logger.debug('RAG retrieved docs', {
+                    query: userMessage?.slice(0, 50),
+                    count: results.length,
+                    results: results.map(r => ({ score: r.score, id: r.id, type: r.metadata?.type }))
                 });
             } else {
-                console.log(`⚠️ RAG found no relevant docs for: "${userMessage?.slice(0, 30)}..."`);
+                logger.warn('RAG found no relevant docs', { query: userMessage?.slice(0, 50) });
             }
 
             // Extract and format context
@@ -155,7 +158,7 @@ class RAGService {
                 relevantDocs: results.length
             };
         } catch (error) {
-            console.error('❌ RAG Retrieval Error:', error.message);
+            logger.error('RAG Retrieval Error', { error: error.message });
 
             // Return minimal context on error
             return {

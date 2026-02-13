@@ -1,5 +1,6 @@
 
 import dotenv from 'dotenv';
+import logger from '../../logger/logger.js';
 dotenv.config();
 export async function sendWhatsAppMessage(to, body) {
   const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
@@ -21,6 +22,6 @@ export async function sendWhatsAppMessage(to, body) {
     if (!res.ok) throw new Error(JSON.stringify(data));
     return data;
   } catch (err) {
-    console.error('❌ Send message failed:', err.message);
+    logger.error('Send message failed', { error: err.message });
   }
 }

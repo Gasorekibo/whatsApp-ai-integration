@@ -1,5 +1,6 @@
 import markdownIt from 'markdown-it';
 import ragConfig from '../config/rag.config.js';
+import logger from '../logger/logger.js';
 
 /**
  * Document Processor Service
@@ -20,7 +21,7 @@ class DocumentProcessorService {
      */
     processServices(services) {
         try {
-            console.log(`📝 Processing ${services.length} service documents`);
+            logger.info('Processing service documents', { count: services.length });
 
             const chunks = services.map((service, index) => {
                 // Create comprehensive text for embedding
@@ -40,10 +41,10 @@ class DocumentProcessorService {
                 };
             });
 
-            console.log(`✅ Created ${chunks.length} service chunks`);
+            logger.info('Created service chunks', { count: chunks.length });
             return chunks;
         } catch (error) {
-            console.error('❌ Error processing services:', error.message);
+            logger.error('Error processing services', { error: error.message });
             throw error;
         }
     }
@@ -76,7 +77,7 @@ class DocumentProcessorService {
             parts.push(`Keywords: ${Array.isArray(keywords) ? keywords.join(', ') : keywords}`);
         }
 
-        return parts.join('\\n');
+        return parts.join('\n');
     }
 
     /**
@@ -108,7 +109,7 @@ class DocumentProcessorService {
                 }
             }));
         } catch (error) {
-            console.error('❌ Error processing markdown:', error.message);
+            logger.error('Error processing markdown', { error: error.message });
             throw error;
         }
     }
@@ -121,11 +122,11 @@ class DocumentProcessorService {
      */
     processFAQs(faqs, metadata = {}) {
         try {
-            console.log(`📝 Processing ${faqs.length} FAQ items`);
+            logger.info('Processing FAQ items', { count: faqs.length });
 
             const chunks = faqs.map((faq, index) => ({
                 id: `faq-${metadata.category || 'general'}-${index}`,
-                content: `Q: ${faq.question}\\nA: ${faq.answer}`,
+                content: `Q: ${faq.question}\nA: ${faq.answer}`,
                 metadata: {
                     type: 'faq',
                     category: metadata.category || 'general',
@@ -136,10 +137,10 @@ class DocumentProcessorService {
                 }
             }));
 
-            console.log(`✅ Created ${chunks.length} FAQ chunks`);
+            logger.info('Created FAQ chunks', { count: chunks.length });
             return chunks;
         } catch (error) {
-            console.error('❌ Error processing FAQs:', error.message);
+            logger.error('Error processing FAQs', { error: error.message });
             throw error;
         }
     }
@@ -198,10 +199,10 @@ class DocumentProcessorService {
                 });
             }
 
-            console.log(`✅ Created ${chunks.length} booking rule chunks`);
+            logger.info('Created booking rule chunks', { count: chunks.length });
             return chunks;
         } catch (error) {
-            console.error('❌ Error processing booking rules:', error.message);
+            logger.error('Error processing booking rules', { error: error.message });
             throw error;
         }
     }
@@ -214,14 +215,14 @@ class DocumentProcessorService {
      */
     formatBookingContent(title, content) {
         if (typeof content === 'string') {
-            return `${title}:\\n${content}`;
+            return `${title}:\n${content}`;
         }
 
         const parts = [title + ':'];
         for (const [key, value] of Object.entries(content)) {
             parts.push(`${key}: ${value}`);
         }
-        return parts.join('\\n');
+        return parts.join('\n');
     }
 
     /**
@@ -231,7 +232,7 @@ class DocumentProcessorService {
      * @returns {Array} - Text chunks
      */
     chunkText(text, type) {
-        const words = text.split(/\\s+/);
+        const words = text.split(/\s+/);
         const maxWords = this.config[type]?.maxChunkSize || this.config.maxChunkSize;
         const minWords = this.config.minChunkSize;
         const overlap = this.config.overlap;
@@ -247,7 +248,7 @@ class DocumentProcessorService {
             const end = Math.min(start + maxWords, words.length);
             const chunk = words.slice(start, end).join(' ');
 
-            if (chunk.split(/\\s+/).length >= minWords) {
+            if (chunk.split(/\s+/).length >= minWords) {
                 chunks.push(chunk);
             }
 
@@ -275,7 +276,7 @@ class DocumentProcessorService {
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"')
-            .replace(/\\s+/g, ' ')
+            .replace(/\s+/g, ' ')
             .trim();
     }
 
@@ -300,7 +301,7 @@ class DocumentProcessorService {
         }
 
         if (!ragConfig.metadata.types.includes(doc.metadata.type)) {
-            console.warn(`⚠️ Unknown document type: ${doc.metadata.type}`);
+            logger.warn('Unknown document type', { type: doc.metadata.type });
         }
 
         return true;
@@ -329,7 +330,7 @@ class DocumentProcessorService {
 
                 allChunks.push(...chunks);
             } catch (error) {
-                console.error(`❌ Error processing document ${doc.id}:`, error.message);
+                logger.error(`Error processing document ${doc.id}`, { error: error.message });
             }
         }
 

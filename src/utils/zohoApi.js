@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import logger from '../logger/logger.js';
 dotenv.config();
 
 const ZOHO_CONFIG = {
@@ -40,11 +41,11 @@ async function refreshZohoAccessToken() {
 
     // Cache the new token
     tokenCache.accessToken = data.access_token;
-    tokenCache.expiresAt = Date.now() + (data.expires_in * 1000) - 60000; 
-    console.log('✅ Zoho access token refreshed successfully');
+    tokenCache.expiresAt = Date.now() + (data.expires_in * 1000) - 60000;
+    logger.info('Zoho access token refreshed successfully');
     return data.access_token;
   } catch (error) {
-    console.error('❌ Error refreshing Zoho token:', error);
+    logger.error('Error refreshing Zoho token', { error: error.message });
     throw new Error(`Failed to refresh Zoho token: ${error.message}`);
   }
 }
@@ -78,7 +79,7 @@ async function getValidZohoAccessToken() {
 async function fetchZohoContacts(page = 1, perPage = 200) {
   try {
     const accessToken = await getValidZohoAccessToken();
-    
+
     const url = new URL(`${ZOHO_CONFIG.apiUrl}/Contacts`);
     url.searchParams.append('page', page);
     url.searchParams.append('per_page', Math.min(perPage, 200));
@@ -100,7 +101,7 @@ async function fetchZohoContacts(page = 1, perPage = 200) {
 
     return data.data || [];
   } catch (error) {
-    console.error('❌ Error fetching Zoho contacts:', error);
+    logger.error('Error fetching Zoho contacts', { error: error.message });
     throw error;
   }
 }
@@ -113,10 +114,10 @@ async function fetchZohoContacts(page = 1, perPage = 200) {
 async function searchZohoContactByPhone(phoneNumber) {
   try {
     const accessToken = await getValidZohoAccessToken();
-    
+
     // Clean phone number (remove spaces, dashes, etc.)
     const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    
+
     const url = new URL(`${ZOHO_CONFIG.apiUrl}/Contacts/search`);
     url.searchParams.append('criteria', `(Phone:equals:${cleanPhone})or(Mobile:equals:${cleanPhone})`);
     url.searchParams.append('fields', 'First_Name,Last_Name,Phone,Mobile,Email,id');
@@ -145,7 +146,7 @@ async function searchZohoContactByPhone(phoneNumber) {
 
     return data.data || [];
   } catch (error) {
-    console.error('❌ Error searching Zoho contact:', error);
+    logger.error('Error searching Zoho contact', { error: error.message });
     throw error;
   }
 }
@@ -158,10 +159,10 @@ async function searchZohoContactByPhone(phoneNumber) {
 async function searchZohoContacts(criteria) {
   try {
     const accessToken = await getValidZohoAccessToken();
-    
+
     // Build search criteria string
     const criteriaArray = [];
-    
+
     if (criteria.firstName) {
       criteriaArray.push(`(First_Name:starts_with:${criteria.firstName})`);
     }
@@ -175,13 +176,13 @@ async function searchZohoContacts(criteria) {
       const cleanPhone = criteria.phone.replace(/[\s\-\(\)]/g, '');
       criteriaArray.push(`((Phone:equals:${cleanPhone})or(Mobile:equals:${cleanPhone}))`);
     }
-    
+
     if (criteriaArray.length === 0) {
       throw new Error('At least one search criterion is required');
     }
-    
+
     const criteriaString = criteriaArray.join('and');
-    
+
     const url = new URL(`${ZOHO_CONFIG.apiUrl}/Contacts/search`);
     url.searchParams.append('criteria', criteriaString);
     url.searchParams.append('fields', 'First_Name,Last_Name,Phone,Mobile,Email,id');
@@ -209,7 +210,7 @@ async function searchZohoContacts(criteria) {
 
     return data.data || [];
   } catch (error) {
-    console.error('❌ Error searching Zoho contacts:', error);
+    logger.error('Error searching Zoho contacts', { error: error.message });
     throw error;
   }
 }
@@ -222,7 +223,7 @@ async function searchZohoContacts(criteria) {
 async function getZohoContactById(contactId) {
   try {
     const accessToken = await getValidZohoAccessToken();
-    
+
     const response = await fetch(
       `${ZOHO_CONFIG.apiUrl}/Contacts/${contactId}`,
       {
@@ -242,7 +243,7 @@ async function getZohoContactById(contactId) {
 
     return data.data?.[0] || null;
   } catch (error) {
-    console.error('❌ Error fetching Zoho contact by ID:', error);
+    logger.error('Error fetching Zoho contact by ID', { error: error.message });
     throw error;
   }
 }
@@ -254,22 +255,22 @@ async function getZohoContactById(contactId) {
  */
 async function fetchAllZohoContacts(maxPages = 5) {
   const allContacts = [];
-  
+
   for (let page = 1; page <= maxPages; page++) {
     const contacts = await fetchZohoContacts(page, 200);
-    
+
     if (contacts.length === 0) {
       break; // No more contacts
     }
-    
+
     allContacts.push(...contacts);
-    
+
     // If we got less than 200, we've reached the end
     if (contacts.length < 200) {
       break;
     }
   }
-  
+
   return allContacts;
 }
 
@@ -282,7 +283,7 @@ async function fetchAllZohoContacts(maxPages = 5) {
 async function updateZohoContact(contactId, updateData) {
   try {
     const accessToken = await getValidZohoAccessToken();
-    
+
     const response = await fetch(
       `${ZOHO_CONFIG.apiUrl}/Contacts/${contactId}`,
       {
@@ -305,12 +306,12 @@ async function updateZohoContact(contactId, updateData) {
 
     return data.data?.[0] || null;
   } catch (error) {
-    console.error('❌ Error updating Zoho contact:', error);
+    logger.error('Error updating Zoho contact', { error: error.message });
     throw error;
   }
 }
 
-export  {
+export {
   getValidZohoAccessToken,
   fetchZohoContacts,
   searchZohoContactByPhone,
