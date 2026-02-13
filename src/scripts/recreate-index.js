@@ -11,7 +11,7 @@ async function recreateIndex() {
         console.error("❌ PINECON_API_KEY not found");
         return;
     }
-
+//jjadajdla
     const pc = new Pinecone({ apiKey });
 
     console.log(`🔄 Checking index: ${indexName}...`);
