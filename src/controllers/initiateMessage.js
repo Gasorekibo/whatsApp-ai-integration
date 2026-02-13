@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import logger from '../logger/logger.js';
 dotenv.config();
 async function initiateWhatsappMessage(to, templateName, params = []) {
   const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
@@ -29,13 +30,13 @@ async function initiateWhatsappMessage(to, templateName, params = []) {
 
     const data = await response.json();
     if (!response.ok) {
-      console.error('Template send failed:', data);
+      logger.error('Sending initial message template failed.', { data });
       throw new Error('Template failed');
     }
     return data;
   } catch (err) {
-    console.error('Template error:', err.message);
+    logger.error('Sending initial message template failed.', { error: err.message });
   }
 }
 
-export default  initiateWhatsappMessage ;
+export default initiateWhatsappMessage;

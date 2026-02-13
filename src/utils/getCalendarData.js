@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { DateTime } from 'luxon';
-import oauth2Client  from './auth.js'; 
+import oauth2Client from './auth.js';
+import logger from '../logger/logger.js';
 
 export default async function getCalendarData(email, refreshToken, days = 7) {
   try {
@@ -17,7 +18,7 @@ export default async function getCalendarData(email, refreshToken, days = 7) {
     const timeMin = now.toISO();
     const timeMax = now.plus({ days }).toISO();
 
-   
+
     const { data: freebusyData } = await calendar.freebusy.query({
       requestBody: {
         timeMin,
@@ -39,17 +40,17 @@ export default async function getCalendarData(email, refreshToken, days = 7) {
 
     const events = eventsData.items || [];
 
- 
+
     const free = [];
     for (let day = 0; day < days; day++) {
       const currentDay = now.startOf('day').plus({ days: day });
-      if (currentDay.weekday > 5) continue;  
+      if (currentDay.weekday > 5) continue;
 
       const dayStart = currentDay.set({ hour: 9, minute: 0 });
       const dayEnd = currentDay.set({ hour: 17, minute: 0 });
-      
+
       let cursor = dayStart;
-      
+
       while (cursor < dayEnd) {
         const slotEnd = cursor.plus({ hours: 1 });
 
@@ -95,13 +96,13 @@ export default async function getCalendarData(email, refreshToken, days = 7) {
 
     // Format events
     const eventsFormatted = events.map(e => {
-      const start = e.start.dateTime 
+      const start = e.start.dateTime
         ? DateTime.fromISO(e.start.dateTime).setZone('Africa/Kigali')
         : DateTime.fromISO(e.start.date).setZone('Africa/Kigali');
-      const end = e.end.dateTime 
+      const end = e.end.dateTime
         ? DateTime.fromISO(e.end.dateTime).setZone('Africa/Kigali')
         : DateTime.fromISO(e.end.date).setZone('Africa/Kigali');
-      
+
       return {
         summary: e.summary || 'Busy',
         start: start.toISO(),
@@ -120,7 +121,7 @@ export default async function getCalendarData(email, refreshToken, days = 7) {
       workingHours: { start: '9:00 AM', end: '5:00 PM', timezone: 'Africa/Kigali (CAT)' },
     };
   } catch (error) {
-    console.error('getCalendarData error:', error);
+    logger.error('getCalendarData error', { error: error.message });
     throw new Error(`Calendar fetch failed: ${error.message}`);
   }
 };

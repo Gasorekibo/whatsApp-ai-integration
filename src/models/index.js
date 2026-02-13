@@ -5,6 +5,7 @@ import Employee from './Employees.js';
 import UserSession from './UserSession.js';
 import Content from './Content.js';
 import ServiceRequest from './ServiceRequest.js';
+import logger from '../logger/logger.js';
 
 dotenv.config()
 const node_env = process.env.NODE_ENV || 'development'
@@ -36,14 +37,14 @@ Object.keys(db).forEach(modelName => {
 const syncDatabase = async (options = {}) => {
   try {
     await sequelize.authenticate();
-    console.log('Database connection established successfully.');
-    
+    logger.info('Database connection established successfully');
+
     await sequelize.sync(options);
-    console.log('Database synchronized successfully.');
+    logger.info('Database synchronized successfully');
   } catch (error) {
-    console.error('Unable to connect to the database:', error);
+    logger.error('Unable to connect to the database', { error: error.message });
     throw error;
   }
 };
 
-export default { db , syncDatabase };
+export default { db, syncDatabase };

@@ -1,6 +1,7 @@
-import googleSheet  from '../../utils/googlesheets.js';
+import googleSheet from '../../utils/googlesheets.js';
 import { sendWhatsAppMessage } from './sendWhatsappMessage.js';
 import dotenv from 'dotenv';
+import logger from '../../logger/logger.js';
 dotenv.config();
 export async function sendServiceList(to) {
   const services = await googleSheet.getActiveServices();
@@ -40,9 +41,9 @@ export async function sendServiceList(to) {
       })
     });
     const data = await res.json();
-    
+
     if (!res.ok) {
-      console.error('❌ Interactive list send failed:', data);
+      logger.error('Interactive list send failed', { data });
       let fallbackText = "Welcome to Moyo Tech! How can we help you today?\n\n";
       services.forEach((s, i) => {
         fallbackText += `${i + 1}. ${s.short || s.name}\n`;
@@ -50,10 +51,10 @@ export async function sendServiceList(to) {
       fallbackText += "\nReply with a number to select a service!";
       await sendWhatsAppMessage(to, fallbackText);
     } else {
-      console.log('✅ Service list sent successfully');
+      logger.info('Service list sent successfully');
     }
     return data;
   } catch (err) {
-    console.error('❌ sendServiceList error:', err);
+    logger.error('sendServiceList error', { error: err.message });
   }
 }

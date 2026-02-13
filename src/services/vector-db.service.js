@@ -1,13 +1,6 @@
-// const { Pinecone } = require('@pinecone-database/pinecone');
-// const ragConfig = require('../config/rag.config');
 import { Pinecone } from '@pinecone-database/pinecone';
 import ragConfig from '../config/rag.config.js';
-
-/**
- * Vector Database Service
- * Handles all interactions with Pinecone vector database
- * Provides semantic search, document storage, and retrieval
- */
+import logger from '../logger/logger.js';
 
 class VectorDBService {
     constructor() {
@@ -16,54 +9,38 @@ class VectorDBService {
         this.isInitialized = false;
         this.config = ragConfig.vectorDB.pinecone;
     }
-
-    /**
-     * Initialize Pinecone connection
-     */
     async initialize() {
         try {
             if (this.isInitialized) {
-                console.log('✅ Vector DB already initialized');
                 return;
             }
 
-            console.log('🔄 Initializing Pinecone vector database...');
+            logger.info('Initializing Pinecone vector database');
 
-            // Validate configuration
             if (!this.config.apiKey) {
                 throw new Error('PINECONE_API_KEY or PINECON_API_KEY not found in environment');
             }
-
-            // Initialize Pinecone client
             this.client = new Pinecone({
                 apiKey: this.config.apiKey
             });
-
-            // Get or create index
             await this.ensureIndexExists();
-
-            // Get index reference
             this.index = this.client.index(this.config.indexName);
 
             this.isInitialized = true;
-            console.log(`✅ Connected to Pinecone index: ${this.config.indexName}`);
+            logger.info('Connected to Pinecone index', { index: this.config.indexName });
         } catch (error) {
-            console.error('❌ Failed to initialize Vector DB:', error.message);
+            logger.error('Failed to initialize Vector DB', { error: error.message });
             throw error;
         }
     }
 
-    /**
-     * Ensure the index exists, create if it doesn't
-     */
     async ensureIndexExists() {
         try {
-            // List existing indexes
             const { indexes } = await this.client.listIndexes();
             const indexExists = indexes?.some(idx => idx.name === this.config.indexName);
 
             if (!indexExists) {
-                console.log(`📝 Creating new index: ${this.config.indexName}`);
+                logger.info('Creating new index', { index: this.config.indexName });
 
                 await this.client.createIndex({
                     name: this.config.indexName,
@@ -77,7 +54,7 @@ class VectorDBService {
                     }
                 });
 
-                console.log('⏳ Waiting for index to be ready...');
+                logger.info('Waiting for index to be ready...');
 
                 // Wait for index to be ready (can take up to 60 seconds)
                 let ready = false;
@@ -98,12 +75,12 @@ class VectorDBService {
                     throw new Error('Index creation timed out');
                 }
 
-                console.log('✅ Index created and ready');
+                logger.info('Index created and ready');
             } else {
-                console.log(`✅ Index ${this.config.indexName} already exists`);
+                logger.info('Index already exists', { index: this.config.indexName });
             }
         } catch (error) {
-            console.error('❌ Error ensuring index exists:', error.message);
+            logger.error('Error ensuring index exists', { error: error.message });
             throw error;
         }
     }
@@ -123,7 +100,7 @@ class VectorDBService {
                 throw new Error('Documents must be a non-empty array');
             }
 
-            console.log(`📤 Upserting ${documents.length} documents to namespace: ${namespace}`);
+            logger.info('Upserting documents', { count: documents.length, namespace });
 
             // Batch upsert (Pinecone has limits, so we batch)
             const batchSize = 100;
@@ -135,14 +112,14 @@ class VectorDBService {
 
             for (let i = 0; i < batches.length; i++) {
                 const batch = batches[i];
-                console.log(`Upserting batch ${i + 1}/${batches.length} (${batch.length} vectors)`);
+                logger.debug(`Upserting batch ${i + 1}/${batches.length}`, { batchSize: batch.length });
 
                 await this.index.namespace(namespace).upsert(batch);
             }
 
-            console.log(`✅ Successfully upserted ${documents.length} documents`);
+            logger.info('Successfully upserted documents', { count: documents.length });
         } catch (error) {
-            console.error('❌ Error upserting documents:', error.message);
+            logger.error('Error upserting documents', { error: error.message });
             throw error;
         }
     }
@@ -184,13 +161,15 @@ class VectorDBService {
                 match => match.score >= ragConfig.retrieval.minScore
             );
 
-            console.log(`🔍 Found ${filteredResults.length}/${results.matches.length} results above threshold`);
+            logger.debug('Found similar documents', {
+                total: results.matches.length,
+                qualified: filteredResults.length
+            });
 
             return filteredResults;
         } catch (error) {
-            console.error('❌ Error searching similar documents:', error.message);
-            console.error('Stack:', error.stack);
-            if (error.cause) console.error('Cause:', error.cause);
+            logger.error('Error searching similar documents', { error: error.message });
+            if (error.cause) logger.error('Error cause', { cause: error.cause });
             throw error;
         }
     }
@@ -210,13 +189,13 @@ class VectorDBService {
                 throw new Error('IDs must be a non-empty array');
             }
 
-            console.log(`🗑️ Deleting ${ids.length} documents from namespace: ${namespace}`);
+            logger.info('Deleting documents', { count: ids.length, namespace });
 
             await this.index.namespace(namespace).deleteMany(ids);
 
-            console.log('✅ Documents deleted successfully');
+            logger.info('Documents deleted successfully');
         } catch (error) {
-            console.error('❌ Error deleting documents:', error.message);
+            logger.error('Error deleting documents', { error: error.message });
             throw error;
         }
     }
@@ -231,13 +210,13 @@ class VectorDBService {
                 await this.initialize();
             }
 
-            console.log(`🗑️ Clearing namespace: ${namespace}`);
+            logger.info('Clearing namespace', { namespace });
 
             await this.index.namespace(namespace).deleteAll();
 
-            console.log('✅ Namespace cleared successfully');
+            logger.info('Namespace cleared successfully');
         } catch (error) {
-            console.error('❌ Error clearing namespace:', error.message);
+            logger.error('Error clearing namespace', { error: error.message });
             throw error;
         }
     }
@@ -262,7 +241,7 @@ class VectorDBService {
                 namespace: stats.namespaces?.[namespace] || { recordCount: 0 }
             };
         } catch (error) {
-            console.error('❌ Error getting stats:', error.message);
+            logger.error('Error getting stats', { error: error.message });
             throw error;
         }
     }
@@ -282,7 +261,7 @@ class VectorDBService {
             const results = await this.index.namespace(namespace).fetch(ids);
             return results.records || {};
         } catch (error) {
-            console.error('❌ Error fetching documents:', error.message);
+            logger.error('Error fetching documents', { error: error.message });
             throw error;
         }
     }
@@ -293,17 +272,16 @@ class VectorDBService {
      */
     async testConnection() {
         try {
-            console.log('🧪 Testing Vector DB connection...');
+            logger.info('Testing Vector DB connection...');
 
             await this.initialize();
             const stats = await this.getStats();
 
-            console.log('✅ Connection test successful');
-            console.log(`📊 Index has ${stats.totalVectors} vectors`);
+            logger.info('Vector DB Connection test successful', { totalVectors: stats.totalVectors });
 
             return true;
         } catch (error) {
-            console.error('❌ Connection test failed:', error.message);
+            logger.error('Vector DB Connection test failed', { error: error.message });
             return false;
         }
     }
@@ -315,7 +293,7 @@ class VectorDBService {
         this.client = null;
         this.index = null;
         this.isInitialized = false;
-        console.log('✅ Vector DB connection closed');
+        logger.info('Vector DB connection closed');
     }
 }
 
