@@ -1,6 +1,7 @@
 import express from 'express';
 import knowledgeBaseService from '../services/knowledge-base.service.js';
 import ragService from '../services/rag.service.js';
+import logger from '../logger/logger.js';
 const router = express.Router();
 
 /**
@@ -35,7 +36,7 @@ router.post('/kb/sync/sheets', async (req, res) => {
             count
         });
     } catch (error) {
-        console.error('❌ Sync error:', error);
+        logger.error('Sync error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to sync services',
@@ -55,7 +56,7 @@ router.post('/kb/sync/microsoft', async (req, res) => {
             count
         });
     } catch (error) {
-        console.error('❌ Sync error:', error);
+        logger.error('Sync error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to sync services',
@@ -83,7 +84,7 @@ router.post('/kb/company-info', authenticateAdmin, async (req, res) => {
             message: `Added ${documents.length} company info documents`
         });
     } catch (error) {
-        console.error('❌ Add company info error:', error);
+        logger.error('Add company info error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to add company info',
@@ -93,7 +94,7 @@ router.post('/kb/company-info', authenticateAdmin, async (req, res) => {
 });
 
 // Add FAQs
-router.post('/kb/faqs',  async (req, res) => {
+router.post('/kb/faqs', async (req, res) => {
     try {
         const { faqs, language = 'en' } = req.body;
 
@@ -111,7 +112,7 @@ router.post('/kb/faqs',  async (req, res) => {
             message: `Added ${faqs.length} FAQs`
         });
     } catch (error) {
-        console.error('❌ Add FAQs error:', error);
+        logger.error('Add FAQs error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to add FAQs',
@@ -121,7 +122,7 @@ router.post('/kb/faqs',  async (req, res) => {
 });
 
 // Add booking rules
-router.post('/kb/booking-rules',async (req, res) => {
+router.post('/kb/booking-rules', async (req, res) => {
     try {
         const { bookingInfo } = req.body;
 
@@ -139,7 +140,7 @@ router.post('/kb/booking-rules',async (req, res) => {
             message: 'Booking rules added successfully'
         });
     } catch (error) {
-        console.error('❌ Add booking rules error:', error);
+        logger.error('Add booking rules error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to add booking rules',
@@ -159,7 +160,7 @@ router.post('/kb/rebuild', async (req, res) => {
             summary
         });
     } catch (error) {
-        console.error('❌ Rebuild error:', error);
+        logger.error('Rebuild error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to rebuild knowledge base',
@@ -178,7 +179,7 @@ router.delete('/kb/clear', async (req, res) => {
             message: 'Knowledge base cleared successfully'
         });
     } catch (error) {
-        console.error('❌ Clear error:', error);
+        logger.error('Clear error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to clear knowledge base',
@@ -215,7 +216,7 @@ router.post('/kb/search', async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('❌ Search error:', error);
+        logger.error('Search error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Search failed',
@@ -238,7 +239,7 @@ router.get('/kb/stats', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ Stats error:', error);
+        logger.error('Stats error', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to get stats',

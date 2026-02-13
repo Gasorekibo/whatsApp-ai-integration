@@ -1,13 +1,14 @@
 import dotenv from 'dotenv';
-import {fetchZohoContacts} from '../../utils/zohoApi.js';
+import { fetchZohoContacts } from '../../utils/zohoApi.js';
+import logger from '../../logger/logger.js';
 dotenv.config();
-async function zohoGetAllContactsHandler (req, res) {
+async function zohoGetAllContactsHandler(req, res) {
   try {
     const page = parseInt(req.query.page) || 1;
     const perPage = parseInt(req.query.per_page) || 200;
 
     const contacts = await fetchZohoContacts(page, perPage);
-    
+
     // Format contacts for your application
     const formattedContacts = contacts.map(contact => ({
       id: contact.id,
@@ -27,7 +28,7 @@ async function zohoGetAllContactsHandler (req, res) {
       contacts: formattedContacts
     });
   } catch (error) {
-    console.error('❌ Error fetching Zoho contacts:', error);
+    logger.error('Error fetching Zoho contacts', { error: error.message });
     res.status(500).json({
       success: false,
       error: error.message

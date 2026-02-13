@@ -1,10 +1,11 @@
 import dotenv from 'dotenv';
+import logger from '../logger/logger.js';
 
 dotenv.config()
 
 export default {
-    development: {
-      use_env_variable: 'PG_DATABASE_URL',
+  development: {
+    use_env_variable: 'PG_DATABASE_URL',
     dialect: 'postgres',
     dialectOptions: {
       ssl: {
@@ -12,7 +13,7 @@ export default {
         rejectUnauthorized: false
       }
     },
-    logging: console.log,
+    logging: (msg) => logger.debug(msg),
     pool: {
       max: 5,
       min: 0,
@@ -23,10 +24,10 @@ export default {
       timestamps: true,
       underscored: true,
       freezeTableName: false
-    }  
-    },
-    production: {
-        use_env_variable: 'PG_DATABASE_URL',
+    }
+  },
+  production: {
+    use_env_variable: 'PG_DATABASE_URL',
     dialect: 'postgres',
     dialectOptions: {
       ssl: {
@@ -47,4 +48,4 @@ export default {
       freezeTableName: false
     }
   }
-    }
+}

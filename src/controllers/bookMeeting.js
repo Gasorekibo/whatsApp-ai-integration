@@ -1,4 +1,5 @@
 import { bookingService } from '../services/booking.service.js';
+import logger from '../logger/logger.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -33,7 +34,7 @@ const bookMeetingHandler = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error booking meeting:', error);
+    logger.error('Error booking meeting', { error: error.message });
 
     if (error.message.includes('Insufficient permissions') || error.message.includes('re-authorize')) {
       return res.status(error.message.includes('permissions') ? 403 : 401).json({

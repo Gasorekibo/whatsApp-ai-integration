@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import dbConfig from '../models/index.js';
+import logger from '../logger/logger.js';
 
 /**
  * Sync services from Google Sheet to PostgreSQL
@@ -41,7 +42,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
 
     // Find existing content or get first record
     let content = await dbConfig.db.Content.findOne();
-    
+
     if (content) {
       // Update existing record
       content.services = services;
@@ -55,17 +56,17 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
       });
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `Successfully synced ${services.length} services`,
       services: content.services,
       syncedAt: new Date().toISOString()
     };
 
   } catch (error) {
-    console.error('❌ Google Sheets sync error:', error);
-    return { 
-      success: false, 
+    logger.error('Google Sheets sync error', { error: error.message });
+    return {
+      success: false,
       message: error.message,
       error: error.toString()
     };
@@ -80,7 +81,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
 async function getActiveServices() {
   try {
     const content = await dbConfig.db.Content.findOne();
-    
+
     if (content && content.services && content.services.length > 0) {
       // Filter active services
       const activeServices = content.services.filter(s => s.active !== false);
@@ -89,7 +90,7 @@ async function getActiveServices() {
     return getDefaultServices();
 
   } catch (error) {
-    console.error('❌ Error fetching services:', error);
+    logger.error('Error fetching services', { error: error.message });
     // Return default services on error
     return getDefaultServices();
   }
@@ -102,7 +103,7 @@ async function getActiveServices() {
 async function getAllServices() {
   try {
     const content = await dbConfig.db.Content.findOne();
-    
+
     if (content && content.services && content.services.length > 0) {
       return content.services;
     }
@@ -110,7 +111,7 @@ async function getAllServices() {
     return getDefaultServices();
 
   } catch (error) {
-    console.error('Error fetching all services:', error);
+    logger.error('Error fetching all services', { error: error.message });
     return getDefaultServices();
   }
 }
@@ -121,33 +122,33 @@ async function getAllServices() {
  */
 function getDefaultServices() {
   return [
-    { 
-      id: 'sap', 
-      name: 'SAP Consulting', 
+    {
+      id: 'sap',
+      name: 'SAP Consulting',
       short: 'SAP Consulting',
       details: 'ERP & SAP Solutions',
-      active: true 
+      active: true
     },
-    { 
-      id: 'dev', 
-      name: 'Custom Development', 
+    {
+      id: 'dev',
+      name: 'Custom Development',
       short: 'Custom Dev',
       details: 'Web/Mobile/Enterprise Apps',
-      active: true 
+      active: true
     },
-    { 
-      id: 'qa', 
-      name: 'Quality Assurance', 
+    {
+      id: 'qa',
+      name: 'Quality Assurance',
       short: 'QA & Testing',
       details: 'Manual + Automation Testing',
-      active: true 
+      active: true
     },
-    { 
-      id: 'training', 
-      name: 'IT Training', 
+    {
+      id: 'training',
+      name: 'IT Training',
       short: 'IT Training',
       details: 'Certifications & Workshops',
-      active: true 
+      active: true
     }
   ];
 }
@@ -155,10 +156,10 @@ function getDefaultServices() {
 async function initializeServices() {
   try {
     let content = await dbConfig.db.Content.findOne();
-    
+
     if (!content || !content.services || content.services.length === 0) {
       const defaultServices = getDefaultServices();
-      
+
       if (content) {
         // Update existing record
         content.services = defaultServices;
@@ -171,11 +172,11 @@ async function initializeServices() {
           updatedAt: new Date()
         });
       }
-      
-      console.log('✅ Services initialized successfully');
+
+      logger.info('Services initialized successfully');
     }
   } catch (error) {
-    console.error('❌ Error initializing services:', error);
+    logger.error('Error initializing services', { error: error.message });
   }
 }
 

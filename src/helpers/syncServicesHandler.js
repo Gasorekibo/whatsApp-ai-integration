@@ -1,32 +1,33 @@
 import dotenv from 'dotenv';
 import googlesheets from '../utils/googlesheets.js';
 import dbConfig from '../models/index.js';
+import logger from '../logger/logger.js';
 
 dotenv.config();
 
-async function syncServicesHandler (req, res){
+async function syncServicesHandler(req, res) {
   try {
     const spreadsheetId = req?.body?.spreadsheetId || process.env.GOOGLE_SHEET_ID;
     if (!spreadsheetId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'spreadsheetId is required (in body or GOOGLE_SHEET_ID env variable)' 
+      return res.status(400).json({
+        success: false,
+        error: 'spreadsheetId is required (in body or GOOGLE_SHEET_ID env variable)'
       });
     }
 
     const employee = await dbConfig.db.Employee.findOne({ where: { email: process.env.EMPLOYEE_EMAIL } });
     if (!employee) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Employee not found. Please authenticate first at /auth' 
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found. Please authenticate first at /auth'
       });
     }
 
     const token = employee.getDecryptedToken();
     if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'No refresh token found. Please authenticate at /auth' 
+      return res.status(401).json({
+        success: false,
+        error: 'No refresh token found. Please authenticate at /auth'
       });
     }
 
@@ -34,10 +35,10 @@ async function syncServicesHandler (req, res){
     res.json(result);
 
   } catch (error) {
-    console.error('❌ Sync error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    logger.error('Sync error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 };
