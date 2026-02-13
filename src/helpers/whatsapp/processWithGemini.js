@@ -155,9 +155,9 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         // Build augmented prompt
         prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData);
 
-        console.log(`✅ RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
+        logger.info(`RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
       } catch (ragError) {
-        console.warn('⚠️ RAG retrieval failed, using fallback:', ragError.message);
+        logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
         prompt = await buildFallbackPrompt(slotDetails, currentDate);
       }
     } else {
@@ -195,7 +195,6 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
         if (call.name === "show_services") {
           logger.info('Show services tool called', { call });
-          console.log('============ SHOW SERVICES CALLED =============')
           toolResults.push({
             functionResponse: {
               name: "show_services",
@@ -207,7 +206,6 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         }
 
         if (call.name === "initiate_payment") {
-          console.log('============ INITIATE PAYMENT CALLED =============')
           const data = call.args;
           logger.info('Initiating payment tool called', { data });
           const requestedStart = new Date(data.start);
@@ -328,7 +326,6 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       errorType: err.constructor.name,
       status: err.status
     });
-    console.error("❌ Gemini error:", err);
     if (err.status === 429) {
       logger.warn('Gemini rate limit exceeded', {
         phone: sanitizedPhone,

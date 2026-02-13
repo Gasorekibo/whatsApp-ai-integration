@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import NodeCache from 'node-cache';
 import ragConfig from '../config/rag.config.js';
+import logger from '../logger/logger.js';
 
 /**
  * Embedding Service
@@ -20,7 +21,7 @@ class EmbeddingService {
             })
             : null;
 
-        console.log('✅ Embedding service initialized with Gemini', this.model);
+        logger.info('Embedding service initialized with Gemini', { model: this.model });
     }
 
     /**
@@ -40,7 +41,7 @@ class EmbeddingService {
             if (this.cache) {
                 const cached = this.cache.get(cacheKey);
                 if (cached) {
-                    console.log('📦 Cache hit for embedding');
+                    logger.debug('Cache hit for embedding', { taskType });
                     return cached;
                 }
             }
@@ -65,7 +66,7 @@ class EmbeddingService {
 
             return embedding;
         } catch (error) {
-            console.error('❌ Error generating embedding:', error.message);
+            logger.error('Error generating embedding', { error: error.message });
             throw error;
         }
     }
@@ -90,14 +91,17 @@ class EmbeddingService {
                 batches.push(texts.slice(i, i + batchSize));
             }
 
-            console.log(`🔄 Processing ${texts.length} texts in ${batches.length} batches`);
+            logger.info('Processing batch embeddings', {
+                count: texts.length,
+                batches: batches.length
+            });
 
             const allEmbeddings = [];
 
             // Process each batch
             for (let i = 0; i < batches.length; i++) {
                 const batch = batches[i];
-                console.log(`Processing batch ${i + 1}/${batches.length} (${batch.length} texts)`);
+                logger.debug(`Processing batch ${i + 1}/${batches.length}`, { batchSize: batch.length });
 
                 const batchPromises = batch.map(text => this.generateEmbedding(text, taskType));
                 const batchEmbeddings = await Promise.all(batchPromises);
@@ -110,10 +114,10 @@ class EmbeddingService {
                 }
             }
 
-            console.log(`✅ Generated ${allEmbeddings.length} embeddings successfully`);
+            logger.info('Generated embeddings successfully', { count: allEmbeddings.length });
             return allEmbeddings;
         } catch (error) {
-            console.error('❌ Error in batch embedding:', error.message);
+            logger.error('Error in batch embedding', { error: error.message });
             throw error;
         }
     }
@@ -136,7 +140,7 @@ class EmbeddingService {
     clearCache() {
         if (this.cache) {
             this.cache.flushAll();
-            console.log('🗑️ Embedding cache cleared');
+            logger.info('Embedding cache cleared');
         }
     }
 
@@ -164,14 +168,14 @@ class EmbeddingService {
      */
     async testConnection() {
         try {
-            console.log('🧪 Testing embedding service...');
+            logger.info('Testing embedding service...');
             const testText = 'This is a test sentence for embedding generation.';
             const embedding = await this.generateEmbedding(testText, 'RETRIEVAL_QUERY');
 
-            console.log(`✅ Test successful! Generated ${embedding.length}D embedding`);
+            logger.info('Test successful! Generated embedding', { dimensions: embedding.length });
             return true;
         } catch (error) {
-            console.error('❌ Test failed:', error.message);
+            logger.error('Test failed', { error: error.message });
             return false;
         }
     }

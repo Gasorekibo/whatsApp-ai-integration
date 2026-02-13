@@ -78,7 +78,7 @@ async function paymentWebhookHandler(req, res) {
               `Transaction Ref: ${payload.data.tx_ref}\n` +
               `Payment Method: ${payload.data.payment_type}`
           });
-console.log('📅 Booking result:', JSON.stringify(bookingResult, null, 2));
+          logger.info('Booking result', { success: bookingResult.success });
 
           if (!bookingResult.success) {
             throw new Error("Booking service failed to confirm booking");

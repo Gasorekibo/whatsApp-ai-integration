@@ -118,7 +118,6 @@ app.get('/oauth/callback', async (req, res) => {
         email: `${userInfo.email.substring(0, 3)}***`,
         hasNewRefreshToken: !!tokens.refresh_token
       });
-      console.log('✅ Employee updated:', userInfo.email);
     } else {
       // Create new employee
       employee = await dbConfig.db.Employee.create({
@@ -131,7 +130,6 @@ app.get('/oauth/callback', async (req, res) => {
         employeeId: employee.id,
         email: `${userInfo.email.substring(0, 3)}***`
       });
-      console.log('✅ New employee created =============>:', userInfo);
     }
 
     // Success page
@@ -142,7 +140,6 @@ app.get('/oauth/callback', async (req, res) => {
       error: err.message,
       stack: err.stack
     });
-    console.error('❌ OAuth error:', err);
     res.status(500).send(googleAuthFailureMessage);
   }
 });
@@ -176,7 +173,6 @@ app.get('/employees', async (req, res) => {
       error: error.message,
       stack: error.stack
     });
-    console.error('❌ Error fetching employees:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch employees',
@@ -294,7 +290,6 @@ app.use((err, req, res, next) => {
     path: req.path,
     method: req.method
   });
-  console.error('❌ Unhandled error:', err);
   res.status(500).json({
     success: false,
     message: 'Internal server error',
@@ -315,12 +310,12 @@ app.use((err, req, res, next) => {
 
     // Start server
     app.listen(PORT, () => {
+      console.log('Server started successfuly')
       logger.info('Server started successfully', {
         port: PORT,
         nodeEnv: process.env.NODE_ENV || 'development',
         timestamp: new Date().toISOString()
       });
-      console.log(`🚀❤️‍🔥 Server running on port ${PORT}`);
     });
 
   } catch (error) {
@@ -328,8 +323,6 @@ app.use((err, req, res, next) => {
       error: error.message,
       stack: error.stack
     });
-    console.error('❌ Server initialization failed:', error.message);
-    console.error(error);
     process.exit(1);
   }
 })();
@@ -337,38 +330,32 @@ app.use((err, req, res, next) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, initiating graceful shutdown');
-  console.log('\n🛑 Shutting down gracefully...');
 
   try {
     await dbConfig.db.sequelize.close();
     logger.info('Database connections closed successfully');
-    console.log('✅ Database connections closed');
     process.exit(0);
   } catch (error) {
     logger.error('Error during shutdown', {
       error: error.message,
       stack: error.stack
     });
-    console.error('❌ Error during shutdown:', error);
     process.exit(1);
   }
 });
 
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, initiating graceful shutdown');
-  console.log('\n🛑 SIGTERM received, shutting down...');
 
   try {
     await dbConfig.db.sequelize.close();
     logger.info('Database connections closed successfully');
-    console.log('✅ Database connections closed');
     process.exit(0);
   } catch (error) {
     logger.error('Error during shutdown', {
       error: error.message,
       stack: error.stack
     });
-    console.error('❌ Error during shutdown:', error);
     process.exit(1);
   }
 });

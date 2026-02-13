@@ -1,9 +1,10 @@
 import dotenv from 'dotenv';
+import logger from '../../logger/logger.js';
 dotenv.config();
 
 async function zohoAuthCallbackHandler(req, res) {
   const { code } = req.query;
-  
+
   if (!code) {
     return res.status(400).send('No authorization code received');
   }
@@ -176,7 +177,7 @@ async function zohoAuthCallbackHandler(req, res) {
     `);
 
   } catch (error) {
-    console.error('❌ Zoho OAuth error:', error);
+    logger.error('Zoho OAuth error', { error: error.message });
     res.status(500).send(`
       <!DOCTYPE html>
       <html>
