@@ -5,6 +5,7 @@ import googleSheets from '../utils/googlesheets.js';
 import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHandler.js';
 import ragConfig from '../config/rag.config.js';
 import logger from '../logger/logger.js';
+import confluence from '../utils/confluence.js';
 
 /**
  * Knowledge Base Management Service
@@ -86,6 +87,59 @@ class KnowledgeBaseService {
             return count;
         } catch (error) {
             logger.error('Error syncing from Microsoft Excel', { error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Sync data from Confluence
+     * @returns {Promise<number>} - Number of pages synced
+     */
+    async syncFromConfluence() {
+        try {
+            logger.info('Syncing data from Confluence');
+
+            const pages = await confluence.fetchPages();
+
+            if (!pages || pages.length === 0) {
+                logger.warn('No pages found in Confluence');
+                return 0;
+            }
+
+            // Process pages using document processor
+            // We use 'confluence' type which triggers processConfluencePage in batchProcess
+            const chunks = documentProcessor.batchProcess(pages, 'confluence');
+            console.log('Confluence chunks', chunks)
+            if (chunks.length === 0) {
+                logger.warn('No valid content extracted from Confluence pages');
+                return 0;
+            }
+
+            // Generate embeddings
+            const texts = chunks.map(chunk => chunk.content);
+            const embeddings = await embeddingService.generateBatchEmbeddings(
+                texts,
+                ragConfig.embedding.taskType
+            );
+
+            // Prepare for upsert
+            const documents = chunks.map((chunk, index) => ({
+                id: chunk.id,
+                values: embeddings[index],
+                metadata: {
+                    ...chunk.metadata,
+                    content: chunk.content, // Store content in metadata for retrieval
+                    synced_at: new Date().toISOString()
+                }
+            }));
+            // Upsert to vector DB
+            await vectorDBService.upsertDocuments(documents, 'default'); // Using default namespace
+
+            logger.info(`Synced ${documents.length} chunks from Confluence`);
+            return documents.length;
+
+        } catch (error) {
+            logger.error('Error syncing from Confluence', { error: error.message });
             throw error;
         }
     }

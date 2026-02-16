@@ -308,6 +308,46 @@ class DocumentProcessorService {
     }
 
     /**
+     * Process Confluence page
+     * @param {object} page - Confluence page object
+     * @returns {Array} - Processed chunks
+     */
+    processConfluencePage(page) {
+        try {
+            const contentConfig = ragConfig.chunking.companyInfo || {};
+            const title = page.title;
+            const body = page.body?.storage?.value || '';
+            const version = page.version?.number || 1;
+
+            // Convert HTML to text
+            const textContent = this.stripHtml(body);
+            // Chunk the text
+            const chunks = this.chunkText(textContent, 'company_info');
+            return chunks.map((chunk, index) => {
+                return {
+                    id: `confluence-${page.id}-${index}`,
+                    content: chunk,
+                    metadata: {
+                        type: 'company_info',
+                    source: 'confluence',
+                    page_id: page.id,
+                    title: title,
+                    version: version,
+                    chunk_index: index,
+                    priority: ragConfig.metadata.priorities.company_info,
+                    language: 'en',
+                    updated_at: new Date().toISOString()
+                }
+            }
+            });
+
+        } catch (error) {
+            logger.error(`Error processing Confluence page ${page.id}`, { error: error.message });
+            return [];
+        }
+    }
+
+    /**
      * Batch process multiple documents
      * @param {Array} documents - Array of documents
      * @param {string} type - Document type
@@ -318,12 +358,14 @@ class DocumentProcessorService {
 
         for (const doc of documents) {
             try {
-                let chunks;
+                let chunks = [];
 
                 if (type === 'service') {
                     chunks = this.processServices([doc]);
                 } else if (type === 'faq') {
                     chunks = this.processFAQs([doc]);
+                } else if (type === 'confluence') {
+                    chunks = this.processConfluencePage(doc);
                 } else {
                     chunks = this.processMarkdown(doc.content, type, doc.metadata);
                 }
