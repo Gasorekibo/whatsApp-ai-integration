@@ -2,6 +2,7 @@ import express from 'express';
 import knowledgeBaseService from '../services/knowledge-base.service.js';
 import ragService from '../services/rag.service.js';
 import logger from '../logger/logger.js';
+import ragConfig from '../config/rag.config.js';
 const router = express.Router();
 
 /**
@@ -60,6 +61,41 @@ router.post('/kb/sync/microsoft', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to sync services',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/kb/sync/confluence
+ * @desc Sync data from Confluence
+ * @access Private
+ */
+router.post('/kb/sync/confluence', async (req, res) => {
+    try {
+        logger.info('Syncing from Confluence requested via API');
+
+        // Check if Confluence sync is enabled
+        if (!ragConfig.sync.sources.confluence) {
+            return res.status(400).json({
+                success: false,
+                message: 'Confluence sync is disabled in configuration'
+            });
+        }
+
+        const count = await knowledgeBaseService.syncFromConfluence();
+
+        res.json({
+            success: true,
+            message: `Successfully synced ${count} chunks from Confluence`,
+            count
+        });
+    } catch (error) {
+        console.log(error)
+        logger.error('Confluence sync error', { error: error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to sync from Confluence',
             error: error.message
         });
     }

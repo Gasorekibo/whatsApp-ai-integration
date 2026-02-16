@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-dotenv.config();   
+dotenv.config();
 /**
  * RAG Configuration for WhatsApp Chatbot
  * Defines settings for vector database, embeddings, and retrieval
@@ -106,7 +106,14 @@ export default {
         sources: {
             googleSheets: true,
             microsoftExcel: true,
+            confluence: true,
             website: false // Enable when website is accessible
+        },
+        confluence: {
+            baseUrl: process.env.CONFLUENCE_BASE_URL,
+            email: process.env.CONFLUENCE_EMAIL,
+            apiToken: process.env.CONFLUENCE_API_TOKEN,
+            spaceKey: process.env.CONFLUENCE_SPACE_KEY
         }
     }
 };
