@@ -3,20 +3,30 @@ import embeddingService from './embedding.service.js';
 import documentProcessor from './document-processor.service.js';
 import googleSheets from '../utils/googlesheets.js';
 import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHandler.js';
+import confluence from '../utils/confluence.js';
 import ragConfig from '../config/rag.config.js';
 import logger from '../logger/logger.js';
 
 /**
- * Knowledge Base Management Service
- * Manages the lifecycle of the knowledge base:
- * - Syncing from external sources
- * - Adding/updating/deleting documents
- * - Rebuilding the index
+ * Enhanced Knowledge Base Management Service
+ * Manages the complete lifecycle of the knowledge base:
+ * - Intelligent syncing from multiple sources
+ * - Incremental updates and version tracking
+ * - Batch processing with progress tracking
+ * - Comprehensive error handling
+ * 
+ * @version 2.0.0
  */
 
 class KnowledgeBaseService {
     constructor() {
         this.initialized = false;
+        this.syncInProgress = false;
+        this.lastSync = {
+            googleSheets: null,
+            microsoftExcel: null,
+            confluence: null
+        };
     }
 
     /**
@@ -28,12 +38,19 @@ class KnowledgeBaseService {
                 return;
             }
 
+            logger.info('Initializing Knowledge Base service...');
+
             await vectorDBService.initialize();
+            
             this.initialized = true;
 
             logger.info('Knowledge Base service initialized');
+
         } catch (error) {
-            logger.error('Failed to initialize KB service', { error: error.message });
+            logger.error('Failed to initialize KB service', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -53,13 +70,27 @@ class KnowledgeBaseService {
                 return 0;
             }
 
-            const upsertedDocs = await this.upsertServices(services, 'google-sheets');
+            logger.info('Retrieved services from Google Sheets', {
+                count: services.length
+            });
 
-            const count = upsertedDocs?.length || 0;
-            logger.info(`Synced ${count} services from Google Sheets`);
-            return count;
+            const result = await this.upsertServices(services, 'google-sheets');
+
+            this.lastSync.googleSheets = new Date().toISOString();
+
+            logger.info('Google Sheets sync complete', {
+                services: services.length,
+                chunks: result.success,
+                failed: result.failed
+            });
+
+            return result.success;
+
         } catch (error) {
-            logger.error('Error syncing from Google Sheets', { error: error.message });
+            logger.error('Error syncing from Google Sheets', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -79,13 +110,132 @@ class KnowledgeBaseService {
                 return 0;
             }
 
-            const upsertedDocs = await this.upsertServices(services, 'microsoft-excel');
+            logger.info('Retrieved services from Microsoft Excel', {
+                count: services.length
+            });
 
-            const count = upsertedDocs?.length || 0;
-            logger.info(`Synced ${count} services from Microsoft Excel`);
-            return count;
+            const result = await this.upsertServices(services, 'microsoft-excel');
+
+            this.lastSync.microsoftExcel = new Date().toISOString();
+
+            logger.info('Microsoft Excel sync complete', {
+                services: services.length,
+                chunks: result.success,
+                failed: result.failed
+            });
+
+            return result.success;
+
         } catch (error) {
-            logger.error('Error syncing from Microsoft Excel', { error: error.message });
+            logger.error('Error syncing from Microsoft Excel', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Sync data from Confluence
+     * @param {object} options - Sync options
+     * @returns {Promise<number>} - Number of chunks synced
+     */
+    async syncFromConfluence(options = {}) {
+        try {
+            logger.info('Syncing data from Confluence');
+
+            const confluenceConfig = ragConfig.sync.confluence;
+            
+            // Validate configuration
+            if (!confluenceConfig.baseUrl || !confluenceConfig.apiToken) {
+                throw new Error('Confluence configuration incomplete');
+            }
+
+            const pages = await confluence.fetchPages(
+                options.spaceKey || confluenceConfig.spaceKey,
+                options.maxPages || confluenceConfig.maxPages
+            );
+
+            if (!pages || pages.length === 0) {
+                logger.warn('No pages found in Confluence');
+                return 0;
+            }
+
+            logger.info('Retrieved pages from Confluence', {
+                count: pages.length,
+                spaceKey: options.spaceKey || confluenceConfig.spaceKey
+            });
+
+            // Process pages in batches
+            const allChunks = [];
+            const batchSize = 10; // Process 10 pages at a time
+            
+            for (let i = 0; i < pages.length; i += batchSize) {
+                const pageBatch = pages.slice(i, i + batchSize);
+                
+                logger.debug(`Processing Confluence batch ${Math.floor(i / batchSize) + 1}`, {
+                    pages: pageBatch.length
+                });
+
+                const batchChunks = documentProcessor.batchProcess(pageBatch, 'confluence');
+                allChunks.push(...batchChunks);
+
+                // Progress update
+                if ((i + batchSize) % 50 === 0) {
+                    logger.info('Confluence sync progress', {
+                        processed: Math.min(i + batchSize, pages.length),
+                        total: pages.length,
+                        chunks: allChunks.length
+                    });
+                }
+            }
+
+            if (allChunks.length === 0) {
+                logger.warn('No valid content extracted from Confluence pages');
+                return 0;
+            }
+
+            logger.info('Generating embeddings for Confluence chunks', {
+                chunks: allChunks.length
+            });
+
+            // Generate embeddings in batches
+            const texts = allChunks.map(chunk => chunk.content);
+            const embeddings = await embeddingService.generateBatchEmbeddings(
+                texts,
+                ragConfig.embedding.taskType
+            );
+
+            // Prepare documents for upsert
+            const documents = allChunks.map((chunk, index) => ({
+                id: chunk.id,
+                values: embeddings[index],
+                metadata: {
+                    ...chunk.metadata,
+                    content: chunk.content,
+                    source: 'confluence',
+                    synced_at: new Date().toISOString()
+                }
+            }));
+
+            // Upsert to vector DB
+            const result = await vectorDBService.upsertDocuments(documents, 'default');
+
+            this.lastSync.confluence = new Date().toISOString();
+
+            logger.info('Confluence sync complete', {
+                pages: pages.length,
+                chunks: result.success,
+                failed: result.failed
+            });
+
+            return result.success;
+
+        } catch (error) {
+            logger.error('Error syncing from Confluence', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -94,6 +244,7 @@ class KnowledgeBaseService {
      * Upsert services into vector database
      * @param {Array} services - Service objects
      * @param {string} source - Data source name
+     * @returns {Promise<object>} - Result summary
      */
     async upsertServices(services, source) {
         try {
@@ -101,8 +252,20 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
+            logger.info('Processing services for upsert', {
+                count: services.length,
+                source
+            });
+
             // Process services into chunks
             const chunks = documentProcessor.processServices(services);
+
+            if (chunks.length === 0) {
+                logger.warn('No chunks generated from services');
+                return { success: 0, failed: 0 };
+            }
+
+            logger.info('Generating embeddings', { chunks: chunks.length });
 
             // Generate embeddings
             const texts = chunks.map(chunk => chunk.content);
@@ -117,26 +280,41 @@ class KnowledgeBaseService {
                 values: embeddings[index],
                 metadata: {
                     ...chunk.metadata,
-                    content: chunk.content, // Store content in metadata for retrieval
+                    content: chunk.content,
                     source,
                     synced_at: new Date().toISOString()
                 }
             }));
 
-            // Upsert to vector DB
-            await vectorDBService.upsertDocuments(documents, 'default');
+            logger.info('Upserting documents to vector DB', {
+                count: documents.length
+            });
 
-            logger.info(`Upserted ${documents.length} service documents from ${source}`);
-            return documents;
+            // Upsert to vector DB
+            const result = await vectorDBService.upsertDocuments(documents, 'default');
+
+            logger.info('Service upsert complete', {
+                source,
+                success: result.success,
+                failed: result.failed
+            });
+
+            return result;
+
         } catch (error) {
-            logger.error('Error upserting services', { error: error.message });
+            logger.error('Error upserting services', {
+                error: error.message,
+                stack: error.stack,
+                source
+            });
             throw error;
         }
     }
 
     /**
      * Add company information documents
-     * @param {Array} documents - Company info documents
+     * @param {Array} documents - Company info documents [{id, title, content, language}]
+     * @returns {Promise<number>} - Number of chunks added
      */
     async addCompanyInfo(documents) {
         try {
@@ -144,9 +322,11 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            logger.info(`Adding ${documents.length} company info documents`);
+            logger.info('Adding company info documents', {
+                count: documents.length
+            });
 
-            const processedDocs = [];
+            const allChunks = [];
 
             for (const doc of documents) {
                 const chunks = documentProcessor.processMarkdown(
@@ -159,31 +339,48 @@ class KnowledgeBaseService {
                     }
                 );
 
-                processedDocs.push(...chunks);
+                allChunks.push(...chunks);
             }
 
+            if (allChunks.length === 0) {
+                logger.warn('No chunks generated from company info');
+                return 0;
+            }
+
+            logger.info('Generating embeddings', { chunks: allChunks.length });
+
             // Generate embeddings
-            const texts = processedDocs.map(chunk => chunk.content);
+            const texts = allChunks.map(chunk => chunk.content);
             const embeddings = await embeddingService.generateBatchEmbeddings(
                 texts,
                 ragConfig.embedding.taskType
             );
 
             // Prepare for upsert
-            const vectorDocs = processedDocs.map((chunk, index) => ({
+            const vectorDocs = allChunks.map((chunk, index) => ({
                 id: chunk.id,
                 values: embeddings[index],
                 metadata: {
                     ...chunk.metadata,
-                    content: chunk.content
+                    content: chunk.content,
+                    synced_at: new Date().toISOString()
                 }
             }));
 
             await vectorDBService.upsertDocuments(vectorDocs, 'default');
 
-            logger.info(`Added ${vectorDocs.length} company info chunks`);
+            logger.info('Company info added successfully', {
+                documents: documents.length,
+                chunks: vectorDocs.length
+            });
+
+            return vectorDocs.length;
+
         } catch (error) {
-            logger.error('Error adding company info', { error: error.message });
+            logger.error('Error adding company info', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -191,6 +388,8 @@ class KnowledgeBaseService {
     /**
      * Add FAQ documents
      * @param {Array} faqs - FAQ objects {question, answer, category}
+     * @param {string} language - Language code
+     * @returns {Promise<number>} - Number of FAQs added
      */
     async addFAQs(faqs, language = 'en') {
         try {
@@ -198,9 +397,14 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            logger.info(`Adding ${faqs.length} FAQs`);
+            logger.info('Adding FAQs', { count: faqs.length, language });
 
             const chunks = documentProcessor.processFAQs(faqs, { language });
+
+            if (chunks.length === 0) {
+                logger.warn('No chunks generated from FAQs');
+                return 0;
+            }
 
             // Generate embeddings
             const texts = chunks.map(chunk => chunk.content);
@@ -215,15 +419,25 @@ class KnowledgeBaseService {
                 values: embeddings[index],
                 metadata: {
                     ...chunk.metadata,
-                    content: chunk.content
+                    content: chunk.content,
+                    synced_at: new Date().toISOString()
                 }
             }));
 
             await vectorDBService.upsertDocuments(vectorDocs, 'default');
 
-            logger.info(`Added ${vectorDocs.length} FAQ documents`);
+            logger.info('FAQs added successfully', {
+                faqs: faqs.length,
+                chunks: vectorDocs.length
+            });
+
+            return vectorDocs.length;
+
         } catch (error) {
-            logger.error('Error adding FAQs', { error: error.message });
+            logger.error('Error adding FAQs', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -231,6 +445,7 @@ class KnowledgeBaseService {
     /**
      * Add booking rules
      * @param {object} bookingInfo - Booking information
+     * @returns {Promise<number>} - Number of rules added
      */
     async addBookingRules(bookingInfo) {
         try {
@@ -242,6 +457,11 @@ class KnowledgeBaseService {
 
             const chunks = documentProcessor.processBookingRules(bookingInfo);
 
+            if (chunks.length === 0) {
+                logger.warn('No chunks generated from booking rules');
+                return 0;
+            }
+
             // Generate embeddings
             const texts = chunks.map(chunk => chunk.content);
             const embeddings = await embeddingService.generateBatchEmbeddings(
@@ -255,15 +475,24 @@ class KnowledgeBaseService {
                 values: embeddings[index],
                 metadata: {
                     ...chunk.metadata,
-                    content: chunk.content
+                    content: chunk.content,
+                    synced_at: new Date().toISOString()
                 }
             }));
 
             await vectorDBService.upsertDocuments(vectorDocs, 'default');
 
-            logger.info(`Added ${vectorDocs.length} booking rule documents`);
+            logger.info('Booking rules added successfully', {
+                chunks: vectorDocs.length
+            });
+
+            return vectorDocs.length;
+
         } catch (error) {
-            logger.error('Error adding booking rules', { error: error.message });
+            logger.error('Error adding booking rules', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -279,9 +508,14 @@ class KnowledgeBaseService {
             }
 
             await vectorDBService.deleteDocuments(ids, 'default');
-            logger.info(`Deleted ${ids.length} documents`);
+            
+            logger.info('Documents deleted', { count: ids.length });
+
         } catch (error) {
-            logger.error('Error deleting documents', { error: error.message });
+            logger.error('Error deleting documents', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -296,55 +530,119 @@ class KnowledgeBaseService {
             }
 
             logger.warn('Clearing entire knowledge base');
+            
             await vectorDBService.deleteNamespace('default');
+            
+            // Reset sync timestamps
+            this.lastSync = {
+                googleSheets: null,
+                microsoftExcel: null,
+                confluence: null
+            };
+
             logger.info('Knowledge base cleared');
+
         } catch (error) {
-            logger.error('Error clearing knowledge base', { error: error.message });
+            logger.error('Error clearing knowledge base', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
 
     /**
      * Rebuild entire knowledge base from all sources
+     * @param {object} options - Rebuild options
      * @returns {Promise<object>} - Summary of rebuild
      */
-    async rebuildIndex() {
+    async rebuildIndex(options = {}) {
         try {
-            logger.info('Rebuilding knowledge base');
+            if (this.syncInProgress) {
+                throw new Error('Sync already in progress');
+            }
+
+            this.syncInProgress = true;
+
+            logger.info('Starting knowledge base rebuild', { options });
+
             const summary = {
                 services: 0,
                 companyInfo: 0,
                 faqs: 0,
                 bookingRules: 0,
-                errors: []
+                confluence: 0,
+                errors: [],
+                startTime: new Date().toISOString()
             };
 
-            // Clear existing data
-            await this.clearKnowledgeBase();
+            // Clear existing data unless incremental
+            if (!options.incremental) {
+                await this.clearKnowledgeBase();
+            }
 
-            // Sync services from configured sources
+            // Sync from configured sources
+            const syncTasks = [];
+
             if (ragConfig.sync.sources.googleSheets) {
-                try {
-                    summary.services += await this.syncServicesFromSheets();
-                } catch (error) {
-                    summary.errors.push(`Google Sheets: ${error.message}`);
-                }
+                syncTasks.push(
+                    this.syncServicesFromSheets()
+                        .then(count => { summary.services += count; })
+                        .catch(error => {
+                            summary.errors.push(`Google Sheets: ${error.message}`);
+                        })
+                );
             }
 
             if (ragConfig.sync.sources.microsoftExcel) {
-                try {
-                    summary.services += await this.syncServicesFromMicrosoft();
-                } catch (error) {
-                    summary.errors.push(`Microsoft Excel: ${error.message}`);
-                }
+                syncTasks.push(
+                    this.syncServicesFromMicrosoft()
+                        .then(count => { summary.services += count; })
+                        .catch(error => {
+                            summary.errors.push(`Microsoft Excel: ${error.message}`);
+                        })
+                );
             }
 
+            if (ragConfig.sync.sources.confluence) {
+                syncTasks.push(
+                    this.syncFromConfluence()
+                        .then(count => { summary.confluence = count; })
+                        .catch(error => {
+                            summary.errors.push(`Confluence: ${error.message}`);
+                        })
+                );
+            }
+
+            // Wait for all syncs to complete
+            await Promise.all(syncTasks);
+
+            summary.endTime = new Date().toISOString();
+            summary.duration = new Date(summary.endTime) - new Date(summary.startTime);
+
+            this.syncInProgress = false;
+
             logger.info('Knowledge base rebuild complete', { summary });
+
             return summary;
+
         } catch (error) {
-            logger.error('Error rebuilding index', { error: error.message });
+            this.syncInProgress = false;
+            
+            logger.error('Error rebuilding index', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
+    }
+
+    /**
+     * Sync all sources incrementally
+     * @returns {Promise<object>} - Sync summary
+     */
+    async syncAll() {
+        return await this.rebuildIndex({ incremental: true });
     }
 
     /**
@@ -357,18 +655,75 @@ class KnowledgeBaseService {
                 await this.initialize();
             }
 
-            const vectorStats = await vectorDBService.getStats();
-            const cacheStats = embeddingService.getCacheStats();
+            const [vectorStats, embeddingStats, processorStats] = await Promise.all([
+                vectorDBService.getStats(),
+                Promise.resolve(embeddingService.getStats()),
+                Promise.resolve(documentProcessor.getStats())
+            ]);
 
             return {
                 totalDocuments: vectorStats.totalVectors,
                 namespaces: vectorStats.namespaces,
-                cache: cacheStats
+                indexFullness: vectorStats.indexFullness,
+                dimension: vectorStats.dimension,
+                lastSync: this.lastSync,
+                syncInProgress: this.syncInProgress,
+                embedding: embeddingStats,
+                processor: processorStats,
+                operations: vectorStats.operationStats
             };
+
         } catch (error) {
-            logger.error('Error getting stats', { error: error.message });
+            logger.error('Error getting stats', {
+                error: error.message,
+                stack: error.stack
+            });
             throw error;
         }
+    }
+
+    /**
+     * Health check
+     * @returns {Promise<object>} - Health status
+     */
+    async healthCheck() {
+        try {
+            const [vectorHealth, embeddingHealth] = await Promise.all([
+                vectorDBService.healthCheck(),
+                embeddingService.testConnection()
+            ]);
+
+            const healthy = vectorHealth.healthy && embeddingHealth;
+
+            return {
+                status: healthy ? 'healthy' : 'degraded',
+                healthy,
+                vector: vectorHealth,
+                embedding: { healthy: embeddingHealth },
+                initialized: this.initialized,
+                syncInProgress: this.syncInProgress,
+                timestamp: new Date().toISOString()
+            };
+
+        } catch (error) {
+            return {
+                status: 'unhealthy',
+                healthy: false,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+
+    /**
+     * Get sync status
+     */
+    getSyncStatus() {
+        return {
+            inProgress: this.syncInProgress,
+            lastSync: this.lastSync,
+            sources: ragConfig.sync.sources
+        };
     }
 }
 
