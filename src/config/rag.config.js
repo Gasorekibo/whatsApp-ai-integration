@@ -19,6 +19,7 @@ export default {
         provider: process.env.VECTOR_DB_PROVIDER || 'pinecone',
 
         pinecone: {
+            enabled: true,
             apiKey: process.env.PINECON_API_KEY || process.env.PINECONE_API_KEY,
             environment: process.env.PINECONE_ENVIRONMENT || 'us-east-1',
             indexName: process.env.PINECON_INDEX_NAME || process.env.PINECONE_INDEX_NAME || 'moyo-tech-chatbot',
@@ -97,7 +98,11 @@ export default {
             enabled: true,
             synonymsEnabled: true,
             maxExpansionTerms: 3
-        }
+        },
+        deduplication: {
+        enabled: false,           // turn on if you want automatic dedup
+        similarityThreshold: 0.8  // similarity threshold for deduplication
+    }
     },
 
     // Document Chunking Strategy

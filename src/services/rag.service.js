@@ -344,12 +344,12 @@ Respond with ONLY the category name, nothing else.`;
 
         const trimmed = query.trim();
         
-        if (trimmed.length < ragConfig.query.minQueryLength) {
+        if (trimmed.length < ragConfig?.query?.minQueryLength) {
             logger.warn('Query too short', { length: trimmed.length });
             return false;
         }
 
-        if (trimmed.length > ragConfig.query.maxQueryLength) {
+        if (trimmed.length > ragConfig?.query?.maxQueryLength) {
             logger.warn('Query too long', { length: trimmed.length });
             return false;
         }
@@ -382,7 +382,7 @@ Respond with ONLY the category name, nothing else.`;
     _preprocessQuery(query) {
         let processed = query.trim();
 
-        if (ragConfig.query.preprocessing.lowercase) {
+        if (ragConfig?.query?.preprocessing?.lowercase) {
             // Don't lowercase for embeddings - they handle case
             // Just normalize whitespace
             processed = processed.replace(/\s+/g, ' ');
