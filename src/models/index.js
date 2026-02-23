@@ -5,6 +5,7 @@ import Employee from './Employees.js';
 import UserSession from './UserSession.js';
 import Content from './Content.js';
 import ServiceRequest from './ServiceRequest.js';
+import ProcessedMessage from './ProcessedMessage.js';
 import logger from '../logger/logger.js';
 
 dotenv.config()
@@ -24,7 +25,8 @@ const db = {
   Employee: Employee(sequelize, Sequelize),
   UserSession: UserSession(sequelize, Sequelize),
   Content: Content(sequelize, Sequelize),
-  ServiceRequest: ServiceRequest(sequelize, Sequelize)
+  ServiceRequest: ServiceRequest(sequelize, Sequelize),
+  ProcessedMessage: ProcessedMessage(sequelize, Sequelize)
 };
 
 // Set up model associations
