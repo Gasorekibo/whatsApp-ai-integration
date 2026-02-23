@@ -88,9 +88,9 @@ const handleWebhook = async (req, res) => {
           requestId,
           from: `***${from.slice(-4)}`
         });
-        await sendWhatsAppMessage(from, "👋 Welcome to *Moyo Tech Solutions*!\n\nWe're a leading IT consultancy in Rwanda, ready to help transform your business with cutting-edge technology solutions.\n\nLet me show you what we can do for you:");
+        await sendWhatsAppMessage(from, "👋 Welcome to *MOYOTECH Solutions*!\n\n Below is the list of our service Pick one of Your interest");
         await sendServiceList(from);
-        logger.whatsapp('info', 'Welcome message sent Successfully', {
+        logger.whatsapp('info', 'Welcome message sent Successfully to new user.', {
           requestId,
           from: `***${from.slice(-4)}`
         });
