@@ -50,12 +50,20 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     const now = new Date();
     const kigaliTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Kigali' }));
 
-    const freeSlots = calendar.freeSlots.map(s => {
-      const start = new Date(s.start);
-      const end = new Date(s.end);
-      const slotStart = start > kigaliTime ? start : kigaliTime;
+    // Minimum slot duration in milliseconds (60 minutes)
+    const MIN_SLOT_DURATION_MS = 60 * 60 * 1000;
 
-      return {
+    const freeSlots = calendar.freeSlots
+      .map(s => {
+        const start = new Date(s.start);
+        const end = new Date(s.end);
+        const slotStart = start > kigaliTime ? start : kigaliTime;
+        return { start, end, slotStart };
+      })
+      // Filter out slots where the adjusted start is at or past the end,
+      // or where less than 30 minutes remain in the slot
+      .filter(({ slotStart, end }) => (end - slotStart) >= MIN_SLOT_DURATION_MS)
+      .map(({ slotStart, end }) => ({
         isoStart: slotStart.toISOString(),
         isoEnd: end.toISOString(),
         display: slotStart.toLocaleString('en-US', {
@@ -70,8 +78,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         dayName: slotStart.toLocaleString('en-US', { weekday: 'long', timeZone: 'Africa/Kigali' }),
         date: slotStart.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Kigali' }),
         time: `${slotStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Kigali' })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Kigali' })}`
-      };
-    });
+      }));
 
     const services = await googleSheets.getActiveServices();
     logger.debug('Services loaded from ProcessWithGemini', {
