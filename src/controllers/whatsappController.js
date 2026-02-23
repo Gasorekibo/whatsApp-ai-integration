@@ -1,9 +1,9 @@
 import googlesheets from '../utils/googlesheets.js';
-import  dbConfig  from '../models/index.js';
+import dbConfig from '../models/index.js';
 import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
 import { processWithGemini } from '../helpers/whatsapp/processWithGemini.js';
 import dotenv from 'dotenv';
-import {sendServiceList} from '../helpers/whatsapp/sendServiceList.js';
+import { sendServiceList } from '../helpers/whatsapp/sendServiceList.js';
 import { Op } from 'sequelize';
 import logger from '../logger/logger.js';
 dotenv.config();
@@ -13,7 +13,7 @@ export const whatsappSessions = new Map();
 const handleWebhook = async (req, res) => {
   const requestId = req.requestId || 'webhook-' + Date.now();
   res.status(200).send('OK');
- logger.whatsapp('info', 'WhatsApp webhook received', {
+  logger.whatsapp('info', 'WhatsApp webhook received', {
     requestId,
     hasBody: !!req.body,
     bodyKeys: req.body ? Object.keys(req.body) : []
@@ -21,19 +21,19 @@ const handleWebhook = async (req, res) => {
   try {
     const value = req.body?.entry?.[0]?.changes?.[0]?.value;
     if (!value || value.statuses) {
-      logger.whatsapp('debug', 'Webhook value missing or contains statuses', { requestId }); 
+      logger.whatsapp('debug', 'Webhook value missing or contains statuses', { requestId });
       return;
-    } 
+    }
 
     const msg = value.messages?.[0];
-    if (!msg){
-      logger.whatsapp('debug', 'No messages found in webhook', { requestId }); 
+    if (!msg) {
+      logger.whatsapp('debug', 'No messages found in webhook', { requestId });
       return;
     };
     const from = msg.from;
     const messageType = msg.type;
     const messageId = msg.id;
-    
+
     logger.whatsapp('info', 'Processing WhatsApp message', {
       requestId,
       from: `***${from.slice(-4)}`,
@@ -41,23 +41,38 @@ const handleWebhook = async (req, res) => {
       messageType,
       contactName: value.contacts?.[0]?.profile?.name
     });
-    let session = await dbConfig.db.UserSession.findOne({where:{ phone: from }});
-    const isNewUser = !session;
-    
-    if (!session) {
-       logger.whatsapp('info', 'Creating new user session', {
-        requestId,
-        from: `***${from.slice(-4)}`,
-        contactName: value.contacts?.[0]?.profile?.name
+
+    // 1. Message Deduplication
+    try {
+      const [processedMsg, created] = await dbConfig.db.ProcessedMessage.findOrCreate({
+        where: { messageId },
+        defaults: { messageId, processedAt: new Date() }
       });
-      session = await dbConfig.db.UserSession?.create({
+
+      if (!created) {
+        logger.whatsapp('info', 'Message already processed, skipping', { requestId, messageId });
+        return;
+      }
+    } catch (dedupErr) {
+      // If we hit a unique constraint error here, it means another process just inserted it
+      logger.whatsapp('info', 'Concurrency detected in deduplication, skipping', { requestId, messageId });
+      return;
+    }
+
+    // 2. Atomic Session Handling
+    let [session, isNewUser] = await dbConfig.db.UserSession.findOrCreate({
+      where: { phone: from },
+      defaults: {
         name: value.contacts?.[0]?.profile?.name || 'Client',
         phone: from,
         history: [],
         state: { selectedService: null },
         lastAccess: new Date()
-      });
-       logger.whatsapp('info', 'User session created', {
+      }
+    });
+
+    if (isNewUser) {
+      logger.whatsapp('info', 'New user session created', {
         requestId,
         sessionId: session.id,
         from: `***${from.slice(-4)}`
@@ -68,14 +83,14 @@ const handleWebhook = async (req, res) => {
         sessionId: session.id,
         from: `***${from.slice(-4)}`
       });
-    }
       session.lastAccess = new Date();
       await session.save();
+    }
 
     if (msg.type === 'text') {
       const text = msg.text.body.trim().toLowerCase();
       const originalText = msg.text.body.trim();
-      
+
       logger.whatsapp('info', 'Text message received', {
         requestId,
         from: `***${from.slice(-4)}`,
@@ -96,7 +111,7 @@ const handleWebhook = async (req, res) => {
         });
         return;
       }
-      
+
       if (['menu', 'restart'].includes(text)) {
         logger.whatsapp('info', 'Resetting user session, User typed ' + text, {
           requestId,
@@ -106,7 +121,7 @@ const handleWebhook = async (req, res) => {
         await sendServiceList(from);
         session.history = [];
         session.state = { selectedService: null, pendingBooking: null };
-        whatsappSessions.delete(from); 
+        whatsappSessions.delete(from);
         await session.save();
         logger.whatsapp('info', 'Session reset complete', {
           requestId,
@@ -116,7 +131,7 @@ const handleWebhook = async (req, res) => {
       }
 
       const userEmail = session.state.email || null;
-      logger.gemini('info', 'Sending message to Gemini'+ originalText, {
+      logger.gemini('info', 'Sending message to Gemini' + originalText, {
         requestId,
         from: `***${from.slice(-4)}`,
         messageLength: originalText.length,
@@ -128,7 +143,7 @@ const handleWebhook = async (req, res) => {
       const response = await processWithGemini(from, msg.text.body, session.history, userEmail);
       const geminiDuration = Date.now() - geminiStartTime;
 
-       logger.gemini('info', 'Gemini response received', {
+      logger.gemini('info', 'Gemini response received', {
         requestId,
         from: `***${from.slice(-4)}`,
         duration: geminiDuration,
@@ -138,15 +153,15 @@ const handleWebhook = async (req, res) => {
       });
 
       if (response.showServices) {
-         logger.whatsapp('info', 'Showing service list As response from Gemini', {
+        logger.whatsapp('info', 'Showing service list As response from Gemini', {
           requestId,
           from: `***${from.slice(-4)}`
         });
         await sendServiceList(from);
         session.history.push({ role: 'user', content: msg.text.body, timestamp: new Date() });
         session.history.push({ role: 'model', content: 'Service list shown', timestamp: new Date() });
-       session.changed('history', true);
-       await session.save();
+        session.changed('history', true);
+        await session.save();
         return;
       }
 
@@ -186,7 +201,7 @@ const handleWebhook = async (req, res) => {
     else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
       const selectedId = msg.interactive.list_reply.id;
       const selectedTitle = msg.interactive.list_reply.title;
-      
+
       logger.whatsapp('info', 'Interactive list selection received', {
         requestId,
         from: `***${from.slice(-4)}`,
@@ -195,9 +210,9 @@ const handleWebhook = async (req, res) => {
       });
       const services = await googlesheets.getActiveServices();
       const service = services.find(s => s.id === msg.interactive.list_reply.id);
-      
+
       if (service) {
-         logger.whatsapp('info', 'Service selected', {
+        logger.whatsapp('info', 'Service selected', {
           requestId,
           from: `***${from.slice(-4)}`,
           serviceId: service.id,
@@ -205,13 +220,13 @@ const handleWebhook = async (req, res) => {
         });
         const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history);
         if (response.reply) await sendWhatsAppMessage(from, response.reply);
-        
+
         session.state.selectedService = service.id;
         session.history.push({ role: 'user', content: `Selected: ${service.name}`, timestamp: new Date() });
         session.history.push({ role: 'model', content: response.reply || 'Service selected', timestamp: new Date() });
         session.changed('history', true);
-       await session.save();
-       logger.whatsapp('info', 'Service selection processed Successfully', {
+        await session.save();
+        logger.whatsapp('info', 'Service selection processed Successfully', {
           requestId,
           from: `***${from.slice(-4)}`,
           serviceId: service.id
