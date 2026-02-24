@@ -68,11 +68,11 @@ app.get('/auth', (req, res) => {
 });
 
 app.get('/oauth/callback', async (req, res) => {
+  const { code } = req.query;
   logger.info('Google OAuth callback received', {
     requestId: req.requestId,
     hasCode: !!code
   });
-  const { code } = req.query;
 
   try {
     // Exchange authorization code for tokens
