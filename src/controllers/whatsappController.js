@@ -266,15 +266,14 @@ const handleWebhook = async (req, res) => {
 setInterval(async () => {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   try {
-    logger.info('Starting Old session cleanup', { cutoffTime: cutoff });
     await dbConfig.db.UserSession.destroy({ where: { lastAccess: { [Op.lt]: cutoff } } });
+    
+    // ✅ Add this
+    await dbConfig.db.ProcessedMessage.destroy({ where: { processedAt: { [Op.lt]: cutoff } } });
+    
     whatsappSessions.clear();
   } catch (err) {
-    logger.error('❌Session Cleanup error', {
-      error: err.message,
-      stack: err.stack,
-      errorType: err.constructor.name
-    });
+    logger.error('❌Session Cleanup error', { error: err.message });
   }
 }, 60 * 60 * 1000);
 
