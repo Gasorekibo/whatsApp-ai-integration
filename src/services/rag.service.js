@@ -518,10 +518,10 @@ Respond with ONLY the category name, nothing else.`;
             filter.type = { $in: types };
         }
 
-        // Language filter (prioritize detected language, fallback to English)
-        if (language !== 'en') {
-            filter.language = { $in: [language, 'en'] };
-        }
+        // Always filter by language — when English, exclude rw/fr docs to prevent language bleed
+        filter.language = language !== 'en'
+            ? { $in: [language, 'en'] }
+            : { $in: ['en'] };
 
         return filter;
     }
