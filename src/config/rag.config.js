@@ -71,8 +71,14 @@ export default {
     retrieval: {
         topK: 8, // Increased from 5 for better recall
         minScore: 0.65, // Similarity threshold (0-1)
+	maxContextChunks: 5,
         includeMetadata: true,
         includeValues: false,
+        maxContextChunks: 5,
+        deduplication: {
+            enabled: false,
+            similarityThreshold: 0.95
+        },
 
         // Reranking configuration (optional but recommended)
         reranking: {
@@ -137,6 +143,7 @@ export default {
             includePageTitle: true
         }
     },
+
 
     // Knowledge Base Metadata Schema
     metadata: {
@@ -221,7 +228,14 @@ export default {
             }
         }
     },
-
+	// Query Validation Configuration
+   query: {
+   	 minQueryLength: 3,
+    	maxQueryLength: 1000,
+    	preprocessing: {
+        lowercase: false  // embeddings handle casing internally
+    			}
+},
     // Language Detection
     languageDetection: {
         enabled: true,
