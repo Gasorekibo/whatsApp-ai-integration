@@ -247,7 +247,7 @@ export default {
         fallbackToPatterns: true,
         
         patterns: {
-            rw: [/muraho/i, /ese/i, /amakuru/i, /mwaramutse/i, /urakoze/i],
+            rw: [/muraho/i, /amakuru/i, /mwaramutse/i, /urakoze/i],
             fr: [/bonjour/i, /salut/i, /merci/i, /au revoir/i, /comment/i]
         }
     },

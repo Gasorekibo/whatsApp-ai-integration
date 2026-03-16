@@ -12,6 +12,24 @@ dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const EMPLOYEE_EMAIL = process.env.EMPLOYEE_EMAIL;
 
+// Africa/Kigali is always UTC+2, no DST — avoids relying on server ICU data
+const KIGALI_OFFSET_MS = 2 * 60 * 60 * 1000;
+const WEEK_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function toKigaliDisplay(date) {
+  const k = new Date(date.getTime() + KIGALI_OFFSET_MS);
+  const h24 = k.getUTCHours();
+  const min = k.getUTCMinutes().toString().padStart(2, '0');
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 || 12;
+  return {
+    dayName: WEEK_DAYS[k.getUTCDay()],
+    date: `${MONTHS[k.getUTCMonth()]} ${k.getUTCDate()}, ${k.getUTCFullYear()}`,
+    time: `${h12}:${min} ${ampm}`
+  };
+}
+
 // Flag to enable/disable RAG (for gradual rollout)
 const USE_RAG = process.env.USE_RAG !== 'false'; // Default to true
 
@@ -63,22 +81,18 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       // Filter out slots where the adjusted start is at or past the end,
       // or where less than 30 minutes remain in the slot
       .filter(({ slotStart, end }) => (end - slotStart) >= MIN_SLOT_DURATION_MS)
-      .map(({ slotStart, end }) => ({
-        isoStart: slotStart.toISOString(),
-        isoEnd: end.toISOString(),
-        display: slotStart.toLocaleString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          timeZone: 'Africa/Kigali'
-        }),
-        dayName: slotStart.toLocaleString('en-US', { weekday: 'long', timeZone: 'Africa/Kigali' }),
-        date: slotStart.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Kigali' }),
-        time: `${slotStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Kigali' })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Kigali' })}`
-      }));
+      .map(({ slotStart, end }) => {
+        const s = toKigaliDisplay(slotStart);
+        const e = toKigaliDisplay(end);
+        return {
+          isoStart: slotStart.toISOString(),
+          isoEnd: end.toISOString(),
+          display: `${s.dayName}, ${s.date} at ${s.time}`,
+          dayName: s.dayName,
+          date: s.date,
+          time: `${s.time} - ${e.time}`
+        };
+      });
 
     const services = await googleSheets.getActiveServices();
     logger.debug('Services loaded from ProcessWithGemini', {
@@ -92,15 +106,8 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`
     ).join('\n');
 
-    const currentDate = new Date().toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZone: 'Africa/Kigali'
-    });
+    const { dayName: cdDay, date: cdDate, time: cdTime } = toKigaliDisplay(now);
+    const currentDate = `${cdDay}, ${cdDate} at ${cdTime}`;
 
     // --- TOOL DEFINITIONS ---
     const tools = [
