@@ -715,7 +715,10 @@ JSON Output:`;
         const langName = {
             en: 'English',
             fr: 'French',
-            rw: 'Kinyarwanda'
+            rw: 'Kinyarwanda',
+            de: 'German',
+            sw: 'Swahili',
+            kis: 'Swahili'
         }[language] || 'English';
 
         const intentGuidance = {

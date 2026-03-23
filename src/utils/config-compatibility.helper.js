@@ -138,8 +138,10 @@ export function getIntentConfig(ragConfig) {
  */
 export function getLanguageConfig(ragConfig) {
     const patterns = getConfigValue(ragConfig, 'languageDetection.patterns', getConfigValue(ragConfig, 'language.patterns', {
-        rw: [/\b(muraho|mwaramutse|mwiriwe|bite|ego|oya|urakoze|amakuru|ese)\b/i],
-        fr: [/\b(bonjour|salut|merci|oui|non|comment|quel|quels|pourquoi|combien)\b/i]
+        rw: [/\b(muraho|mwaramutse|mwiriwe|bite|ego|oya|urakoze|amakuru|ese|yego|neza|nonese|ndashaka|muri|natwe|murakoze)\b/i],
+        fr: [/\b(bonjour|salut|merci|oui|non|comment|quel|quels|pourquoi|combien|je|vous|nous|avec|pour)\b/i],
+        de: [/\b(hallo|guten|morgen|danke|bitte|ja|nein|wie|was|wer|warum|können|möchte|ich|sie|wir)\b/i],
+        sw: [/\b(habari|karibu|asante|ndiyo|hapana|samahani|tafadhali|ninaweza|nataka|huduma|sawa)\b/i]
     }));
 
     const defaultLanguage = getConfigValue(ragConfig, 'languageDetection.defaultLanguage', getConfigValue(ragConfig, 'language.defaultLanguage', 'en'));

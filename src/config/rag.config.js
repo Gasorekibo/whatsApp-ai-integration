@@ -240,7 +240,7 @@ export default {
     languageDetection: {
         enabled: true,
         defaultLanguage: 'en',
-        supportedLanguages: ['en', 'fr', 'rw'],
+        supportedLanguages: ['en', 'fr', 'rw', 'de', 'sw'],
         
         // Use proper language detection library
         useFranc: true, // If you install 'franc' package
@@ -258,7 +258,9 @@ export default {
                 /\b(murakaza|nagufasha|uyu|munsi|dushobora|gutera|imbere)\b/i,
                 /\b(kwa|ku wa|mbere|kabiri|gatatu|kane|gatanu|cyumweru)\b/i
             ],
-            fr: [/\b(bonjour|salut|merci|au revoir|comment|oui|non|quel|pourquoi|combien)\b/i]
+            fr: [/\b(bonjour|salut|merci|au revoir|comment|oui|non|quel|pourquoi|combien|je|vous|nous|votre|notre|avec|pour)\b/i],
+            de: [/\b(hallo|guten|morgen|tag|abend|danke|bitte|ja|nein|wie|was|wer|warum|können|möchte|ich|sie|wir|ihr|sprechen|dienst)\b/i],
+            sw: [/\b(habari|karibu|asante|ndiyo|hapana|samahani|tafadhali|ninaweza|nataka|kwa|hii|hiyo|huduma|bei|wapi|sijui|sawa)\b/i]
         }
     },
 

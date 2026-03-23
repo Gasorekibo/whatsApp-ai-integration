@@ -48,11 +48,10 @@ export async function sendServiceList(to, locale = 'en') {
 
     if (!res.ok) {
       logger.error('Interactive list send failed', { data });
-      let fallbackText = "Welcome to Moyo Tech! How can we help you today?\n\n";
+      let fallbackText = t('select_service_body') + "\n\n";
       services.forEach((s, i) => {
         fallbackText += `${i + 1}. ${s.short || s.name}\n`;
       });
-      fallbackText += "\nReply with a number to select a service!";
       await sendWhatsAppMessage(to, fallbackText);
     } else {
       logger.info('Service list sent successfully');
