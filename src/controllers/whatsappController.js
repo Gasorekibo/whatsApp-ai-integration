@@ -119,8 +119,6 @@ const handleWebhook = async (req, res) => {
           });
           // Detect language from the user's very first message
           locale = ragService.detectLanguage(originalText, []) || 'en';
-          const t_new = i18next.getFixedT(locale);
-          await sendWhatsAppMessage(from, t_new('welcome'));
           await sendServiceList(from, locale);
           return;
         }
@@ -131,6 +129,9 @@ const handleWebhook = async (req, res) => {
             from: `***${from.slice(-4)}`,
             command: text
           });
+          // Use locale from last known history entry, or re-detect from current message
+          const lastHistory = session.history?.slice().reverse().find(h => h.language);
+          locale = lastHistory?.language || ragService.detectLanguage(originalText, session.history) || 'en';
           await sendServiceList(from, locale);
           session.history = [];
           session.state = { selectedService: null, pendingBooking: null };
