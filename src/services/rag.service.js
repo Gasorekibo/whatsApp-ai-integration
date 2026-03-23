@@ -323,9 +323,15 @@ JSON Output:`;
             // Preprocess query if needed
             const processedQuery = this._preprocessQuery(userMessage);
 
+            // Translate query to English for retrieval — documents are stored in English only.
+            // The original message is still used for the AI response language.
+            const queryForEmbedding = language !== 'en'
+                ? await this._translateQueryToEnglish(processedQuery, language)
+                : processedQuery;
+
             // Generate query embedding
             const queryEmbedding = await embeddingService.generateEmbedding(
-                processedQuery,
+                queryForEmbedding,
                 ragConfig.embedding.queryTaskType
             );
 
@@ -547,7 +553,7 @@ JSON Output:`;
      * @param {string} language - Detected language
      * @returns {object} - Metadata filter
      */
-    buildMetadataFilter(intent, language) {
+    buildMetadataFilter(intent, _language) {
         const filter = {};
 
         // Map intent to document types
@@ -567,10 +573,9 @@ JSON Output:`;
             filter.type = { $in: types };
         }
 
-        // Always filter by language — when English, exclude rw/fr docs to prevent language bleed
-        filter.language = language !== 'en'
-            ? { $in: [language, 'en'] }
-            : { $in: ['en'] };
+        // All documents are stored in English — always retrieve English docs regardless of user's language.
+        // Language filtering by user language would exclude all results since no non-English docs exist.
+        filter.language = { $in: ['en'] };
 
         return filter;
     }
@@ -746,6 +751,37 @@ ALWAYS return your response in the following JSON format:
 
 Identify the language you used for the 'reply' in the 'language' field.
 If information is not available, politely say so and offer to help with something else.`;
+    }
+
+    /**
+     * Translate a non-English query to English for vector search.
+     * The original query is preserved for the AI response language.
+     * @param {string} query - User message in any language
+     * @param {string} language - Detected language code
+     * @returns {Promise<string>} - English translation, or original if translation fails
+     * @private
+     */
+    async _translateQueryToEnglish(query, language) {
+        try {
+            const model = embeddingService.genAI.getGenerativeModel({
+                model: 'gemini-2.0-flash'
+            });
+
+            const result = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [{ text: `Translate the following message to English. Output ONLY the translated text, nothing else.\n\nMessage: ${query}` }]
+                }],
+                generationConfig: { temperature: 0, maxOutputTokens: 200 }
+            });
+
+            const translated = result.response.text().trim();
+            logger.debug('Query translated for retrieval', { original: query, translated, language });
+            return translated || query;
+        } catch (err) {
+            logger.warn('Query translation failed, using original', { error: err.message });
+            return query;
+        }
     }
 
     /**
