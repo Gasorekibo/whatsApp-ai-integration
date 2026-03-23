@@ -59,45 +59,49 @@ class RAGService {
     }
 
     /**
-     * Classify user intent from message using LLM
+     * Classify user intent and detect language from message using LLM
      * @param {string} message - User message
-     * @returns {Promise<string>} - Intent type
+     * @param {Array} history - Conversation history for context
+     * @returns {Promise<object>} - { intent, language }
      */
-    async classifyIntent(message) {
+    async classifyQuery(message, history = []) {
         try {
             const normalizedMessage = message.trim().toLowerCase();
 
-            // Check cache first
+            // Check intent cache first
             if (this.intentCache?.has(normalizedMessage)) {
                 logger.debug('Intent cache hit');
-                return this.intentCache.get(normalizedMessage);
+                const cached = this.intentCache.get(normalizedMessage);
+                return cached;
             }
 
-            // Quick pattern matching for common intents
+            // Quick pattern matching for common intents (always 'general' for now)
             const quickIntent = this._quickIntentCheck(normalizedMessage);
             if (quickIntent) {
-                this._cacheIntent(normalizedMessage, quickIntent);
-                return quickIntent;
+                const result = { intent: quickIntent, language: this.detectLanguage(message) };
+                this._cacheIntent(normalizedMessage, result);
+                return result;
             }
 
-            // Keyword-based intent detection (before LLM call)
+            // Keyword-based intent detection
             const keywordIntent = this._detectIntentByKeywords(message);
             if (keywordIntent) {
-                this._cacheIntent(normalizedMessage, keywordIntent);
-                return keywordIntent;
+                const result = { intent: keywordIntent, language: this.detectLanguage(message) };
+                this._cacheIntent(normalizedMessage, result);
+                return result;
             }
 
-            // Use LLM for complex classification
-            const llmIntent = await this._classifyWithLLM(message);
-            this._cacheIntent(normalizedMessage, llmIntent);
+            // Use LLM for combined classification and language detection
+            const classification = await this._classifyWithLLM(message, history);
+            this._cacheIntent(normalizedMessage, classification);
 
-            return llmIntent;
+            return classification;
 
         } catch (error) {
-            logger.warn('Intent classification failed, falling back to general', {
+            logger.warn('Query classification failed, falling back', {
                 error: error.message
             });
-            return 'general';
+            return { intent: 'general', language: this.detectLanguage(message) };
         }
     }
 
@@ -152,49 +156,80 @@ class RAGService {
     }
 
     /**
-     * Classify intent using LLM
+     * Classify intent and language using LLM
      * @private
      */
-    async _classifyWithLLM(message) {
-        const model = embeddingService.genAI.getGenerativeModel({
-            model: this.intentConfig.llm.model
-        });
+    async _classifyWithLLM(message, history = []) {
+        try {
+            const model = embeddingService.genAI.getGenerativeModel({
+                model: this.intentConfig.llm.model || "gemini-2.0-flash"
+            });
 
-        const categories = this.intentConfig.categories.join(', ');
-        
-        const prompt = `Classify the following user message into ONE of these categories: ${categories}
+            const categories = this.intentConfig.categories.join(', ');
+            
+            // Format history for context
+            const historyContext = history.slice(-3).map(h => 
+                `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`
+            ).join('\n');
+
+            const prompt = `Classify the following user message for a professional IT consultancy (Moyo Tech Solutions).
+Categories: ${categories}
+Supported Languages: en (English), fr (French), rw (Kinyarwanda), kis (Kiswahili), de (German), sw (Kiswahili)
+
+${historyContext ? `Conversation Context (last 3 messages):\n${historyContext}\n` : ''}
 
 User Message: "${message}"
 
 Rules:
-- booking: User wants to schedule, book, or reserve something
-- service_inquiry: User asks what services are offered or technical capabilities  
-- faq: User asks about pricing, location, hours, how things work
-- payment: User asks about payment, costs, deposits, or fees
-- support: User has a problem or needs technical help
+- booking: Scheduling, appointment requests, or consultation booking
+- service_inquiry: Questions about offered services or technical capabilities
+- faq: Pricing, location, hours, how things work
+- payment: Payment methods, deposits, or fees
+- support: Technical issues or help requests
 - general: Greetings, small talk, or unclear intent
 
-Respond with ONLY the category name, nothing else.`;
+Respond ONLY with a JSON object. NO conversational text of any kind.
+Example: {"intent": "general", "language": "en"}
 
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: this.intentConfig.llm.temperature,
-                maxOutputTokens: this.intentConfig.llm.maxTokens
+JSON Output:`;
+
+            const result = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0,
+                    maxOutputTokens: 100,
+                    responseMimeType: "application/json"
+                }
+            });
+
+            const responseText = result.response.text();
+            
+            // Extract JSON block even more robustly
+            let parsed;
+            try {
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
+                parsed = JSON.parse(jsonToParse.trim());
+            } catch (pErr) {
+                logger.warn('LLM JSON parse error, using pattern fallback', { response: responseText });
+                return {
+                    intent: 'general',
+                    language: this.detectLanguage(message, history)
+                };
             }
-        });
 
-        const response = await result.response;
-        const intent = response.text().trim().toLowerCase();
+            // Validate response
+            const intent = parsed.intent?.toLowerCase();
+            const language = parsed.language?.toLowerCase();
 
-        // Validate response
-        if (this.intentConfig.categories.includes(intent)) {
-            logger.debug('LLM classified intent', { intent });
-            return intent;
+            return {
+                intent: this.intentConfig.categories.includes(intent) ? intent : 'general',
+                language: ['en', 'fr', 'rw', 'kis', 'de', 'sw'].includes(language) ? language : 'en'
+            };
+        } catch (error) {
+            logger.error('LLM classification error', { error: error.message });
+            return { intent: 'general', language: 'en' };
         }
-
-        logger.warn('Invalid LLM intent, using general', { llmResponse: intent });
-        return 'general';
     }
 
     /**
@@ -214,26 +249,42 @@ Respond with ONLY the category name, nothing else.`;
     }
 
     /**
-     * Detect language from message
+     * Detect language from message (Pattern-based fallback)
      * @param {string} message - User message
+     * @param {Array} history - Optional history for context
      * @returns {string} - Language code (en, fr, rw)
      */
-    detectLanguage(message) {
+    detectLanguage(message, history = []) {
         const patterns = this.languageConfig.patterns;
         const messageLower = message.toLowerCase();
 
-        // Check each language pattern
+        // 1. Check current message against patterns
         for (const [lang, regexList] of Object.entries(patterns)) {
             for (const regex of regexList) {
                 if (regex.test(messageLower)) {
-                    logger.debug('Language detected', { language: lang });
+                    logger.debug('Language detected via patterns', { language: lang });
                     return lang;
                 }
             }
         }
 
-        // Default language
-        return this.languageConfig.defaultLanguage;
+        // 2. Fallback to history — only read user messages to avoid AI response language bleeding back in
+        if (history.length > 0) {
+            for (let i = history.length - 1; i >= 0; i--) {
+                if (history[i].role === 'user' && history[i].language && history[i].language !== 'en') {
+                    return history[i].language;
+                }
+            }
+            // Second pass: accept any user language tag including 'en'
+            for (let i = history.length - 1; i >= 0; i--) {
+                if (history[i].role === 'user' && history[i].language) {
+                    return history[i].language;
+                }
+            }
+        }
+
+        // 3. Default language
+        return this.languageConfig.defaultLanguage || 'en';
     }
 
     /**
@@ -256,11 +307,9 @@ Respond with ONLY the category name, nothing else.`;
 
             const startTime = Date.now();
 
-            // Classify intent and detect language
-            const [intent, language] = await Promise.all([
-                this.classifyIntent(userMessage),
-                Promise.resolve(this.detectLanguage(userMessage))
-            ]);
+            // Classify intent and detect language (Unified LLM call)
+            const classification = await this.classifyQuery(userMessage, conversationHistory);
+            const { intent, language } = classification;
 
             logger.debug('Query classified', {
                 intent,
@@ -327,8 +376,8 @@ Respond with ONLY the category name, nothing else.`;
                 query: userMessage?.substring(0, 50)
             });
 
-            // Return fallback context
-            return this._getFallbackContext(error);
+            // Return fallback context — preserve detected language so the prompt still uses the right language
+            return this._getFallbackContext(error, userMessage, conversationHistory);
         }
     }
 
@@ -675,7 +724,10 @@ Respond with ONLY the category name, nothing else.`;
 
         return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
 
-RESPONSE LANGUAGE: ${langName}
+MANDATORY LANGUAGE: ${langName}
+- You MUST respond ONLY in ${langName}. Do NOT switch to English or any other language.
+- Even for short messages, greetings, or technical terms, always reply in ${langName}.
+- EXCEPTION: Only switch language if the user EXPLICITLY says "respond in [language]" or "speak [language]".
 
 CORE RULES:
 - Use ONLY information from the "RELEVANT INFORMATION" section above
@@ -685,6 +737,14 @@ CORE RULES:
 - Be warm, professional, and customer-focused
 - ${intentGuidance}
 
+OUTPUT FORMAT:
+ALWAYS return your response in the following JSON format:
+{
+  "language": "iso_code", // en, fr, rw, kis, de
+  "reply": "your response text here"
+}
+
+Identify the language you used for the 'reply' in the 'language' field.
 If information is not available, politely say so and offer to help with something else.`;
     }
 
@@ -692,10 +752,11 @@ If information is not available, politely say so and offer to help with somethin
      * Get fallback context on error
      * @private
      */
-    _getFallbackContext(error) {
+    _getFallbackContext(error, message = '', history = []) {
+        const language = message ? this.detectLanguage(message, history) : 'en';
         return {
             intent: 'general',
-            language: 'en',
+            language,
             context: '',
             results: [],
             relevantDocs: 0,

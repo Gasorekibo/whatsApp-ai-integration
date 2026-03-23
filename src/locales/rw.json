@@ -1,0 +1,21 @@
+{
+  "welcome": "👋 Murakaza neza kuri *MOYOTECH Solutions*!\n\n Aha munsi hari urutonde rwa serivisi zacu. Hitamo iyo wifuza:",
+  "service_not_available": "Bihangane, iyo serivisi ntabwo ikiboneka. Reka nkwereke serivisi dufite ubu.",
+  "generic_error": "Bihangane, hari ikibazo cyabaye mu gutunganya ubutumwa bwawe. Ongera ugerageze nyuma.",
+  "no_services": "Bihangane, nta serivisi zihari ubu. Mwaduhamagara mu buryo butaziguye.",
+  "view_services": "Reba Serivisi",
+  "our_services": "Serivisi Zacu",
+  "select_service_body": "Murakaza neza! Hitamo serivisi wifuza:",
+  "select_service_footer": "Turi hano kugira ngo tugufashe gutera imbere",
+  "rate_limit_error": "🔄 Dufite ubusabe bwinshi ubu. Ongera ugerageze mu kanya gato cyangwa wandike 'menu' kugira ngo urebe serivisi dushobora kugufasha.",
+  "connection_error": "Mfite ikibazo cyo guhuza ubu. Ongera ugerageze mu kanya gato!",
+  "auth_success_title": "Iyandikisha ryagenze neza!",
+  "auth_success_connected_as": "Winjiye nka:",
+  "auth_success_email": "Imeri:",
+  "auth_success_info": "Ushobora gukoresha serivisi zo guhuza ubu.",
+  "auth_success_go_dashboard": "Jya kuri Dashboard",
+  "auth_failure_title": "Iyandikisha ntabwo ryagenze neza",
+  "auth_failure_info": "Hari ikibazo cyabaye mu gihe cy'iyandikisha.",
+  "auth_failure_retry": "Ongera ugerageze.",
+  "auth_failure_button": "Ongera uugerageze kwiyandikisha"
+}

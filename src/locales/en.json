@@ -1,0 +1,21 @@
+{
+  "welcome": "👋 Welcome to *MOYOTECH Solutions*!\n\n Below is the list of our services. Pick one of your interest:",
+  "service_not_available": "Sorry, that service is no longer available. Let me show you our current services.",
+  "generic_error": "Sorry, something went wrong while processing your message. Please try again later.",
+  "no_services": "Sorry, no services are currently available. Please contact us directly.",
+  "view_services": "View Services",
+  "our_services": "Our Services",
+  "select_service_body": "Welcome! Please select a service:",
+  "select_service_footer": "We're here to help you grow",
+  "rate_limit_error": "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.",
+  "connection_error": "I'm having trouble connecting right now. Please try again in a moment!",
+  "auth_success_title": "Authentication Successful!",
+  "auth_success_connected_as": "Connected as:",
+  "auth_success_email": "Email:",
+  "auth_success_info": "You can now use the sync services endpoint.",
+  "auth_success_go_dashboard": "Go to Dashboard",
+  "auth_failure_title": "Authentication Failed",
+  "auth_failure_info": "There was an error during authentication.",
+  "auth_failure_retry": "Please try again.",
+  "auth_failure_button": "Retry Authentication"
+}
