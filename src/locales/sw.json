@@ -1,0 +1,21 @@
+{
+  "welcome": "👋 Karibu kwa *MOYOTECH Solutions*!\n\n Hapa chini ni orodha ya huduma zetu. Chagua moja unayopenda:",
+  "service_not_available": "Samahani, huduma hiyo haipatikani tena. Hebu nikuonyeshe huduma zetu za sasa.",
+  "generic_error": "Samahani, kuna kitu kimeenda vibaya wakati wa kuchakata ujumbe wako. Tafadhali jaribu tena baadaye.",
+  "no_services": "Samahani, hakuna huduma zinazopatikana kwa sasa. Tafadhali wasiliana nasi moja kwa moja.",
+  "view_services": "Angalia Huduma",
+  "our_services": "Huduma Zetu",
+  "select_service_body": "Karibu! Tafadhali chagua huduma:",
+  "select_service_footer": "Tuko hapa kukusaidia kukua",
+  "rate_limit_error": "🔄 Tunapokea maombi mengi kwa sasa. Tafadhali jaribu tena hivi punde au andika 'menu' ili kuona huduma zetu.",
+  "connection_error": "Nina tatizo la kuunganishwa kwa sasa. Tafadhali jaribu tena hivi punde!",
+  "auth_success_title": "Uthibitishaji Umefanikiwa!",
+  "auth_success_connected_as": "Imeunganishwa kama:",
+  "auth_success_email": "Barua pepe:",
+  "auth_success_info": "Sasa unaweza kutumia kituo cha huduma za usawazishaji.",
+  "auth_success_go_dashboard": "Nenda kwenye Dashibodi",
+  "auth_failure_title": "Uthibitishaji Umefeli",
+  "auth_failure_info": "Kulikuwa na hitilafu wakati wa uthibitishaji.",
+  "auth_failure_retry": "Tafadhali jaribu tena.",
+  "auth_failure_button": "Jaribu tena Uthibitishaji"
+}

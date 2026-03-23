@@ -247,8 +247,18 @@ export default {
         fallbackToPatterns: true,
         
         patterns: {
-            rw: [/muraho/i, /amakuru/i, /mwaramutse/i, /urakoze/i],
-            fr: [/bonjour/i, /salut/i, /merci/i, /au revoir/i, /comment/i]
+            rw: [
+                /\b(muraho|mwaramutse|mwiriwe|bite|ego|oya|urakoze|amakuru|ese)\b/i,
+                /\b(yego|neza|nonese|ndashaka|muri|natwe|nagufasha|mbwira)\b/i,
+                /\b(dore|niba|kugira|cyane|kumenya|mutanga|izihe|none|tubigenze)\b/i,
+                /\b(nsubiza|mukinyarwanda|ntabwo|ndimo|kumva|ibyo|urikuvuga)\b/i,
+                /\b(murakoze|inama|ubujyanama|amasaha|izina|sosiyete|mwakunda)\b/i,
+                /\b(ndashaka|byinshi|kuri|service|serivisi|nimero|nimere)\b/i,
+                /\b(kubika|kugisha|selected|mukoresheje|ifatabuguzi|amafaranga)\b/i,
+                /\b(murakaza|nagufasha|uyu|munsi|dushobora|gutera|imbere)\b/i,
+                /\b(kwa|ku wa|mbere|kabiri|gatatu|kane|gatanu|cyumweru)\b/i
+            ],
+            fr: [/\b(bonjour|salut|merci|au revoir|comment|oui|non|quel|pourquoi|combien)\b/i]
         }
     },
 

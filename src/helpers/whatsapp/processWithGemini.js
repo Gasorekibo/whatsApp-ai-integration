@@ -12,21 +12,14 @@ dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const EMPLOYEE_EMAIL = process.env.EMPLOYEE_EMAIL;
 
-// Africa/Kigali is always UTC+2, no DST — avoids relying on server ICU data
-const KIGALI_OFFSET_MS = 2 * 60 * 60 * 1000;
-const WEEK_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+import { DateTime } from 'luxon';
 
-function toKigaliDisplay(date) {
-  const k = new Date(date.getTime() + KIGALI_OFFSET_MS);
-  const h24 = k.getUTCHours();
-  const min = k.getUTCMinutes().toString().padStart(2, '0');
-  const ampm = h24 >= 12 ? 'PM' : 'AM';
-  const h12 = h24 % 12 || 12;
+function toKigaliDisplay(date, locale = 'en') {
+  const dt = DateTime.fromJSDate(date).setZone('Africa/Kigali').setLocale(locale);
   return {
-    dayName: WEEK_DAYS[k.getUTCDay()],
-    date: `${MONTHS[k.getUTCMonth()]} ${k.getUTCDate()}, ${k.getUTCFullYear()}`,
-    time: `${h12}:${min} ${ampm}`
+    dayName: dt.toFormat('EEEE'),
+    date: dt.toFormat('LLLL d, yyyy'),
+    time: dt.toFormat('t')
   };
 }
 
@@ -153,11 +146,13 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     ];
 
     let prompt;
+    let detectedLanguage = 'en';
 
     // RAG-based approach
     if (USE_RAG) {
       try {
         const retrievedData = await ragService.retrieveContext(message, history);
+        detectedLanguage = retrievedData.language || 'en';
 
         // Build dynamic data that changes frequently
         const dynamicData = {
@@ -172,10 +167,12 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         logger.info(`RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
-        prompt = await buildFallbackPrompt(slotDetails, currentDate);
+        detectedLanguage = ragService.detectLanguage(message, history) || 'en';
+        prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
       }
     } else {
-      prompt = await buildFallbackPrompt(slotDetails, currentDate);
+      detectedLanguage = ragService.detectLanguage(message, history) || 'en';
+      prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
     }
 
     const model = genAI.getGenerativeModel({
@@ -216,7 +213,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
             }
           });
           // Return early to handle special UI response
-          return { reply: null, showServices: true, showSlots: false, freeSlots };
+          return { reply: null, showServices: true, showSlots: false, freeSlots, language: detectedLanguage };
         }
 
         if (call.name === "initiate_payment") {
@@ -327,10 +324,47 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       // Send tool results back to Gemini to get the final textual response
       result = await chat.sendMessage(toolResults);
       response = result.response;
-      text = response.text();
+      text = response.text(); // Update text for next loop iteration or final parsing
     }
 
-    return { reply: text, showServices: false, showSlots: false, freeSlots };
+    const responseText = result.response.text();
+    let parsedResult;
+
+    try {
+      // Try to find JSON block in case model added text around it
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
+      parsedResult = JSON.parse(jsonToParse);
+    } catch (parseErr) {
+      logger.error('Gemini JSON parse error, attempting fallback', {
+        error: parseErr.message,
+        text: responseText.slice(0, 50) + '...'
+      });
+      // Fallback: Treat as plain text if it's not valid JSON
+      parsedResult = {
+        reply: responseText,
+        language: detectedLanguage, // Use detectedLanguage as fallback
+        showServices: false,
+        showSlots: false
+      };
+    }
+
+    // Final cleanup of the reply and language
+    let finalReply = parsedResult.reply;
+    let finalLanguage = parsedResult.language || detectedLanguage || 'en';
+
+    // If Gemini failed to return a JSON with a reply, use the text it returned
+    if (!finalReply && text) {
+      finalReply = text;
+    }
+
+    return {
+      reply: finalReply,
+      language: finalLanguage,
+      showServices: parsedResult.showServices || false,
+      showSlots: parsedResult.showSlots || false,
+      freeSlots: parsedResult.freeSlots || []
+    };
 
   } catch (err) {
     logger.error("Gemini processing error", {
@@ -370,16 +404,35 @@ export async function processWithGemini(phoneNumber, message, history = [], user
  * Build fallback prompt using original approach
  * Used when RAG is disabled or fails
  */
-async function buildFallbackPrompt(slotDetails, currentDate) {
-  const services = await googleSheets.getActiveServices();
-  const servicesList = services.map(s =>
-    `• ${s.name}${s.details ? ' - ' + s.details : ''}`
-  ).join('\n');
+async function buildFallbackPrompt(slotDetails, currentDate, locale = 'en') {
+  const services = await dbConfig.db.Content.findOne();
+  const servicesList = services ? services.services : 'Consultation services';
 
-  return systemInstruction
-    .replace('{{SERVICES_LIST}}', servicesList)
-    .replace('{{AVAILABLE_SLOTS}}', slotDetails)
-    .replace('{{CURRENT_DATE}}', currentDate)
-    .replace('{{DEPOSIT_AMOUNT}}', process.env.DEPOSIT_AMOUNT || '5,000')
-    .replace('{{CURRENCY}}', process.env.CURRENCY || 'RWF');
+  return `
+You are a warm, professional AI assistant for Moyo Tech Solutions — a leading IT consultancy in Rwanda.
+
+CORE BEHAVIOR:
+- Be friendly but brief and to-the-point
+- Keep responses under 3 sentences unless asking follow-up questions
+- Get straight to what the user needs
+
+RESPONSE LANGUAGE: ${locale}
+
+SERVICES WE OFFER:
+${servicesList}
+
+AVAILABLE CONSULTATION SLOTS:
+${slotDetails}
+
+Current Date: ${currentDate}
+
+OUTPUT FORMAT:
+ALWAYS return your response in the following JSON format:
+{
+  "language": "${locale}",
+  "reply": "your response text here"
+}
+
+If information is not available, politely say so.
+`;
 }

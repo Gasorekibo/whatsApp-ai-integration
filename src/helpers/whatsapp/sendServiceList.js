@@ -3,10 +3,14 @@ import { sendWhatsAppMessage } from './sendWhatsappMessage.js';
 import dotenv from 'dotenv';
 import logger from '../../logger/logger.js';
 dotenv.config();
-export async function sendServiceList(to) {
+import i18next from '../../config/i18n.js';
+
+export async function sendServiceList(to, locale = 'en') {
   const services = await googleSheet.getActiveServices();
+  const t = i18next.getFixedT(locale);
+
   if (services.length === 0) {
-    await sendWhatsAppMessage(to, "Sorry, no services are currently available. Please contact us directly.");
+    await sendWhatsAppMessage(to, t('no_services'));
     return;
   }
 
@@ -30,12 +34,12 @@ export async function sendServiceList(to) {
         type: 'interactive',
         interactive: {
           type: 'list',
-          header: { type: 'text', text: 'Moyo Tech Solutions' },
-          body: { text: 'Welcome! Please select a service:' },
-          footer: { text: "We're here to help you grow" },
+          header: { type: 'text', text: 'MOYOTECH Solutions' },
+          body: { text: t('select_service_body') },
+          footer: { text: t('select_service_footer') },
           action: {
-            button: 'View Services',
-            sections: [{ title: 'Our Services', rows: LIST_ROWS }]
+            button: t('view_services'),
+            sections: [{ title: t('our_services'), rows: LIST_ROWS }]
           }
         }
       })
