@@ -18,12 +18,12 @@ import { getCacheConfig, getIntentConfig, getLanguageConfig } from '../utils/con
 class RAGService {
     constructor() {
         this.initialized = false;
-        
+
         // Cache for intent classification using compatibility helper
         const cacheConfig = getCacheConfig(ragConfig, 'intent');
         this.intentCache = cacheConfig.enabled ? new Map() : null;
         this.intentCacheConfig = cacheConfig;
-        
+
         // Get intent and language configs
         this.intentConfig = getIntentConfig(ragConfig);
         this.languageConfig = getLanguageConfig(ragConfig);
@@ -134,7 +134,7 @@ class RAGService {
         let maxMatches = 0;
 
         for (const [intent, intentKeywords] of Object.entries(keywords)) {
-            const matches = intentKeywords.filter(kw => 
+            const matches = intentKeywords.filter(kw =>
                 messageLower.includes(kw.toLowerCase())
             ).length;
 
@@ -166,9 +166,9 @@ class RAGService {
             });
 
             const categories = this.intentConfig.categories.join(', ');
-            
+
             // Format history for context
-            const historyContext = history.slice(-3).map(h => 
+            const historyContext = history.slice(-3).map(h =>
                 `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`
             ).join('\n');
 
@@ -203,7 +203,7 @@ JSON Output:`;
             });
 
             const responseText = result.response.text();
-            
+
             // Extract JSON block even more robustly
             let parsed;
             try {
@@ -398,7 +398,7 @@ JSON Output:`;
         }
 
         const trimmed = query.trim();
-        
+
         if (trimmed.length < ragConfig?.query?.minQueryLength) {
             logger.warn('Query too short', { length: trimmed.length });
             return false;
@@ -515,7 +515,7 @@ JSON Output:`;
      */
     _calculateAvgScore(results) {
         if (results.length === 0) return 0;
-        
+
         const sum = results.reduce((acc, r) => acc + r.score, 0);
         return (sum / results.length).toFixed(3);
     }
@@ -567,7 +567,7 @@ JSON Output:`;
         };
 
         const types = intentTypeMap[intent];
-        
+
         if (types && types.length > 0) {
             // Pinecone filter format
             filter.type = { $in: types };
@@ -603,14 +603,14 @@ JSON Output:`;
             docs.forEach((doc, index) => {
                 const content = doc.metadata?.content || '';
                 const title = doc.metadata?.title || '';
-                
+
                 // Include title if available
                 if (title && type !== 'faq') {
                     contextParts.push(`\n${index + 1}. ${title}`);
                 }
-                
+
                 contextParts.push(content);
-                
+
                 // Add separator between docs
                 if (index < docs.length - 1) {
                     contextParts.push('---');
@@ -627,7 +627,7 @@ JSON Output:`;
      */
     _groupByType(results) {
         const byType = {};
-        
+
         for (const result of results) {
             const type = result.metadata?.type || 'general';
             if (!byType[type]) {
@@ -732,10 +732,10 @@ JSON Output:`;
 
         return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
 
-MANDATORY LANGUAGE: ${langName}
-- You MUST respond ONLY in ${langName}. Do NOT switch to English or any other language.
-- Even for short messages, greetings, or technical terms, always reply in ${langName}.
-- EXCEPTION: Only switch language if the user EXPLICITLY says "respond in [language]" or "speak [language]".
+TARGET LANGUAGE: ${langName}
+- You should primarily respond in ${langName}.
+- However, if the user switches to another language, you should adapt and respond in that language instead.
+- Be natural and helpful across all supported languages (English, French, Kinyarwanda, German, Swahili).
 
 CORE RULES:
 - Use ONLY information from the "RELEVANT INFORMATION" section above
@@ -752,7 +752,7 @@ ALWAYS return your response in the following JSON format:
   "reply": "your response text here"
 }
 
-Identify the language you used for the 'reply' in the 'language' field.
+Identify the language you actually used for the 'reply' in the 'language' field.
 If information is not available, politely say so and offer to help with something else.`;
     }
 
@@ -834,11 +834,11 @@ If information is not available, politely say so and offer to help with somethin
      */
     clearCaches() {
         embeddingService.clearCache();
-        
+
         if (this.intentCache) {
             this.intentCache.clear();
         }
-        
+
         logger.info('All RAG caches cleared');
     }
 
