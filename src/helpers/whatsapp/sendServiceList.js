@@ -5,8 +5,14 @@ import logger from '../../logger/logger.js';
 dotenv.config();
 import i18next from '../../config/i18n.js';
 
+import translationService from '../../services/translation.service.js';
+
 export async function sendServiceList(to, locale = 'en') {
-  const services = await googleSheet.getActiveServices();
+  let services = await googleSheet.getActiveServices();
+  
+  // Dynamically translate services based on user locale
+  services = await translationService.translateServices(services, locale);
+  
   const t = i18next.getFixedT(locale);
 
   if (services.length === 0) {

@@ -253,12 +253,16 @@ export default {
                 /\b(dore|niba|kugira|cyane|kumenya|mutanga|izihe|none|tubigenze)\b/i,
                 /\b(nsubiza|mukinyarwanda|ntabwo|ndimo|kumva|ibyo|urikuvuga)\b/i,
                 /\b(murakoze|inama|ubujyanama|amasaha|izina|sosiyete|mwakunda)\b/i,
-                /\b(ndashaka|byinshi|kuri|service|serivisi|nimero|nimere)\b/i,
-                /\b(kubika|kugisha|selected|mukoresheje|ifatabuguzi|amafaranga)\b/i,
+                /\b(ndashaka|byinshi|kuri|serivisi|nimero|nimere)\b/i,
+                /\b(kubika|kugisha|mukoresheje|ifatabuguzi|amafaranga)\b/i,
                 /\b(murakaza|nagufasha|uyu|munsi|dushobora|gutera|imbere)\b/i,
                 /\b(kwa|ku wa|mbere|kabiri|gatatu|kane|gatanu|cyumweru)\b/i
             ],
-            fr: [/\b(bonjour|salut|merci|au revoir|comment|oui|non|quel|pourquoi|combien|je|vous|nous|votre|notre|avec|pour)\b/i],
+            fr: [
+                /\b(bonjour|salut|merci|au revoir|comment|est-ce|quel|pourquoi|combien|nous|votre|notre|avec|pour)\b/i,
+                /\b(suis|est|sont|fait|faire|peux|pouvez|veut|voulez|quand|dans|cette|qui|quoi|dont)\b/i,
+                /\b(développement|logiciel|rdv|rendez-vous|horaires|prix|tarif| Rwanda)\b/i
+            ],
             de: [/\b(hallo|guten|morgen|tag|abend|danke|bitte|ja|nein|wie|was|wer|warum|können|möchte|ich|sie|wir|ihr|sprechen|dienst)\b/i],
             sw: [/\b(habari|karibu|asante|ndiyo|hapana|samahani|tafadhali|ninaweza|nataka|kwa|hii|hiyo|huduma|bei|wapi|sijui|sawa)\b/i]
         }
