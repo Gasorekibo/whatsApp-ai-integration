@@ -120,6 +120,11 @@ const handleWebhook = async (req, res) => {
           // Detect language from the user's very first message
           locale = ragService.detectLanguage(originalText, []) || 'en';
           await sendServiceList(from, locale);
+
+          session.history.push({ role: 'user', content: msg.text.body, language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
+          session.changed('history', true);
+          await session.save({ transaction: t });
           return;
         }
 
@@ -142,7 +147,7 @@ const handleWebhook = async (req, res) => {
 
         const userEmail = session.state.email || null;
         // Detect user's input language before processing (pattern-based, no LLM call)
-        const userInputLanguage = ragService.detectLanguage(originalText, session.history) || 'en';
+        const userInputLanguage = ragService.detectLanguage(originalText, session.history);
         const response = await processWithGemini(from, msg.text.body, session.history, userEmail);
         locale = response.language || userInputLanguage;
 
