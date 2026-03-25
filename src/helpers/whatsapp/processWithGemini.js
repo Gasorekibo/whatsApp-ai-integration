@@ -167,11 +167,11 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         logger.info(`RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
-        detectedLanguage = ragService.detectLanguage(message, history) || 'en';
+        detectedLanguage = await ragService.detectLanguage(message, history);
         prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
       }
     } else {
-      detectedLanguage = ragService.detectLanguage(message, history) || 'en';
+      detectedLanguage = await ragService.detectLanguage(message, history);
       prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
     }
 
