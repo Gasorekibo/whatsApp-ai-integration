@@ -22,7 +22,7 @@ export async function sendServiceList(to, locale = 'en') {
 
   const LIST_ROWS = services.map(s => ({
     id: s.id,
-    title: s.short || s.name,
+    title: (s.short || s.name).slice(0, 24),
     description: s.details?.slice(0, 40) + "..." || `Professional ${s.name}`
   }));
 

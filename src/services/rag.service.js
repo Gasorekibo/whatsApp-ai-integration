@@ -812,7 +812,7 @@ If information is not available, politely say so and offer to help with somethin
     async _translateQueryToEnglish(query, language) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: 'gemini-2.0-flash'
+                model: 'gemini-2.5-flash'
             });
 
             const result = await model.generateContent({
