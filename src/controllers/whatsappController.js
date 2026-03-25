@@ -99,7 +99,7 @@ const handleWebhook = async (req, res) => {
         const originalText = msg.text.body.trim();
         
         // Default locale for new users or if not set
-        let locale = 'en';
+        let locale;
 
         logger.whatsapp('info', 'Text message received', {
           requestId,
@@ -118,7 +118,7 @@ const handleWebhook = async (req, res) => {
             from: `***${from.slice(-4)}`
           });
           // Detect language from the user's very first message
-          locale = ragService.detectLanguage(originalText, []) || 'en';
+          locale = await ragService.detectLanguage(originalText, []);
           await sendServiceList(from, locale);
 
           session.history.push({ role: 'user', content: msg.text.body, language: locale, timestamp: new Date() });
@@ -136,7 +136,7 @@ const handleWebhook = async (req, res) => {
           });
           // Use locale from last known history entry, or re-detect from current message
           const lastHistory = session.history?.slice().reverse().find(h => h.language);
-          locale = lastHistory?.language || ragService.detectLanguage(originalText, session.history) || 'en';
+          locale = lastHistory?.language || await ragService.detectLanguage(originalText, session.history);
           await sendServiceList(from, locale);
           session.history = [];
           session.state = { selectedService: null, pendingBooking: null };
@@ -146,8 +146,8 @@ const handleWebhook = async (req, res) => {
         }
 
         const userEmail = session.state.email || null;
-        // Detect user's input language before processing (pattern-based, no LLM call)
-        const userInputLanguage = ragService.detectLanguage(originalText, session.history);
+        // Detect user's input language before processing
+        const userInputLanguage = await ragService.detectLanguage(originalText, session.history);
         const response = await processWithGemini(from, msg.text.body, session.history, userEmail);
         locale = response.language || userInputLanguage;
 
@@ -192,8 +192,11 @@ const handleWebhook = async (req, res) => {
         const service = services.find(s => s.id === msg.interactive.list_reply.id);
 
         if (service) {
+          // Get user's language from history as a reliable fallback
+          // (processWithGemini now detects language via history too, but this guards the locale used for saving history)
+          const historyLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
           const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history);
-          const locale = response.language || 'en';
+          const locale = response.language || historyLocale;
           if (response.reply) await sendWhatsAppMessage(from, response.reply);
 
           session.state.selectedService = service.id;
@@ -202,8 +205,7 @@ const handleWebhook = async (req, res) => {
           session.changed('history', true);
           await session.save({ transaction: t });
         } else {
-          // Use a default locale or tries to find from history
-          const locale = 'en'; 
+          const locale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
           const t_err = i18next.getFixedT(locale);
           await sendWhatsAppMessage(from, t_err('service_not_available'));
           await sendServiceList(from, locale);

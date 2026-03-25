@@ -78,7 +78,7 @@ class RAGService {
             // Quick pattern matching for common intents (always 'general' for now)
             const quickIntent = this._quickIntentCheck(normalizedMessage);
             if (quickIntent) {
-                const result = { intent: quickIntent, language: this.detectLanguage(message) };
+                const result = { intent: quickIntent, language: await this.detectLanguage(message, history) };
                 this._cacheIntent(normalizedMessage, result);
                 return result;
             }
@@ -86,13 +86,15 @@ class RAGService {
             // Keyword-based intent detection
             const keywordIntent = this._detectIntentByKeywords(message);
             if (keywordIntent) {
-                const result = { intent: keywordIntent, language: this.detectLanguage(message) };
+                const result = { intent: keywordIntent, language: await this.detectLanguage(message, history) };
                 this._cacheIntent(normalizedMessage, result);
                 return result;
             }
 
-            // Use LLM for combined classification and language detection
+            // Use LLM for intent classification, but always use detectLanguage for language
+            // (which checks history first so synthetic/English messages don't override the user's actual language)
             const classification = await this._classifyWithLLM(message, history);
+            classification.language = await this.detectLanguage(message, history);
             this._cacheIntent(normalizedMessage, classification);
 
             return classification;
@@ -101,7 +103,7 @@ class RAGService {
             logger.warn('Query classification failed, falling back', {
                 error: error.message
             });
-            return { intent: 'general', language: this.detectLanguage(message) };
+            return { intent: 'general', language: await this.detectLanguage(message, history) };
         }
     }
 
@@ -211,9 +213,8 @@ JSON Output:`;
                 const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
                 parsed = JSON.parse(jsonToParse.trim());
             } catch (pErr) {
-                logger.warn('LLM JSON parse error, using pattern fallback', { response: responseText });
-                // Use history-based detection only — if history is empty we don't know the language yet
-                const lang = history.length > 0 ? this.detectLanguage(message, history) : null;
+                logger.warn('LLM JSON parse error, using Gemini language detection fallback', { response: responseText });
+                const lang = await this.detectLanguage(message, history);
                 return { intent: 'general', language: lang };
             }
 
@@ -227,7 +228,7 @@ JSON Output:`;
             };
         } catch (error) {
             logger.error('LLM classification error', { error: error.message });
-            const lang = history.length > 0 ? this.detectLanguage(message, history) : null;
+            const lang = await this.detectLanguage(message, history);
             return { intent: 'general', language: lang };
         }
     }
@@ -249,43 +250,86 @@ JSON Output:`;
     }
 
     /**
-     * Detect language from message (Pattern-based fallback)
+     * Detect language from message.
+     * First checks conversation history for a known language tag,
+     * then calls Gemini to identify the language if history has no tag.
      * @param {string} message - User message
      * @param {Array} history - Optional history for context
-     * @returns {string} - Language code (en, fr, rw)
+     * @returns {Promise<string>} - Language code (en, fr, rw, sw, de)
      */
-    detectLanguage(message, history = []) {
-        const patterns = this.languageConfig.patterns;
-        const messageLower = message.toLowerCase();
-
-        // 1. Check current message against patterns
-        for (const [lang, regexList] of Object.entries(patterns)) {
-            for (const regex of regexList) {
-                if (regex.test(messageLower)) {
-                    logger.debug('Language detected via patterns', { language: lang });
-                    return lang;
-                }
-            }
-        }
-
-        // 2. Fallback to history — only read user messages to avoid AI response language bleeding back in
+    async detectLanguage(message, history = []) {
+        // 1. Look in history for a language tag (user messages only)
         if (history.length > 0) {
+            // First pass: prefer non-English to avoid defaulting to English when user switched
             for (let i = history.length - 1; i >= 0; i--) {
                 if (history[i].role === 'user' && history[i].language && history[i].language !== 'en') {
+                    logger.debug('Language found in history (non-English)', { language: history[i].language });
                     return history[i].language;
                 }
             }
-            // Second pass: accept any user language tag including 'en'
+            // Second pass: accept any language including 'en'
             for (let i = history.length - 1; i >= 0; i--) {
                 if (history[i].role === 'user' && history[i].language) {
+                    logger.debug('Language found in history', { language: history[i].language });
                     return history[i].language;
                 }
             }
         }
 
-        // 3. Default language
+        // 2. No language in history — call Gemini to detect from the current message
+        return await this._detectLanguageWithGemini(message);
+    }
+
+    /**
+     * Use Gemini to detect the language of a message.
+     * @param {string} message - User message
+     * @returns {Promise<string>} - Language code
+     * @private
+     */
+    async _detectLanguageWithGemini(message) {
+    try {
+        // 1. Initialize the model with System Instructions
+        const model = embeddingService.genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: "You are a specialized language detection API. Your only task is to identify if a message is in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). You must output ONLY the two-letter ISO code. If you are unsure, output 'en'. Do not provide explanations.",
+        });
+
+        // 2. Set strict generation config
+        const generationConfig = {
+            temperature: 0.1,
+            maxOutputTokens: 5,
+            responseMimeType: "text/plain",
+        };
+
+        // 3. Send only the message text to the model
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: message }] }],
+            generationConfig,
+        });
+
+        // 4. Safely extract the text
+        const response = await result.response;
+        const lang = response.text().trim().toLowerCase();
+
+        // 5. Validation logic
+        const supported = ['en', 'fr', 'rw', 'sw', 'de'];
+        
+        // Use startsWith or substring to handle accidental trailing punctuation like "rw."
+        const cleanedLang = lang.substring(0, 2);
+
+        if (supported.includes(cleanedLang)) {
+            logger.debug('Language detected successfully', { language: cleanedLang });
+            return cleanedLang;
+        }
+
+        logger.warn('Gemini returned unsupported code', { raw: lang });
+        return this.languageConfig.defaultLanguage || 'en';
+
+    } catch (err) {
+        logger.error('Gemini detection failed', { error: err.message });
         return this.languageConfig.defaultLanguage || 'en';
     }
+}
 
     /**
      * Retrieve relevant context for user message
@@ -383,7 +427,7 @@ JSON Output:`;
             });
 
             // Return fallback context — preserve detected language so the prompt still uses the right language
-            return this._getFallbackContext(error, userMessage, conversationHistory);
+            return await this._getFallbackContext(error, userMessage, conversationHistory);
         }
     }
 
@@ -792,8 +836,8 @@ If information is not available, politely say so and offer to help with somethin
      * Get fallback context on error
      * @private
      */
-    _getFallbackContext(error, message = '', history = []) {
-        const language = message ? this.detectLanguage(message, history) : 'en';
+    async _getFallbackContext(error, message = '', history = []) {
+        const language = message ? await this.detectLanguage(message, history) : 'en';
         return {
             intent: 'general',
             language,
