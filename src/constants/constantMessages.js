@@ -42,7 +42,7 @@ export const googleAuthSuccessMessage = (userInfo, locale = 'en') => {
           <p><strong>${t('auth_success_email')}</strong> ${userInfo?.email}</p>
         </div>
         <p>${t('auth_success_info')}</p>
-        <a href="/">${t('auth_success_go_dashboard')}</a>
+        <a href="/ai/admin/">${t('auth_success_go_dashboard')}</a>
       </body>
     </html>
   `;
@@ -78,7 +78,7 @@ export const googleAuthFailureMessage = (locale = 'en') => {
           <p>${t('auth_failure_info')}</p>
           <p>${t('auth_failure_retry')}</p>
         </div>
-        <a href="/auth">${t('auth_failure_button')}</a>
+        <a href="/ai/auth/">${t('auth_failure_button')}</a>
       </body>
     </html>
   `;
