@@ -18,12 +18,12 @@ import { getCacheConfig, getIntentConfig, getLanguageConfig } from '../utils/con
 class RAGService {
     constructor() {
         this.initialized = false;
-        
+
         // Cache for intent classification using compatibility helper
         const cacheConfig = getCacheConfig(ragConfig, 'intent');
         this.intentCache = cacheConfig.enabled ? new Map() : null;
         this.intentCacheConfig = cacheConfig;
-        
+
         // Get intent and language configs
         this.intentConfig = getIntentConfig(ragConfig);
         this.languageConfig = getLanguageConfig(ragConfig);
@@ -59,45 +59,51 @@ class RAGService {
     }
 
     /**
-     * Classify user intent from message using LLM
+     * Classify user intent and detect language from message using LLM
      * @param {string} message - User message
-     * @returns {Promise<string>} - Intent type
+     * @param {Array} history - Conversation history for context
+     * @returns {Promise<object>} - { intent, language }
      */
-    async classifyIntent(message) {
+    async classifyQuery(message, history = []) {
         try {
             const normalizedMessage = message.trim().toLowerCase();
 
-            // Check cache first
+            // Check intent cache first
             if (this.intentCache?.has(normalizedMessage)) {
                 logger.debug('Intent cache hit');
-                return this.intentCache.get(normalizedMessage);
+                const cached = this.intentCache.get(normalizedMessage);
+                return cached;
             }
 
-            // Quick pattern matching for common intents
+            // Quick pattern matching for common intents (always 'general' for now)
             const quickIntent = this._quickIntentCheck(normalizedMessage);
             if (quickIntent) {
-                this._cacheIntent(normalizedMessage, quickIntent);
-                return quickIntent;
+                const result = { intent: quickIntent, language: await this.detectLanguage(message, history) };
+                this._cacheIntent(normalizedMessage, result);
+                return result;
             }
 
-            // Keyword-based intent detection (before LLM call)
+            // Keyword-based intent detection
             const keywordIntent = this._detectIntentByKeywords(message);
             if (keywordIntent) {
-                this._cacheIntent(normalizedMessage, keywordIntent);
-                return keywordIntent;
+                const result = { intent: keywordIntent, language: await this.detectLanguage(message, history) };
+                this._cacheIntent(normalizedMessage, result);
+                return result;
             }
 
-            // Use LLM for complex classification
-            const llmIntent = await this._classifyWithLLM(message);
-            this._cacheIntent(normalizedMessage, llmIntent);
+            // Use LLM for intent classification, but always use detectLanguage for language
+            // (which checks history first so synthetic/English messages don't override the user's actual language)
+            const classification = await this._classifyWithLLM(message, history);
+            classification.language = await this.detectLanguage(message, history);
+            this._cacheIntent(normalizedMessage, classification);
 
-            return llmIntent;
+            return classification;
 
         } catch (error) {
-            logger.warn('Intent classification failed, falling back to general', {
+            logger.warn('Query classification failed, falling back', {
                 error: error.message
             });
-            return 'general';
+            return { intent: 'general', language: await this.detectLanguage(message, history) };
         }
     }
 
@@ -130,7 +136,7 @@ class RAGService {
         let maxMatches = 0;
 
         for (const [intent, intentKeywords] of Object.entries(keywords)) {
-            const matches = intentKeywords.filter(kw => 
+            const matches = intentKeywords.filter(kw =>
                 messageLower.includes(kw.toLowerCase())
             ).length;
 
@@ -152,49 +158,79 @@ class RAGService {
     }
 
     /**
-     * Classify intent using LLM
+     * Classify intent and language using LLM
      * @private
      */
-    async _classifyWithLLM(message) {
-        const model = embeddingService.genAI.getGenerativeModel({
-            model: this.intentConfig.llm.model
-        });
+    async _classifyWithLLM(message, history = []) {
+        try {
+            const model = embeddingService.genAI.getGenerativeModel({
+                model: this.intentConfig.llm.model || "gemini-2.5-flash"
+            });
 
-        const categories = this.intentConfig.categories.join(', ');
-        
-        const prompt = `Classify the following user message into ONE of these categories: ${categories}
+            const categories = this.intentConfig.categories.join(', ');
+
+            // Format history for context
+            const historyContext = history.slice(-3).map(h =>
+                `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`
+            ).join('\n');
+
+            const prompt = `Classify the following user message for a professional IT consultancy (Moyo Tech Solutions).
+Categories: ${categories}
+Supported Languages: en (English), fr (French), rw (Kinyarwanda), kis (Kiswahili), de (German), sw (Kiswahili)
+
+${historyContext ? `Conversation Context (last 3 messages):\n${historyContext}\n` : ''}
 
 User Message: "${message}"
 
 Rules:
-- booking: User wants to schedule, book, or reserve something
-- service_inquiry: User asks what services are offered or technical capabilities  
-- faq: User asks about pricing, location, hours, how things work
-- payment: User asks about payment, costs, deposits, or fees
-- support: User has a problem or needs technical help
+- booking: Scheduling, appointment requests, or consultation booking
+- service_inquiry: Questions about offered services or technical capabilities
+- faq: Pricing, location, hours, how things work
+- payment: Payment methods, deposits, or fees
+- support: Technical issues or help requests
 - general: Greetings, small talk, or unclear intent
 
-Respond with ONLY the category name, nothing else.`;
+Respond ONLY with a JSON object. NO conversational text of any kind.
+Example: {"intent": "general", "language": "en"}
 
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: this.intentConfig.llm.temperature,
-                maxOutputTokens: this.intentConfig.llm.maxTokens
+JSON Output:`;
+
+            const result = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0,
+                    maxOutputTokens: 100,
+                    responseMimeType: "application/json"
+                }
+            });
+
+            const responseText = result.response.text();
+
+            // Extract JSON block even more robustly
+            let parsed;
+            try {
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
+                parsed = JSON.parse(jsonToParse.trim());
+            } catch (pErr) {
+                logger.warn('LLM JSON parse error, using Gemini language detection fallback', { response: responseText });
+                const lang = await this.detectLanguage(message, history);
+                return { intent: 'general', language: lang };
             }
-        });
 
-        const response = await result.response;
-        const intent = response.text().trim().toLowerCase();
+            // Validate response
+            const intent = parsed.intent?.toLowerCase();
+            const language = parsed.language?.toLowerCase();
 
-        // Validate response
-        if (this.intentConfig.categories.includes(intent)) {
-            logger.debug('LLM classified intent', { intent });
-            return intent;
+            return {
+                intent: this.intentConfig.categories.includes(intent) ? intent : 'general',
+                language: ['en', 'fr', 'rw', 'kis', 'de', 'sw'].includes(language) ? language : null
+            };
+        } catch (error) {
+            logger.error('LLM classification error', { error: error.message });
+            const lang = await this.detectLanguage(message, history);
+            return { intent: 'general', language: lang };
         }
-
-        logger.warn('Invalid LLM intent, using general', { llmResponse: intent });
-        return 'general';
     }
 
     /**
@@ -214,27 +250,86 @@ Respond with ONLY the category name, nothing else.`;
     }
 
     /**
-     * Detect language from message
+     * Detect language from message.
+     * First checks conversation history for a known language tag,
+     * then calls Gemini to identify the language if history has no tag.
      * @param {string} message - User message
-     * @returns {string} - Language code (en, fr, rw)
+     * @param {Array} history - Optional history for context
+     * @returns {Promise<string>} - Language code (en, fr, rw, sw, de)
      */
-    detectLanguage(message) {
-        const patterns = this.languageConfig.patterns;
-        const messageLower = message.toLowerCase();
-
-        // Check each language pattern
-        for (const [lang, regexList] of Object.entries(patterns)) {
-            for (const regex of regexList) {
-                if (regex.test(messageLower)) {
-                    logger.debug('Language detected', { language: lang });
-                    return lang;
+    async detectLanguage(message, history = []) {
+        // 1. Look in history for a language tag (user messages only)
+        if (history.length > 0) {
+            // First pass: prefer non-English to avoid defaulting to English when user switched
+            for (let i = history.length - 1; i >= 0; i--) {
+                if (history[i].role === 'user' && history[i].language && history[i].language !== 'en') {
+                    logger.debug('Language found in history (non-English)', { language: history[i].language });
+                    return history[i].language;
+                }
+            }
+            // Second pass: accept any language including 'en'
+            for (let i = history.length - 1; i >= 0; i--) {
+                if (history[i].role === 'user' && history[i].language) {
+                    logger.debug('Language found in history', { language: history[i].language });
+                    return history[i].language;
                 }
             }
         }
 
-        // Default language
-        return this.languageConfig.defaultLanguage;
+        // 2. No language in history — call Gemini to detect from the current message
+        return await this._detectLanguageWithGemini(message);
     }
+
+    /**
+     * Use Gemini to detect the language of a message.
+     * @param {string} message - User message
+     * @returns {Promise<string>} - Language code
+     * @private
+     */
+    async _detectLanguageWithGemini(message) {
+    try {
+        // 1. Initialize the model with System Instructions
+        const model = embeddingService.genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: "You are a specialized language detection API. Your only task is to identify if a message is in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). You must output ONLY the two-letter ISO code. If you are unsure, output 'en'. Do not provide explanations.",
+        });
+
+        // 2. Set strict generation config
+        const generationConfig = {
+            temperature: 0.1,
+            maxOutputTokens: 5,
+            responseMimeType: "text/plain",
+        };
+
+        // 3. Send only the message text to the model
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: message }] }],
+            generationConfig,
+        });
+
+        // 4. Safely extract the text
+        const response = await result.response;
+        const lang = response.text().trim().toLowerCase();
+
+        // 5. Validation logic
+        const supported = ['en', 'fr', 'rw', 'sw', 'de'];
+        
+        // Use startsWith or substring to handle accidental trailing punctuation like "rw."
+        const cleanedLang = lang.substring(0, 2);
+
+        if (supported.includes(cleanedLang)) {
+            logger.debug('Language detected successfully', { language: cleanedLang });
+            return cleanedLang;
+        }
+
+        logger.warn('Gemini returned unsupported code', { raw: lang });
+        return this.languageConfig.defaultLanguage || 'en';
+
+    } catch (err) {
+        logger.error('Gemini detection failed', { error: err.message });
+        return this.languageConfig.defaultLanguage || 'en';
+    }
+}
 
     /**
      * Retrieve relevant context for user message
@@ -256,11 +351,9 @@ Respond with ONLY the category name, nothing else.`;
 
             const startTime = Date.now();
 
-            // Classify intent and detect language
-            const [intent, language] = await Promise.all([
-                this.classifyIntent(userMessage),
-                Promise.resolve(this.detectLanguage(userMessage))
-            ]);
+            // Classify intent and detect language (Unified LLM call)
+            const classification = await this.classifyQuery(userMessage, conversationHistory);
+            const { intent, language } = classification;
 
             logger.debug('Query classified', {
                 intent,
@@ -274,9 +367,15 @@ Respond with ONLY the category name, nothing else.`;
             // Preprocess query if needed
             const processedQuery = this._preprocessQuery(userMessage);
 
+            // Translate query to English for retrieval — documents are stored in English only.
+            // The original message is still used for the AI response language.
+            const queryForEmbedding = language !== 'en'
+                ? await this._translateQueryToEnglish(processedQuery, language)
+                : processedQuery;
+
             // Generate query embedding
             const queryEmbedding = await embeddingService.generateEmbedding(
-                processedQuery,
+                queryForEmbedding,
                 ragConfig.embedding.queryTaskType
             );
 
@@ -327,8 +426,8 @@ Respond with ONLY the category name, nothing else.`;
                 query: userMessage?.substring(0, 50)
             });
 
-            // Return fallback context
-            return this._getFallbackContext(error);
+            // Return fallback context — preserve detected language so the prompt still uses the right language
+            return await this._getFallbackContext(error, userMessage, conversationHistory);
         }
     }
 
@@ -343,7 +442,7 @@ Respond with ONLY the category name, nothing else.`;
         }
 
         const trimmed = query.trim();
-        
+
         if (trimmed.length < ragConfig?.query?.minQueryLength) {
             logger.warn('Query too short', { length: trimmed.length });
             return false;
@@ -460,7 +559,7 @@ Respond with ONLY the category name, nothing else.`;
      */
     _calculateAvgScore(results) {
         if (results.length === 0) return 0;
-        
+
         const sum = results.reduce((acc, r) => acc + r.score, 0);
         return (sum / results.length).toFixed(3);
     }
@@ -498,7 +597,7 @@ Respond with ONLY the category name, nothing else.`;
      * @param {string} language - Detected language
      * @returns {object} - Metadata filter
      */
-    buildMetadataFilter(intent, language) {
+    buildMetadataFilter(intent, _language) {
         const filter = {};
 
         // Map intent to document types
@@ -512,16 +611,15 @@ Respond with ONLY the category name, nothing else.`;
         };
 
         const types = intentTypeMap[intent];
-        
+
         if (types && types.length > 0) {
             // Pinecone filter format
             filter.type = { $in: types };
         }
 
-        // Always filter by language — when English, exclude rw/fr docs to prevent language bleed
-        filter.language = language !== 'en'
-            ? { $in: [language, 'en'] }
-            : { $in: ['en'] };
+        // All documents are stored in English — always retrieve English docs regardless of user's language.
+        // Language filtering by user language would exclude all results since no non-English docs exist.
+        filter.language = { $in: ['en'] };
 
         return filter;
     }
@@ -549,14 +647,14 @@ Respond with ONLY the category name, nothing else.`;
             docs.forEach((doc, index) => {
                 const content = doc.metadata?.content || '';
                 const title = doc.metadata?.title || '';
-                
+
                 // Include title if available
                 if (title && type !== 'faq') {
                     contextParts.push(`\n${index + 1}. ${title}`);
                 }
-                
+
                 contextParts.push(content);
-                
+
                 // Add separator between docs
                 if (index < docs.length - 1) {
                     contextParts.push('---');
@@ -573,7 +671,7 @@ Respond with ONLY the category name, nothing else.`;
      */
     _groupByType(results) {
         const byType = {};
-        
+
         for (const result of results) {
             const type = result.metadata?.type || 'general';
             if (!byType[type]) {
@@ -661,8 +759,11 @@ Respond with ONLY the category name, nothing else.`;
         const langName = {
             en: 'English',
             fr: 'French',
-            rw: 'Kinyarwanda'
-        }[language] || 'English';
+            rw: 'Kinyarwanda',
+            de: 'German',
+            sw: 'Swahili',
+            kis: 'Swahili'
+        }[language] || null;
 
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
@@ -673,9 +774,13 @@ Respond with ONLY the category name, nothing else.`;
             general: 'Be friendly and helpful.'
         }[intent] || 'Be helpful and professional.';
 
+        const languageInstruction = langName
+            ? `TARGET LANGUAGE: ${langName}\n- You MUST respond in ${langName}.\n- Only switch language if the user explicitly asks you to.`
+            : `LANGUAGE: Detect the language of the user's message and respond in that exact language.\n- Supported: English, French, Kinyarwanda, German, Swahili.\n- Do NOT default to English — reply in whatever language the user wrote in.`;
+
         return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
 
-RESPONSE LANGUAGE: ${langName}
+${languageInstruction}
 
 CORE RULES:
 - Use ONLY information from the "RELEVANT INFORMATION" section above
@@ -685,17 +790,57 @@ CORE RULES:
 - Be warm, professional, and customer-focused
 - ${intentGuidance}
 
+OUTPUT FORMAT:
+ALWAYS return your response in the following JSON format:
+{
+  "language": "iso_code", // en, fr, rw, kis, de
+  "reply": "your response text here"
+}
+
+Identify the language you actually used for the 'reply' in the 'language' field.
 If information is not available, politely say so and offer to help with something else.`;
+    }
+
+    /**
+     * Translate a non-English query to English for vector search.
+     * The original query is preserved for the AI response language.
+     * @param {string} query - User message in any language
+     * @param {string} language - Detected language code
+     * @returns {Promise<string>} - English translation, or original if translation fails
+     * @private
+     */
+    async _translateQueryToEnglish(query, language) {
+        try {
+            const model = embeddingService.genAI.getGenerativeModel({
+                model: 'gemini-2.5-flash'
+            });
+
+            const result = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [{ text: `Translate the following message to English. Output ONLY the translated text, nothing else.\n\nMessage: ${query}` }]
+                }],
+                generationConfig: { temperature: 0, maxOutputTokens: 200 }
+            });
+
+            const translated = result.response.text().trim();
+            logger.debug('Query translated for retrieval', { original: query, translated, language });
+            return translated || query;
+        } catch (err) {
+            logger.warn('Query translation failed, using original', { error: err.message });
+            return query;
+        }
     }
 
     /**
      * Get fallback context on error
      * @private
      */
-    _getFallbackContext(error) {
+    async _getFallbackContext(error, message = '', history = []) {
+        const language = message ? await this.detectLanguage(message, history) : 'en';
         return {
             intent: 'general',
-            language: 'en',
+            language,
             context: '',
             results: [],
             relevantDocs: 0,
@@ -734,11 +879,11 @@ If information is not available, politely say so and offer to help with somethin
      */
     clearCaches() {
         embeddingService.clearCache();
-        
+
         if (this.intentCache) {
             this.intentCache.clear();
         }
-        
+
         logger.info('All RAG caches cleared');
     }
 

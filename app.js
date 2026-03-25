@@ -133,14 +133,16 @@ app.get('/oauth/callback', async (req, res) => {
     }
 
     // Success page
-    res.send(googleAuthSuccessMessage(userInfo));
+    const locale = req.query.lang || 'en';
+    res.send(googleAuthSuccessMessage(userInfo, locale));
   } catch (err) {
     logger.error('Google OAuth callback error', {
       requestId: req.requestId,
       error: err.message,
       stack: err.stack
     });
-    res.status(500).send(googleAuthFailureMessage);
+    const locale = req.query.lang || 'en';
+    res.status(500).send(googleAuthFailureMessage(locale));
   }
 });
 

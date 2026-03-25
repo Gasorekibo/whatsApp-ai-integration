@@ -1,79 +1,88 @@
-export const googleAuthSuccessMessage = (userInfo) => `
-      <html>
-        <head>
-          <title>Authentication Success</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              max-width: 600px; 
-              margin: 50px auto; 
-              padding: 20px; 
-              text-align: center; 
-            }
-            h2 { color: #4CAF50; }
-            .info { 
-              background: #f5f5f5; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin: 20px 0; 
-            }
-            a {
-              display: inline-block;
-              margin-top: 20px;
-              padding: 10px 20px;
-              background: #4CAF50;
-              color: white;
-              text-decoration: none;
-              border-radius: 5px;
-            }
-            a:hover {
-              background: #45a049;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>✅ Authentication Successful!</h2>
-          <div class="info">
-            <p><strong>Connected as:</strong> ${userInfo?.name}</p>
-            <p><strong>Email:</strong> ${userInfo?.email}</p>
-          </div>
-          <p>You can now use the sync services endpoint.</p>
-          <a href="/">Go to Dashboard</a>
-        </body>
-      </html>
-    `;
-export const googleAuthFailureMessage = `
-      <html>
-        <head>
-          <title>Authentication Failed</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              max-width: 600px; 
-              margin: 50px auto; 
-              padding: 20px; 
-              text-align: center; 
-            }
-            h2 { color: #f44336; }
-            .error { 
-              background: #ffebee; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin: 20px 0; 
-              color: #c62828;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>❌ Authentication Failed</h2>
-          <div class="error">
-            <p>There was an error during authentication.</p>
-            <p>Please try again.</p>
-          </div>
-          <a href="/auth">Retry Authentication</a>
-        </body>
-      </html>
-    `;
+import i18next from '../config/i18n.js';
+
+export const googleAuthSuccessMessage = (userInfo, locale = 'en') => {
+  const t = i18next.getFixedT(locale);
+  return `
+    <html>
+      <head>
+        <title>${t('auth_success_title')}</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 50px auto; 
+            padding: 20px; 
+            text-align: center; 
+          }
+          h2 { color: #4CAF50; }
+          .info { 
+            background: #f5f5f5; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin: 20px 0; 
+          }
+          a {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+          }
+          a:hover {
+            background: #45a049;
+          }
+        </style>
+      </head>
+      <body>
+        <h2>✅ ${t('auth_success_title')}</h2>
+        <div class="info">
+          <p><strong>${t('auth_success_connected_as')}</strong> ${userInfo?.name}</p>
+          <p><strong>${t('auth_success_email')}</strong> ${userInfo?.email}</p>
+        </div>
+        <p>${t('auth_success_info')}</p>
+        <a href="/">${t('auth_success_go_dashboard')}</a>
+      </body>
+    </html>
+  `;
+};
+
+export const googleAuthFailureMessage = (locale = 'en') => {
+  const t = i18next.getFixedT(locale);
+  return `
+    <html>
+      <head>
+        <title>${t('auth_failure_title')}</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 50px auto; 
+            padding: 20px; 
+            text-align: center; 
+          }
+          h2 { color: #f44336; }
+          .error { 
+            background: #ffebee; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin: 20px 0; 
+            color: #c62828;
+          }
+        </style>
+      </head>
+      <body>
+        <h2>❌ ${t('auth_failure_title')}</h2>
+        <div class="error">
+          <p>${t('auth_failure_info')}</p>
+          <p>${t('auth_failure_retry')}</p>
+        </div>
+        <a href="/auth">${t('auth_failure_button')}</a>
+      </body>
+    </html>
+  `;
+};
 
 export const systemInstruction = `
 You are a warm, professional AI assistant for Moyo Tech Solutions — a leading IT consultancy in Rwanda.
@@ -84,10 +93,10 @@ CORE BEHAVIOR:
 - No generic pleasantries or lengthy explanations
 - Get straight to what the user needs
 
-LANGUAGE ADAPTATION:
-- ALWAYS respond in the same language the user is using (Kinyarwanda, English, or French)
+LANGUAGE ADAPTATION & DETECTION:
+- ALWAYS respond in the same language the user is using (Kinyarwanda, English, French, German, or Kiswahili)
 - Maintain natural, professional tone in whichever language you use
-- Translate service names and technical terms appropriately while keeping clarity
+- Detect the language the user is using and provide the ISO code (en, fr, rw, de, sw)
 
 SERVICES WE OFFER:
 {{SERVICES_LIST}}
@@ -106,6 +115,13 @@ IMPORTANT RULES:
 
 AVAILABLE CONSULTATION SLOTS (ONLY THESE ARE VALID):
 {{AVAILABLE_SLOTS}}
+
+OUTPUT FORMAT:
+ALWAYS return your response in the following JSON format:
+{
+  "language": "iso_code",
+  "reply": "your response text here"
+}
 
 GOAL:
 Your goal is to help users understand our services and book consultations. When the user is ready to book (name, email, service, and valid time selected), use your tools to initiate payment. If they are interested but not booking, use the save inquiry tool.

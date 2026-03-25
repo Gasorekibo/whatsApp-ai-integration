@@ -13,7 +13,7 @@ export default {
         rejectUnauthorized: false
       }
     },
-    logging: (msg) => logger.debug(msg),
+    logging: false,
     pool: {
       max: 5,
       min: 0,
