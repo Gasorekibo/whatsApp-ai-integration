@@ -162,7 +162,7 @@ class RAGService {
     async _classifyWithLLM(message, history = []) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: this.intentConfig.llm.model || "gemini-2.0-flash"
+                model: this.intentConfig.llm.model || "gemini-2.5-flash"
             });
 
             const categories = this.intentConfig.categories.join(', ');
@@ -212,10 +212,9 @@ JSON Output:`;
                 parsed = JSON.parse(jsonToParse.trim());
             } catch (pErr) {
                 logger.warn('LLM JSON parse error, using pattern fallback', { response: responseText });
-                return {
-                    intent: 'general',
-                    language: this.detectLanguage(message, history)
-                };
+                // Use history-based detection only — if history is empty we don't know the language yet
+                const lang = history.length > 0 ? this.detectLanguage(message, history) : null;
+                return { intent: 'general', language: lang };
             }
 
             // Validate response
@@ -224,11 +223,12 @@ JSON Output:`;
 
             return {
                 intent: this.intentConfig.categories.includes(intent) ? intent : 'general',
-                language: ['en', 'fr', 'rw', 'kis', 'de', 'sw'].includes(language) ? language : 'en'
+                language: ['en', 'fr', 'rw', 'kis', 'de', 'sw'].includes(language) ? language : null
             };
         } catch (error) {
             logger.error('LLM classification error', { error: error.message });
-            return { intent: 'general', language: 'en' };
+            const lang = history.length > 0 ? this.detectLanguage(message, history) : null;
+            return { intent: 'general', language: lang };
         }
     }
 
@@ -719,7 +719,7 @@ JSON Output:`;
             de: 'German',
             sw: 'Swahili',
             kis: 'Swahili'
-        }[language] || 'English';
+        }[language] || null;
 
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
@@ -730,12 +730,13 @@ JSON Output:`;
             general: 'Be friendly and helpful.'
         }[intent] || 'Be helpful and professional.';
 
+        const languageInstruction = langName
+            ? `TARGET LANGUAGE: ${langName}\n- You MUST respond in ${langName}.\n- Only switch language if the user explicitly asks you to.`
+            : `LANGUAGE: Detect the language of the user's message and respond in that exact language.\n- Supported: English, French, Kinyarwanda, German, Swahili.\n- Do NOT default to English — reply in whatever language the user wrote in.`;
+
         return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
 
-TARGET LANGUAGE: ${langName}
-- You should primarily respond in ${langName}.
-- However, if the user switches to another language, you should adapt and respond in that language instead.
-- Be natural and helpful across all supported languages (English, French, Kinyarwanda, German, Swahili).
+${languageInstruction}
 
 CORE RULES:
 - Use ONLY information from the "RELEVANT INFORMATION" section above
