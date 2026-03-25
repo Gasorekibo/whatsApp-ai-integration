@@ -1,3 +1,4 @@
+import i18next from '../config/i18n.js';
 import googlesheets from '../utils/googlesheets.js';
 import dbConfig from '../models/index.js';
 import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
@@ -6,6 +7,7 @@ import dotenv from 'dotenv';
 import { sendServiceList } from '../helpers/whatsapp/sendServiceList.js';
 import { Op } from 'sequelize';
 import logger from '../logger/logger.js';
+import ragService from '../services/rag.service.js';
 dotenv.config();
 
 export const whatsappSessions = new Map();
@@ -95,6 +97,9 @@ const handleWebhook = async (req, res) => {
       if (msg.type === 'text') {
         const text = msg.text.body.trim().toLowerCase();
         const originalText = msg.text.body.trim();
+        
+        // Default locale for new users or if not set
+        let locale;
 
         logger.whatsapp('info', 'Text message received', {
           requestId,
@@ -105,7 +110,6 @@ const handleWebhook = async (req, res) => {
         });
 
         // SAFETY: Double-check if it's REALLY a new user flow
-        // If we have history or an email, we probably shouldn't send the welcome list again if a race happened
         const trulyNewUser = isNewUser && (!session.history || session.history.length === 0);
 
         if (trulyNewUser) {
@@ -113,12 +117,14 @@ const handleWebhook = async (req, res) => {
             requestId,
             from: `***${from.slice(-4)}`
           });
-          await sendWhatsAppMessage(from, "👋 Welcome to *MOYOTECH Solutions*!\n\n Below is the list of our service Pick one of Your interest");
-          await sendServiceList(from);
-          logger.whatsapp('info', 'Welcome message sent Successfully to new user.', {
-            requestId,
-            from: `***${from.slice(-4)}`
-          });
+          // Detect language from the user's very first message
+          locale = await ragService.detectLanguage(originalText, []);
+          await sendServiceList(from, locale);
+
+          session.history.push({ role: 'user', content: msg.text.body, language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
+          session.changed('history', true);
+          await session.save({ transaction: t });
           return;
         }
 
@@ -128,60 +134,33 @@ const handleWebhook = async (req, res) => {
             from: `***${from.slice(-4)}`,
             command: text
           });
-          await sendServiceList(from);
+          // Use locale from last known history entry, or re-detect from current message
+          const lastHistory = session.history?.slice().reverse().find(h => h.language);
+          locale = lastHistory?.language || await ragService.detectLanguage(originalText, session.history);
+          await sendServiceList(from, locale);
           session.history = [];
           session.state = { selectedService: null, pendingBooking: null };
           whatsappSessions.delete(from);
           await session.save({ transaction: t });
-          logger.whatsapp('info', 'Session reset complete', {
-            requestId,
-            from: `***${from.slice(-4)}`
-          });
           return;
         }
 
         const userEmail = session.state.email || null;
-        logger.gemini('info', 'Sending message to Gemini ' + originalText, {
-          requestId,
-          from: `***${from.slice(-4)}`,
-          messageLength: originalText.length,
-          hasHistory: session.history?.length > 0,
-          historyLength: session.history?.length || 0,
-          userEmail: userEmail ? 'present' : 'none'
-        });
-
-        const geminiStartTime = Date.now();
+        // Detect user's input language before processing
+        const userInputLanguage = await ragService.detectLanguage(originalText, session.history);
         const response = await processWithGemini(from, msg.text.body, session.history, userEmail);
-        const geminiDuration = Date.now() - geminiStartTime;
-
-        logger.gemini('info', 'Gemini response received', {
-          requestId,
-          from: `***${from.slice(-4)}`,
-          duration: geminiDuration,
-          showServices: response.showServices,
-          hasReply: !!response.reply,
-          replyLength: response.reply?.length || 0
-        });
+        locale = response.language || userInputLanguage;
 
         if (response.showServices) {
-          logger.whatsapp('info', 'Showing service list As response from Gemini', {
-            requestId,
-            from: `***${from.slice(-4)}`
-          });
-          await sendServiceList(from);
-          session.history.push({ role: 'user', content: msg.text.body, timestamp: new Date() });
-          session.history.push({ role: 'model', content: 'Service list shown', timestamp: new Date() });
+          await sendServiceList(from, locale);
+          session.history.push({ role: 'user', content: msg.text.body, language: userInputLanguage, timestamp: new Date() });
+          session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
           return;
         }
 
         if (response.reply) {
-          logger.whatsapp('info', 'Sending response to user', {
-            requestId,
-            from: `***${from.slice(-4)}`,
-            replyLength: response.reply.length
-          });
           await sendWhatsAppMessage(from, response.reply);
 
           // Auto-extract email
@@ -189,23 +168,13 @@ const handleWebhook = async (req, res) => {
             const emailMatch = response.reply.match(/[\w.-]+@[\w.-]+\.\w+/);
             if (emailMatch) {
               session.state.email = emailMatch[0];
-              logger.whatsapp('info', 'Email extracted from response', {
-                requestId,
-                from: `***${from.slice(-4)}`,
-                email: `${emailMatch[0].substring(0, 3)}***`
-              });
             }
           }
 
-          session.history.push({ role: 'user', content: msg.text.body, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply, timestamp: new Date() });
+          session.history.push({ role: 'user', content: msg.text.body, language: userInputLanguage, timestamp: new Date() });
+          session.history.push({ role: 'model', content: response.reply, language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
-          logger.whatsapp('info', 'Conversation history updated', {
-            requestId,
-            from: `***${from.slice(-4)}`,
-            newHistoryLength: session.history.length
-          });
         }
       }
       else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
@@ -218,38 +187,28 @@ const handleWebhook = async (req, res) => {
           selectedId,
           selectedTitle
         });
+
         const services = await googlesheets.getActiveServices();
         const service = services.find(s => s.id === msg.interactive.list_reply.id);
 
         if (service) {
-          logger.whatsapp('info', 'Service selected', {
-            requestId,
-            from: `***${from.slice(-4)}`,
-            serviceId: service.id,
-            serviceName: service.name
-          });
+          // Get user's language from history as a reliable fallback
+          // (processWithGemini now detects language via history too, but this guards the locale used for saving history)
+          const historyLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
           const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history);
+          const locale = response.language || historyLocale;
           if (response.reply) await sendWhatsAppMessage(from, response.reply);
 
           session.state.selectedService = service.id;
-          session.history.push({ role: 'user', content: `Selected: ${service.name}`, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply || 'Service selected', timestamp: new Date() });
+          session.history.push({ role: 'user', content: `Selected: ${service.name}`, language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: response.reply || 'Service selected', language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
-          logger.whatsapp('info', 'Service selection processed Successfully', {
-            requestId,
-            from: `***${from.slice(-4)}`,
-            serviceId: service.id
-          });
         } else {
-          logger.whatsapp('warn', 'Selected service not found', {
-            requestId,
-            from: `***${from.slice(-4)}`,
-            selectedId,
-            availableServices: services.length
-          });
-          await sendWhatsAppMessage(from, "Sorry, that service is no longer available. Let me show you our current services.");
-          await sendServiceList(from);
+          const locale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
+          const t_err = i18next.getFixedT(locale);
+          await sendWhatsAppMessage(from, t_err('service_not_available'));
+          await sendServiceList(from, locale);
         }
       } else {
         logger.whatsapp('info', 'Unsupported message type received', {
