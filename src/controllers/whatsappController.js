@@ -195,10 +195,9 @@ const handleWebhook = async (req, res) => {
         const service = services.find(s => s.id === msg.interactive.list_reply.id);
 
         if (service) {
-          // Get user's language from history as a reliable fallback
-          // (processWithGemini now detects language via history too, but this guards the locale used for saving history)
+          // Get user's language from history — this is what language the service description should be in
           const historyLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
-          const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history);
+          const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history, null, historyLocale);
           const locale = response.language || historyLocale;
           if (response.reply) await sendWhatsAppMessage(from, response.reply);
 
