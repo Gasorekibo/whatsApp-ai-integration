@@ -26,7 +26,7 @@ function toKigaliDisplay(date, locale = 'en') {
 // Flag to enable/disable RAG (for gradual rollout)
 const USE_RAG = process.env.USE_RAG !== 'false'; // Default to true
 
-export async function processWithGemini(phoneNumber, message, history = [], userEmail = null) {
+export async function processWithGemini(phoneNumber, message, history = [], userEmail = null, currentLanguage = null) {
   const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
 
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
@@ -152,7 +152,10 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     if (USE_RAG) {
       try {
         const retrievedData = await ragService.retrieveContext(message, history);
-        detectedLanguage = retrievedData.language || 'en';
+        // detectedLanguage is used only for the show_services early return.
+        // The prompt itself instructs Gemini to auto-detect language from the current message,
+        // so we don't inject detectedLanguage into the prompt anymore.
+        detectedLanguage = currentLanguage || retrievedData.language || 'en';
 
         // Build dynamic data that changes frequently
         const dynamicData = {
@@ -167,11 +170,11 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         logger.info(`RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
-        detectedLanguage = await ragService.detectLanguage(message, history);
+        detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
         prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
       }
     } else {
-      detectedLanguage = await ragService.detectLanguage(message, history);
+      detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
       prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
     }
 
@@ -190,7 +193,16 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       }))
     });
 
-    let result = await chat.sendMessage(message);
+    // Append the detected language as an in-message hint.
+    // System instructions can be overridden by conversation history language momentum,
+    // but an explicit hint inside the message itself is much harder for the model to ignore.
+    const langNames = { en: 'English', fr: 'French', rw: 'Kinyarwanda', de: 'German', sw: 'Swahili', kis: 'Swahili' };
+    const msgLangName = langNames[currentLanguage];
+    const messageToSend = msgLangName
+      ? `${message}\n\n[IMPORTANT: This message is in ${msgLangName}. You MUST respond ONLY in ${msgLangName}.]`
+      : message;
+
+    let result = await chat.sendMessage(messageToSend);
     let response = result.response;
     let text = response.text();
 
@@ -411,12 +423,18 @@ async function buildFallbackPrompt(slotDetails, currentDate, locale = 'en') {
   return `
 You are a warm, professional AI assistant for Moyo Tech Solutions — a leading IT consultancy in Rwanda.
 
+CRITICAL LANGUAGE RULE:
+- ALWAYS respond in the SAME language as the user's CURRENT message.
+- Determine the language by reading ONLY the user's current message — do NOT use the conversation history.
+- If the user writes in Kinyarwanda → respond in Kinyarwanda.
+- If in French → respond in French. If in English → respond in English.
+- Supported: English (en), French (fr), Kinyarwanda (rw), Swahili (sw), German (de).
+- NEVER default to English if the user's current message is in another language.
+
 CORE BEHAVIOR:
 - Be friendly but brief and to-the-point
 - Keep responses under 3 sentences unless asking follow-up questions
 - Get straight to what the user needs
-
-RESPONSE LANGUAGE: ${locale}
 
 SERVICES WE OFFER:
 ${servicesList}
@@ -429,7 +447,7 @@ Current Date: ${currentDate}
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:
 {
-  "language": "${locale}",
+  "language": "iso_code", // Language matching the user's current message: en, fr, rw, sw, or de
   "reply": "your response text here"
 }
 
