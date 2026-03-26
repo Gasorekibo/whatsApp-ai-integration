@@ -146,13 +146,16 @@ const handleWebhook = async (req, res) => {
         }
 
         const userEmail = session.state.email || null;
-        // Detect user's input language before processing
-        const userInputLanguage = await ragService.detectLanguage(originalText, session.history);
-        const response = await processWithGemini(from, msg.text.body, session.history, userEmail);
+        // Detect language from the current message only — responses should be in the language
+        // the user is currently writing in, not their previously detected language.
+        const userInputLanguage = await ragService.detectCurrentLanguage(originalText);
+        const response = await processWithGemini(from, msg.text.body, session.history, userEmail, userInputLanguage);
         locale = response.language || userInputLanguage;
 
         if (response.showServices) {
-          await sendServiceList(from, locale);
+          // Service list is translated using the user's stored/preferred language from history
+          const serviceListLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || userInputLanguage;
+          await sendServiceList(from, serviceListLocale);
           session.history.push({ role: 'user', content: msg.text.body, language: userInputLanguage, timestamp: new Date() });
           session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
           session.changed('history', true);
