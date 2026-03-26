@@ -146,13 +146,16 @@ const handleWebhook = async (req, res) => {
         }
 
         const userEmail = session.state.email || null;
-        // Detect user's input language before processing
-        const userInputLanguage = await ragService.detectLanguage(originalText, session.history);
-        const response = await processWithGemini(from, msg.text.body, session.history, userEmail);
+        // Detect language from the current message only — responses should be in the language
+        // the user is currently writing in, not their previously detected language.
+        const userInputLanguage = await ragService.detectCurrentLanguage(originalText);
+        const response = await processWithGemini(from, msg.text.body, session.history, userEmail, userInputLanguage);
         locale = response.language || userInputLanguage;
 
         if (response.showServices) {
-          await sendServiceList(from, locale);
+          // Service list is translated using the user's stored/preferred language from history
+          const serviceListLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || userInputLanguage;
+          await sendServiceList(from, serviceListLocale);
           session.history.push({ role: 'user', content: msg.text.body, language: userInputLanguage, timestamp: new Date() });
           session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
           session.changed('history', true);
@@ -192,10 +195,9 @@ const handleWebhook = async (req, res) => {
         const service = services.find(s => s.id === msg.interactive.list_reply.id);
 
         if (service) {
-          // Get user's language from history as a reliable fallback
-          // (processWithGemini now detects language via history too, but this guards the locale used for saving history)
+          // Get user's language from history — this is what language the service description should be in
           const historyLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
-          const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history);
+          const response = await processWithGemini(from, `I'm interested in ${service.name}. I'd like to learn more about this service.`, session.history, null, historyLocale);
           const locale = response.language || historyLocale;
           if (response.reply) await sendWhatsAppMessage(from, response.reply);
 

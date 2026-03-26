@@ -250,6 +250,42 @@ JSON Output:`;
     }
 
     /**
+     * Detect language from the current message only, ignoring conversation history.
+     * Uses curated patterns (excluding English false-positives like 'ego', 'bite', 'none'),
+     * then falls back to Gemini.
+     * @param {string} message - User message
+     * @returns {Promise<string>} - Language code (en, fr, rw, sw, de)
+     */
+    async detectCurrentLanguage(message) {
+        // Curated patterns: unique vocabulary only, excluding words that also exist in English
+        // (e.g., 'ego', 'bite', 'none', 'oya', 'muri' are excluded to avoid false positives)
+        const safePatterns = {
+            rw: [
+                /\b(muraho|mwaramutse|mwiriwe|urakoze|amakuru|yego|nonese|ndashaka|natwe|nagufasha|mbwira)\b/i,
+                /\b(niba|kugira|cyane|kumenya|izihe|tubigenze|nsubiza|mukinyarwanda|ntabwo|ndimo|kumva)\b/i,
+                /\b(murakoze|ubujyanama|amasaha|byinshi|serivisi|nimero|amafaranga|kubika|kugisha)\b/i,
+                /\b(mukoresheje|ifatabuguzi|murakaza|munsi|dushobora|cyumweru|urikuvuga|kuwakane|naboneka)\b/i,
+                /\b(kwishyura|mafaranga|noneho|aribyiza|ndumva|mwaramukanye|waramutse|murifuza)\b/i,
+            ],
+            fr: [
+                /\b(bonjour|salut|merci|au revoir|comment|est-ce|quel|pourquoi|combien|notre|votre)\b/i,
+                /\b(suis|sont|fait|faire|peux|pouvez|veut|voulez|quand|dans|cette|dont|nous)\b/i,
+            ],
+            de: [/\b(hallo|guten|morgen|danke|bitte|nein|wie|was|wer|warum|können|möchte|ich|sie|wir)\b/i],
+            sw: [/\b(habari|karibu|asante|ndiyo|hapana|samahani|tafadhali|ninaweza|nataka|huduma|sawa)\b/i]
+        };
+
+        for (const [lang, patterns] of Object.entries(safePatterns)) {
+            if (patterns.some(pattern => pattern.test(message))) {
+                logger.debug('Language detected via pattern', { language: lang });
+                return lang;
+            }
+        }
+        // Fall back to Gemini for messages that don't match any patterns
+        return await this._detectLanguageWithGemini(message);
+    }
+
+    /**
      * Detect language from message.
      * First checks conversation history for a known language tag,
      * then calls Gemini to identify the language if history has no tag.
@@ -291,7 +327,7 @@ JSON Output:`;
         // 1. Initialize the model with System Instructions
         const model = embeddingService.genAI.getGenerativeModel({
             model: 'gemini-2.5-flash',
-            systemInstruction: "You are a specialized language detection API. Your only task is to identify if a message is in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). You must output ONLY the two-letter ISO code. If you are unsure, output 'en'. Do not provide explanations.",
+            systemInstruction: "You are a language detection API. Identify if the message is primarily in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). Output ONLY the two-letter ISO code. For mixed-language messages (e.g., Kinyarwanda with English time formats), identify the DOMINANT non-English language. Only output 'en' if the message is clearly and primarily in English. Do not provide explanations.",
         });
 
         // 2. Set strict generation config
@@ -755,16 +791,7 @@ JSON Output:`;
      * @param {string} intent - User intent
      * @returns {string} - Base instruction
      */
-    getBaseInstruction(language, intent) {
-        const langName = {
-            en: 'English',
-            fr: 'French',
-            rw: 'Kinyarwanda',
-            de: 'German',
-            sw: 'Swahili',
-            kis: 'Swahili'
-        }[language] || null;
-
+    getBaseInstruction(_language, intent) {
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
             service_inquiry: 'Provide detailed service information from the knowledge base.',
@@ -774,13 +801,15 @@ JSON Output:`;
             general: 'Be friendly and helpful.'
         }[intent] || 'Be helpful and professional.';
 
-        const languageInstruction = langName
-            ? `TARGET LANGUAGE: ${langName}\n- You MUST respond in ${langName}.\n- Only switch language if the user explicitly asks you to.`
-            : `LANGUAGE: Detect the language of the user's message and respond in that exact language.\n- Supported: English, French, Kinyarwanda, German, Swahili.\n- Do NOT default to English — reply in whatever language the user wrote in.`;
-
         return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
 
-${languageInstruction}
+CRITICAL LANGUAGE RULE:
+- ALWAYS respond in the SAME language as the user's CURRENT message.
+- Determine the language by reading ONLY the user's current message — do NOT use the conversation history to decide.
+- If the user writes in Kinyarwanda → respond in Kinyarwanda.
+- If in French → respond in French. If in English → respond in English.
+- Supported: English (en), French (fr), Kinyarwanda (rw), Swahili (sw), German (de).
+- NEVER default to English if the user's current message is in another language.
 
 CORE RULES:
 - Use ONLY information from the "RELEVANT INFORMATION" section above
@@ -793,11 +822,10 @@ CORE RULES:
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:
 {
-  "language": "iso_code", // en, fr, rw, kis, de
+  "language": "iso_code", // Language of your reply matching the user's current message: en, fr, rw, sw, or de
   "reply": "your response text here"
 }
 
-Identify the language you actually used for the 'reply' in the 'language' field.
 If information is not available, politely say so and offer to help with something else.`;
     }
 
