@@ -9,6 +9,7 @@
   "select_service_footer": "We're here to help you grow",
   "rate_limit_error": "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.",
   "connection_error": "I'm having trouble connecting right now. Please try again in a moment!",
+  "audio_transcription_failed": "Sorry, I couldn't understand your voice message. Please try sending a text message instead.",
   "auth_success_title": "Authentication Successful!",
   "auth_success_connected_as": "Connected as:",
   "auth_success_email": "Email:",

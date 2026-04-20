@@ -379,6 +379,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     };
 
   } catch (err) {
+    console.log('======>Error in processWithGemini:', err);
     logger.error("Gemini processing error", {
       phone: sanitizedPhone,
       error: err.message,
