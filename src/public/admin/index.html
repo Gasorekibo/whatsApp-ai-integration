@@ -861,9 +861,12 @@
         </tr></thead><tbody>`;
 
       clients.forEach(c => {
-        const endDate = c.subscriptionEndDate
-          ? new Date(c.subscriptionEndDate).toLocaleDateString()
-          : (c.trialEndDate ? 'Trial: ' + new Date(c.trialEndDate).toLocaleDateString() : '—');
+        let endDate;
+        if (c.subscriptionStatus === 'trial') {
+          endDate = c.trialEndDate ? 'Trial: ' + new Date(c.trialEndDate).toLocaleDateString() : '—';
+        } else {
+          endDate = c.subscriptionEndDate ? new Date(c.subscriptionEndDate).toLocaleDateString() : '—';
+        }
 
         const msgDisplay = c.maxMonthlyMessages != null
           ? `${c.messageCount} / ${c.maxMonthlyMessages}`
@@ -872,7 +875,7 @@
         html += `<tr>
           <td><strong>${c.name}</strong><small>${c.company || '—'}</small></td>
           <td>${c.email}<small>${c.phone}</small></td>
-          <td><code>${c.whatsappBusinessId || '—'}</code></td>
+          <td><code>${c.whatsappBusinessId?.slice(0,6)+ '****' || '—'}</code></td>
           <td>${mkPlanBadge(c.subscriptionPlan)}</td>
           <td>${mkStatusBadge(c.subscriptionStatus)}</td>
           <td style="font-size:13px">${endDate}</td>
