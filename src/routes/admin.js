@@ -58,5 +58,62 @@ router.get('/services', async (req, res) => {
   }
 })
 
+router.get('/clients', async (req, res) => {
+  try {
+    const clients = await dbConfig.db.Client?.findAll({ order: [['createdAt', 'DESC']] });
+    res.json({ clients: clients || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/clients', async (req, res) => {
+  try {
+    const { name, email, phone, company, whatsappBusinessId, subscriptionPlan } = req.body;
+    if (!name || !email || !phone) {
+      return res.status(400).json({ error: 'name, email, and phone are required' });
+    }
+    const client = await dbConfig.db.Client.create({
+      name,
+      email,
+      phone,
+      company: company || null,
+      whatsappBusinessId: whatsappBusinessId || null,
+      subscriptionPlan: subscriptionPlan || 'message_only'
+    });
+    res.status(201).json({ client });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/clients/:id', async (req, res) => {
+  try {
+    const client = await dbConfig.db.Client?.findByPk(req.params.id);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const allowed = ['subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate', 'isActive', 'messageCount', 'maxMonthlyMessages'];
+    const updates = {};
+    allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
+
+    await client.update(updates);
+    res.json({ client });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/employees', async (req, res) => {
+  try {
+    const employees = await dbConfig.db.Employee?.findAll({
+      attributes: ['id', 'name', 'email', 'createdAt'],
+      order: [['createdAt', 'DESC']]
+    });
+    res.json({ employees: employees || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
 

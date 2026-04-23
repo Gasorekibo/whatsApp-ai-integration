@@ -94,6 +94,21 @@ const handleWebhook = async (req, res) => {
         await session.save({ transaction: t });
       }
 
+      // Look up the Client record for this WhatsApp Business deployment
+      const phoneNumberId = value.metadata?.phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const client = phoneNumberId
+        ? await dbConfig.db.Client.findOne({ where: { whatsappBusinessId: phoneNumberId }, transaction: t })
+        : null;
+
+      if (client) {
+        logger.whatsapp('debug', 'Client record found', {
+          requestId,
+          clientId: client.id,
+          subscriptionPlan: client.subscriptionPlan,
+          subscriptionStatus: client.subscriptionStatus
+        });
+      }
+
       // 3. Process Content (Inside Transaction)
       if (msg.type === 'text') {
         const text = msg.text.body.trim().toLowerCase();
@@ -219,6 +234,22 @@ const handleWebhook = async (req, res) => {
           from: `***${from.slice(-4)}`,
           mediaId: msg.audio?.id
         });
+
+        // Gate: client must have message_and_voice plan to use audio
+        if (client && !client.canUseVoice()) {
+          logger.whatsapp('info', 'Voice message rejected — client plan does not include voice', {
+            requestId,
+            clientId: client.id,
+            subscriptionPlan: client.subscriptionPlan
+          });
+          const locale = session.history?.slice().reverse().find(h => h.language)?.language || 'en';
+          const t_voice = i18next.getFixedT(locale);
+          await sendWhatsAppMessage(
+            from,
+            t_voice('voice_not_on_plan', 'Voice messages are not available on your current plan. Please send a text message instead.')
+          );
+          return;
+        }
 
         let transcribedText;
         try {
