@@ -3,6 +3,7 @@ import googlesheets from '../utils/googlesheets.js';
 import dbConfig from '../models/index.js';
 import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
 import { processWithGemini } from '../helpers/whatsapp/processWithGemini.js';
+import { transcribeWhatsAppAudio } from '../helpers/whatsapp/transcribeAudio.js';
 import dotenv from 'dotenv';
 import { sendServiceList } from '../helpers/whatsapp/sendServiceList.js';
 import { Op } from 'sequelize';
@@ -211,6 +212,55 @@ const handleWebhook = async (req, res) => {
           const t_err = i18next.getFixedT(locale);
           await sendWhatsAppMessage(from, t_err('service_not_available'));
           await sendServiceList(from, locale);
+        }
+      } else if (msg.type === 'audio') {
+        logger.whatsapp('info', 'Audio message received, transcribing', {
+          requestId,
+          from: `***${from.slice(-4)}`,
+          mediaId: msg.audio?.id
+        });
+
+        let transcribedText;
+        try {
+          transcribedText = await transcribeWhatsAppAudio(
+            msg.audio.id,
+            msg.audio.mime_type || 'audio/ogg; codecs=opus'
+          );
+        } catch (transcribeErr) {
+          logger.error('Audio transcription failed', { error: transcribeErr.message });
+          const locale = session.history?.slice().reverse().find(h => h.language)?.language || 'en';
+          const t_err = i18next.getFixedT(locale);
+          await sendWhatsAppMessage(from, t_err('audio_transcription_failed', "Sorry, I couldn't understand your voice message. Please try sending a text message instead."));
+          return;
+        }
+
+        logger.whatsapp('info', 'Audio transcribed successfully', {
+          requestId,
+          from: `***${from.slice(-4)}`,
+          transcriptionLength: transcribedText.length
+        });
+
+        const userInputLanguage = await ragService.detectCurrentLanguage(transcribedText);
+        const userEmail = session.state.email || null;
+        const response = await processWithGemini(from, transcribedText, session.history, userEmail, userInputLanguage);
+        const locale = response.language || userInputLanguage;
+
+        if (response.showServices) {
+          const serviceListLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || userInputLanguage;
+          await sendServiceList(from, serviceListLocale);
+          session.history.push({ role: 'user', content: `[Voice] ${transcribedText}`, language: userInputLanguage, timestamp: new Date() });
+          session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
+          session.changed('history', true);
+          await session.save({ transaction: t });
+          return;
+        }
+
+        if (response.reply) {
+          await sendWhatsAppMessage(from, response.reply);
+          session.history.push({ role: 'user', content: `[Voice] ${transcribedText}`, language: userInputLanguage, timestamp: new Date() });
+          session.history.push({ role: 'model', content: response.reply, language: locale, timestamp: new Date() });
+          session.changed('history', true);
+          await session.save({ transaction: t });
         }
       } else {
         logger.whatsapp('info', 'Unsupported message type received', {

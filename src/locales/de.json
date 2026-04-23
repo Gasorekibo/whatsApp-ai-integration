@@ -9,6 +9,7 @@
   "select_service_footer": "Wir sind hier, um Ihnen beim Wachsen zu helfen",
   "rate_limit_error": "🔄 Wir haben gerade eine hohe Nachfrage. Bitte versuchen Sie es in einem Moment noch einmal oder geben Sie 'menu' ein, um unsere Dienstleistungen zu sehen.",
   "connection_error": "Ich habe gerade Verbindungsprobleme. Bitte versuchen Sie es in einem Moment noch einmal!",
+  "audio_transcription_failed": "Entschuldigung, ich konnte Ihre Sprachnachricht nicht verstehen. Bitte versuchen Sie stattdessen, eine Textnachricht zu senden.",
   "auth_success_title": "Authentifizierung erfolgreich!",
   "auth_success_connected_as": "Verbunden als:",
   "auth_success_email": "E-Mail:",
