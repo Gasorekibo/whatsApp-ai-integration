@@ -96,7 +96,7 @@ export default (sequelize) => {
       beforeCreate: (client) => {
         if (!client.trialEndDate) {
           const trialEnd = new Date();
-          trialEnd.setDate(trialEnd.getDate() + 14);
+          trialEnd.setDate(trialEnd.getDate() + 7);
           client.trialEndDate = trialEnd;
         }
         client.messageCountResetAt = new Date();
