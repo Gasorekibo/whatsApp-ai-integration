@@ -398,7 +398,19 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         showSlots: false,
         freeSlots: []
       };
-    } else {
+    } else if(err.status == 503) {
+      logger.error('Gemini server error', {
+        phone: sanitizedPhone,
+        status: err.status
+      });
+      return {
+        reply: "⚠️ Our AI is currently busy. Please try again in a few seconds. If the issue persists, type 'menu' to see our services or contact support.",
+        showServices: false,
+        showSlots: false,
+        freeSlots: []
+      };
+      }
+    else {
       logger.error('Gemini unexpected error', {
         phone: sanitizedPhone,
         status: err.status
