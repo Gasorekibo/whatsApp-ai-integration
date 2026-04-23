@@ -390,6 +390,104 @@
       background: rgba(0,0,0,0.5); z-index: 999;
     }
 
+    /* ── Sync Source Cards ── */
+    .sync-featured {
+      border: 2px solid #667eea;
+      border-radius: 12px;
+      padding: 20px 22px;
+      background: linear-gradient(135deg, #f0f4ff 0%, #f5f0ff 100%);
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin: 18px 0 14px;
+      position: relative;
+      transition: box-shadow 0.2s ease;
+    }
+    .sync-featured:hover { box-shadow: 0 4px 18px rgba(102,126,234,0.2); }
+    .sync-featured.syncing { pointer-events: none; opacity: 0.75; }
+    .sync-featured-logo { font-size: 40px; flex-shrink: 0; }
+    .sync-featured-body { flex: 1; }
+    .sync-featured-body h4 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sync-featured-body h4 .primary-tag {
+      font-size: 10px;
+      font-weight: 700;
+      background: #667eea;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .sync-featured-body p { font-size: 13px; color: #718096; line-height: 1.5; }
+    .sync-featured .sync-status-label {
+      position: absolute;
+      top: 10px; right: 12px;
+      font-size: 11px; font-weight: 700; color: #667eea;
+      display: none;
+    }
+    .sync-featured.syncing .sync-status-label { display: block; }
+
+    .sync-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 4px;
+    }
+    .sync-card {
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 18px 16px;
+      transition: all 0.2s ease;
+      text-align: center;
+      background: white;
+      position: relative;
+    }
+    .sync-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 14px rgba(102,126,234,0.12);
+      transform: translateY(-2px);
+    }
+    .sync-card.syncing { pointer-events: none; opacity: 0.75; }
+    .sync-card-logo { font-size: 30px; margin-bottom: 8px; display: block; }
+    .sync-card h4 { font-size: 14px; font-weight: 700; color: #2d3748; margin-bottom: 5px; }
+    .sync-card p { font-size: 12px; color: #718096; line-height: 1.4; margin-bottom: 14px; }
+    .sync-card .sync-status-label {
+      position: absolute; top: 8px; right: 10px;
+      font-size: 10px; font-weight: 700; color: #667eea; display: none;
+    }
+    .sync-card.syncing .sync-status-label { display: block; }
+
+    .sync-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+    .sync-btn-confluence  { background: #0052cc; color: white; }
+    .sync-btn-confluence:hover  { background: #0041a8; }
+    .sync-btn-google      { background: #4285f4; color: white; }
+    .sync-btn-google:hover      { background: #3367d6; }
+    .sync-btn-microsoft   { background: #0078d4; color: white; }
+    .sync-btn-microsoft:hover   { background: #005a9e; }
+
+    @media (max-width: 600px) { .sync-cards { grid-template-columns: 1fr; } }
+
     .employee-note {
       background: #ebf8ff;
       border: 1px solid #bee3f8;
@@ -465,7 +563,7 @@
       <div class="header-actions">
         <button class="btn btn-primary" onclick="openCreateClientModal()">+ Register Client</button>
         <button class="btn btn-primary" onclick="openReminderModal()">📣 Broadcast</button>
-        <button class="btn btn-success" onclick="syncServices()">🔄 Sync Services</button>
+        <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
       </div>
     </div>
 
@@ -572,7 +670,7 @@
     <div class="content-section" id="services">
       <div class="section-header">
         <h2>⚙️ Services</h2>
-        <button class="btn btn-success" onclick="syncServices()">🔄 Sync Services</button>
+        <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
       </div>
       <div id="servicesContent">
         <div class="loading"><div class="spinner"></div>Loading services…</div>
@@ -605,6 +703,54 @@
     </div>
 
   </div><!-- /main-content -->
+
+  <!-- ── Sync Source Modal ── -->
+  <div class="modal" id="syncModal">
+    <div class="modal-content modal-lg">
+      <h3>🔄 Sync Knowledge Base</h3>
+      <p class="modal-subtitle">Pull the latest data from any connected source into the AI knowledge base.</p>
+
+      <!-- Confluence — featured -->
+      <div class="sync-featured" id="syncCardConfluence">
+        <span class="sync-featured-logo">🔵</span>
+        <div class="sync-featured-body">
+          <h4>Confluence <span class="primary-tag">Primary</span></h4>
+          <p>Syncs pages from your Confluence space directly into the RAG vector database. All content becomes instantly searchable by the AI.</p>
+          <button class="sync-btn sync-btn-confluence" style="margin-top:12px; max-width:220px" onclick="syncFromConfluence()">
+            Sync from Confluence
+          </button>
+        </div>
+        <span class="sync-status-label">Syncing…</span>
+      </div>
+
+      <!-- Google Sheets + Microsoft Excel -->
+      <div class="sync-cards">
+        <div class="sync-card" id="syncCardGoogle">
+          <span class="sync-card-logo">📊</span>
+          <h4>Google Sheets</h4>
+          <p>Syncs service data from your connected Google Spreadsheet via OAuth.</p>
+          <button class="sync-btn sync-btn-google" onclick="syncFromGoogle()">
+            Sync from Google Sheets
+          </button>
+          <span class="sync-status-label">Syncing…</span>
+        </div>
+
+        <div class="sync-card" id="syncCardMicrosoft">
+          <span class="sync-card-logo">📗</span>
+          <h4>Microsoft Excel</h4>
+          <p>Syncs service data from your OneDrive / SharePoint file via Microsoft Graph API.</p>
+          <button class="sync-btn sync-btn-microsoft" onclick="syncFromMicrosoft()">
+            Sync from Microsoft Excel
+          </button>
+          <span class="sync-status-label">Syncing…</span>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:20px">
+        <button class="btn btn-secondary" onclick="closeSyncModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Broadcast Modal ── -->
   <div class="modal" id="reminderModal">
@@ -1165,20 +1311,43 @@
 
     // ──────────────────────── Sync Services ────────────────────────
 
-    async function syncServices() {
-      showToast('Syncing services…', 'success');
+    function openSyncModal()  { document.getElementById('syncModal').classList.add('active'); }
+    function closeSyncModal() { document.getElementById('syncModal').classList.remove('active'); }
+
+    async function runSync(cardId, endpoint, method, label) {
+      const card = document.getElementById(cardId);
+      card.classList.add('syncing');
       try {
-        const res = await fetch(`${API_BASE}/sync-services/microsoft`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(30000)
+        const res = await fetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(60000)
         });
-        if (res.ok) showToast('Services synced successfully', 'success');
-        else showToast('Failed to sync services', 'error');
-        fetchData();
+        const result = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const count = result.count != null ? ` (${result.count} chunks)` : '';
+          showToast(`${label} synced successfully${count}`, 'success');
+          closeSyncModal();
+          fetchData();
+        } else {
+          showToast(result.error || result.message || `${label} sync failed`, 'error');
+        }
       } catch (err) {
-        if (err.name === 'TimeoutError') showToast('Sync is taking longer than expected — may still complete', 'error');
-        else showToast('Sync failed', 'error');
+        if (err.name === 'TimeoutError') showToast(`${label} sync is taking longer than expected — may still complete`, 'error');
+        else showToast(`${label} sync failed`, 'error');
+      } finally {
+        card.classList.remove('syncing');
       }
+    }
+
+    function syncFromConfluence() {
+      runSync('syncCardConfluence', `${API_BASE}/kb/sync/confluence`, 'POST', 'Confluence');
+    }
+    function syncFromGoogle() {
+      runSync('syncCardGoogle', `${API_BASE}/kb/sync/sheets`, 'POST', 'Google Sheets');
+    }
+    function syncFromMicrosoft() {
+      runSync('syncCardMicrosoft', `${API_BASE}/sync-services/microsoft`, 'GET', 'Microsoft Excel');
     }
 
     // ──────────────────────── Toast ────────────────────────
@@ -1192,7 +1361,7 @@
 
     // ──────────────────────── Click-outside close ────────────────────────
 
-    ['reminderModal', 'createClientModal', 'editClientModal'].forEach(id => {
+    ['syncModal', 'reminderModal', 'createClientModal', 'editClientModal'].forEach(id => {
       document.getElementById(id).addEventListener('click', e => {
         if (e.target === e.currentTarget) {
           e.currentTarget.classList.remove('active');
