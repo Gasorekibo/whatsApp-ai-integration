@@ -93,14 +93,16 @@
       gap: 6px;
       text-decoration: none;
     }
-    .btn-primary { background: #667eea; color: white; }
+    .btn-primary   { background: #667eea; color: white; }
     .btn-primary:hover { background: #5568d3; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102,126,234,0.35); }
-    .btn-success { background: #48bb78; color: white; }
+    .btn-success   { background: #48bb78; color: white; }
     .btn-success:hover { background: #38a169; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(72,187,120,0.35); }
     .btn-secondary { background: #e2e8f0; color: #4a5568; }
     .btn-secondary:hover { background: #cbd5e0; }
-    .btn-danger { background: #f56565; color: white; }
+    .btn-danger    { background: #f56565; color: white; }
     .btn-danger:hover { background: #e53e3e; }
+    .btn-warning   { background: #ed8936; color: white; }
+    .btn-warning:hover { background: #dd6b20; }
     .btn-outline-danger { background: transparent; border: 2px solid #f56565; color: #f56565; padding: 6px 14px; }
     .btn-outline-danger:hover { background: #fff5f5; }
     .btn-sm { padding: 5px 11px; font-size: 12px; }
@@ -183,7 +185,7 @@
       color: #553c9a;
       font-family: monospace;
     }
-    .action-btns { display: flex; gap: 6px; }
+    .action-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 
     /* ── Badges ── */
     .badge {
@@ -255,7 +257,7 @@
       letter-spacing: 0.06em;
       margin-bottom: 8px;
     }
-    .overview-card .val       { font-size: 28px; font-weight: 700; color: #667eea; }
+    .overview-card .val        { font-size: 28px; font-weight: 700; color: #667eea; }
     .overview-card .val.green  { color: #48bb78; }
     .overview-card .val.purple { color: #805ad5; }
     .overview-card .val.orange { color: #ed8936; }
@@ -272,6 +274,7 @@
 
     /* ── Forms ── */
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
     .form-group { margin-bottom: 14px; }
     .form-group label {
       display: block;
@@ -297,6 +300,28 @@
     .form-group input:focus,
     .form-group select:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
     .required { color: #f56565; }
+    .field-hint { font-size: 11px; color: #a0aec0; margin-top: 4px; }
+
+    /* ── Form Sections ── */
+    .form-section {
+      margin: 18px 0 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .form-section-title {
+      padding: 11px 16px;
+      background: #f7fafc;
+      font-size: 12px;
+      font-weight: 700;
+      color: #4a5568;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .form-section-body {
+      padding: 16px;
+    }
 
     /* ── Modals ── */
     .modal {
@@ -315,17 +340,18 @@
       background: white;
       padding: 28px;
       border-radius: 14px;
-      max-width: 460px;
+      max-width: 520px;
       width: 100%;
       box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-      max-height: 90vh;
+      max-height: 92vh;
       overflow-y: auto;
     }
-    .modal-content.modal-lg { max-width: 580px; }
+    .modal-content.modal-lg  { max-width: 620px; }
+    .modal-content.modal-xl  { max-width: 720px; }
     .modal-content h3 { color: #2d3748; font-size: 18px; margin-bottom: 4px; }
     .modal-subtitle { color: #718096; font-size: 13px; margin-bottom: 20px; }
-    .modal-divider { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
-    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+    .modal-divider  { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
+    .modal-actions  { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
     .modal-actions.space-between { justify-content: space-between; align-items: center; }
 
     .credentials-section { margin-top: 16px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
@@ -346,6 +372,22 @@
       white-space: nowrap;
     }
     .btn-reveal:hover { background: #edf2f7; }
+
+    /* ── Calendar connect banner ── */
+    .cal-banner {
+      background: linear-gradient(135deg, #ebf8ff 0%, #e9d8fd 100%);
+      border: 1px solid #bee3f8;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .cal-banner-icon { font-size: 28px; flex-shrink: 0; }
+    .cal-banner-body { flex: 1; }
+    .cal-banner-body p { font-size: 13px; color: #2c5282; line-height: 1.5; }
+    .cal-banner-body strong { display: block; font-size: 14px; color: #1a365d; margin-bottom: 3px; }
 
     /* ── States ── */
     .no-data { text-align: center; padding: 40px; color: #a0aec0; font-size: 14px; line-height: 1.6; }
@@ -374,41 +416,6 @@
     .toast-success { border-left: 4px solid #48bb78; }
     .toast-error   { border-left: 4px solid #f56565; }
 
-    /* ── Refresh notice ── */
-    .refresh-notice {
-      position: fixed; bottom: 76px; right: 20px;
-      background: white; padding: 12px 16px;
-      border-radius: 8px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
-      display: flex; align-items: center; gap: 10px;
-      font-size: 12px; color: #4a5568;
-      border-left: 4px solid #667eea;
-      animation: bounce 3s ease-in-out infinite;
-      z-index: 1500;
-    }
-    .btn-refresh {
-      background: #667eea; color: white; border: none;
-      padding: 5px 12px; border-radius: 6px; font-size: 12px;
-      font-weight: 600; cursor: pointer; white-space: nowrap;
-    }
-    .btn-refresh:hover { background: #5568d3; }
-    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-
-    /* ── Hamburger ── */
-    .hamburger {
-      display: none; position: fixed; top: 20px; left: 20px;
-      z-index: 1100; background: white; border: none;
-      padding: 9px; border-radius: 8px; cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-    }
-    .hamburger span { display: block; width: 22px; height: 2px; background: #667eea; margin: 5px 0; transition: 0.3s; }
-
-    .sidebar-overlay {
-      display: none; position: fixed; top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5); z-index: 999;
-    }
-
     /* ── Sync Source Cards ── */
     .sync-featured {
       border: 2px solid #667eea;
@@ -427,53 +434,26 @@
     .sync-featured-logo { font-size: 40px; flex-shrink: 0; }
     .sync-featured-body { flex: 1; }
     .sync-featured-body h4 {
-      font-size: 16px;
-      font-weight: 700;
-      color: #2d3748;
-      margin-bottom: 4px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      font-size: 16px; font-weight: 700; color: #2d3748;
+      margin-bottom: 4px; display: flex; align-items: center; gap: 8px;
     }
     .sync-featured-body h4 .primary-tag {
-      font-size: 10px;
-      font-weight: 700;
-      background: #667eea;
-      color: white;
-      padding: 2px 8px;
-      border-radius: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 10px; font-weight: 700; background: #667eea; color: white;
+      padding: 2px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.05em;
     }
     .sync-featured-body p { font-size: 13px; color: #718096; line-height: 1.5; }
     .sync-featured .sync-status-label {
-      position: absolute;
-      top: 10px; right: 12px;
-      font-size: 11px; font-weight: 700; color: #667eea;
-      display: none;
+      position: absolute; top: 10px; right: 12px;
+      font-size: 11px; font-weight: 700; color: #667eea; display: none;
     }
     .sync-featured.syncing .sync-status-label { display: block; }
 
-    .sync-cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 4px;
-    }
+    .sync-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 4px; }
     .sync-card {
-      border: 2px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 18px 16px;
-      transition: all 0.2s ease;
-      text-align: center;
-      background: white;
-      position: relative;
+      border: 2px solid #e2e8f0; border-radius: 12px; padding: 18px 16px;
+      transition: all 0.2s ease; text-align: center; background: white; position: relative;
     }
-    .sync-card:hover {
-      border-color: #667eea;
-      box-shadow: 0 4px 14px rgba(102,126,234,0.12);
-      transform: translateY(-2px);
-    }
+    .sync-card:hover { border-color: #667eea; box-shadow: 0 4px 14px rgba(102,126,234,0.12); transform: translateY(-2px); }
     .sync-card.syncing { pointer-events: none; opacity: 0.75; }
     .sync-card-logo { font-size: 30px; margin-bottom: 8px; display: block; }
     .sync-card h4 { font-size: 14px; font-weight: 700; color: #2d3748; margin-bottom: 5px; }
@@ -485,37 +465,32 @@
     .sync-card.syncing .sync-status-label { display: block; }
 
     .sync-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 9px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      width: 100%;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 9px 18px; border-radius: 8px; font-size: 13px;
+      font-weight: 600; border: none; cursor: pointer; transition: all 0.2s ease; width: 100%;
     }
-    .sync-btn-confluence  { background: #0052cc; color: white; }
-    .sync-btn-confluence:hover  { background: #0041a8; }
-    .sync-btn-google      { background: #4285f4; color: white; }
-    .sync-btn-google:hover      { background: #3367d6; }
-    .sync-btn-microsoft   { background: #0078d4; color: white; }
-    .sync-btn-microsoft:hover   { background: #005a9e; }
+    .sync-btn-confluence { background: #0052cc; color: white; }
+    .sync-btn-confluence:hover { background: #0041a8; }
+    .sync-btn-google     { background: #4285f4; color: white; }
+    .sync-btn-google:hover { background: #3367d6; }
+    .sync-btn-microsoft  { background: #0078d4; color: white; }
+    .sync-btn-microsoft:hover { background: #005a9e; }
 
     @media (max-width: 600px) { .sync-cards { grid-template-columns: 1fr; } }
 
-    .employee-note {
-      background: #ebf8ff;
-      border: 1px solid #bee3f8;
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 13px;
-      color: #2c5282;
-      margin-bottom: 18px;
-      line-height: 1.5;
+    /* ── Hamburger ── */
+    .hamburger {
+      display: none; position: fixed; top: 20px; left: 20px;
+      z-index: 1100; background: white; border: none;
+      padding: 9px; border-radius: 8px; cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+    .hamburger span { display: block; width: 22px; height: 2px; background: #667eea; margin: 5px 0; transition: 0.3s; }
+
+    .sidebar-overlay {
+      display: none; position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 999;
     }
 
     @media (max-width: 768px) {
@@ -527,7 +502,7 @@
       .header { flex-direction: column; align-items: stretch; }
       .header-actions { flex-direction: column; }
       .btn { justify-content: center; }
-      .form-row { grid-template-columns: 1fr; }
+      .form-row, .form-row-3 { grid-template-columns: 1fr; }
       .stats-grid { grid-template-columns: 1fr 1fr; }
       .overview-grid { grid-template-columns: 1fr 1fr; }
     }
@@ -580,9 +555,9 @@
     <div class="header">
       <h1>Admin Dashboard</h1>
       <div class="header-actions">
-        <button class="btn btn-primary" onclick="openCreateClientModal()">+ Register Client</button>
-        <button class="btn btn-primary" onclick="openReminderModal()">📣 Broadcast</button>
-        <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
+        <button class="btn btn-primary"  onclick="openCreateClientModal()">+ Register Client</button>
+        <button class="btn btn-primary"  onclick="openReminderModal()">📣 Broadcast</button>
+        <button class="btn btn-success"  onclick="openSyncModal()">🔄 Sync Services</button>
       </div>
     </div>
 
@@ -677,9 +652,7 @@
 
     <!-- ── Users ── -->
     <div class="content-section" id="users">
-      <div class="section-header">
-        <h2>💬 Users</h2>
-      </div>
+      <div class="section-header"><h2>💬 Users</h2></div>
       <div id="usersContent">
         <div class="loading"><div class="spinner"></div>Loading users…</div>
       </div>
@@ -698,9 +671,7 @@
 
     <!-- ── Appointments ── -->
     <div class="content-section" id="appointments">
-      <div class="section-header">
-        <h2>📅 Appointments</h2>
-      </div>
+      <div class="section-header"><h2>📅 Appointments</h2></div>
       <div id="appointmentsContent">
         <div class="loading"><div class="spinner"></div>Loading appointments…</div>
       </div>
@@ -709,12 +680,15 @@
     <!-- ── Employees ── -->
     <div class="content-section" id="employees">
       <div class="section-header">
-        <h2>👥 Employees</h2>
-        <a href="/auth" target="_blank" class="btn btn-secondary">+ Connect Google Calendar</a>
+        <h2>👥 Employees / Calendars</h2>
       </div>
-      <div class="employee-note">
-        Employees gain access by authenticating with Google via <strong>/auth</strong>.
-        Their calendar availability drives appointment slot availability for all bookings.
+      <div class="cal-banner">
+        <div class="cal-banner-icon">📅</div>
+        <div class="cal-banner-body">
+          <strong>Connect a Google Calendar</strong>
+          <p>Each client needs their Google Calendar connected so the bot can read free slots and offer appointment booking. Use the button on each client row in the Clients tab, or connect directly below.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openCalendarConnectModal()">Connect Calendar</button>
       </div>
       <div id="employeesContent">
         <div class="loading"><div class="spinner"></div>Loading employees…</div>
@@ -723,19 +697,382 @@
 
   </div><!-- /main-content -->
 
-  <!-- ── Sync Source Modal ── -->
+  <!-- ══════════════════════════════════════════════════════
+       REGISTER CLIENT MODAL
+  ══════════════════════════════════════════════════════ -->
+  <div class="modal" id="createClientModal">
+    <div class="modal-content modal-xl">
+      <h3>🏢 Register New Client</h3>
+      <p class="modal-subtitle">Add a business and configure their WhatsApp AI bot from scratch.</p>
+
+      <form id="createClientForm" onsubmit="return false">
+
+        <!-- ── Basic Info ── -->
+        <div class="form-section">
+          <div class="form-section-title">Basic Info</div>
+          <div class="form-section-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Contact Name <span class="required">*</span></label>
+                <input id="newName" type="text" placeholder="Jean Bosco" required>
+              </div>
+              <div class="form-group">
+                <label>Company (legal name)</label>
+                <input id="newCompany" type="text" placeholder="Kigali Hospital Ltd">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Email <span class="required">*</span></label>
+                <input id="newEmail" type="email" placeholder="admin@company.com" required>
+              </div>
+              <div class="form-group">
+                <label>Phone <span class="required">*</span></label>
+                <input id="newPhone" type="text" placeholder="+250780000000" required>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── WhatsApp ── -->
+        <div class="form-section">
+          <div class="form-section-title">WhatsApp Configuration</div>
+          <div class="form-section-body">
+            <div class="form-group">
+              <label>WhatsApp Business Phone Number ID <span class="required">*</span></label>
+              <input id="newWaBid" type="text" placeholder="e.g. 123456789012345">
+              <div class="field-hint">Found in Meta Business Manager → WhatsApp → API Setup → Phone Number ID</div>
+            </div>
+            <div class="form-group">
+              <label>WhatsApp Permanent Token <span class="required">*</span></label>
+              <div class="input-reveal">
+                <input id="newWaToken" type="password" placeholder="EAAxxxxxxx...">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newWaToken', this)">Show</button>
+              </div>
+              <div class="field-hint">Generate a permanent token from a System User in Meta Business Suite (not the temporary one)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Bot Branding & Business Config ── -->
+        <div class="form-section">
+          <div class="form-section-title">Bot Branding &amp; Business Config</div>
+          <div class="form-section-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Display Name (shown in chat)</label>
+                <input id="newCompanyName" type="text" placeholder="e.g. Kigali Hospital">
+                <div class="field-hint">What the AI calls itself. Defaults to Company name if blank.</div>
+              </div>
+              <div class="form-group">
+                <label>Timezone</label>
+                <select id="newTimezone">
+                  <option value="Africa/Kigali">Africa/Kigali (default)</option>
+                  <option value="Africa/Nairobi">Africa/Nairobi</option>
+                  <option value="Africa/Lagos">Africa/Lagos</option>
+                  <option value="Africa/Johannesburg">Africa/Johannesburg</option>
+                  <option value="Europe/London">Europe/London</option>
+                  <option value="Europe/Paris">Europe/Paris</option>
+                  <option value="America/New_York">America/New_York</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles</option>
+                  <option value="Asia/Dubai">Asia/Dubai</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Currency</label>
+                <select id="newCurrency">
+                  <option value="RWF">RWF — Rwandan Franc</option>
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="GBP">GBP — British Pound</option>
+                  <option value="KES">KES — Kenyan Shilling</option>
+                  <option value="UGX">UGX — Ugandan Shilling</option>
+                  <option value="TZS">TZS — Tanzanian Shilling</option>
+                  <option value="NGN">NGN — Nigerian Naira</option>
+                  <option value="ZAR">ZAR — South African Rand</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Consultation Deposit Amount</label>
+                <input id="newDepositAmount" type="number" placeholder="e.g. 5000" min="0">
+                <div class="field-hint">Amount required to confirm a booking. Leave blank to use server default.</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Payment Redirect URL</label>
+              <input id="newPaymentRedirectUrl" type="url" placeholder="https://yoursite.com/booking-confirmed">
+              <div class="field-hint">Where users land after completing the Flutterwave payment.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Subscription ── -->
+        <div class="form-section">
+          <div class="form-section-title">Subscription</div>
+          <div class="form-section-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Plan</label>
+                <select id="newPlan">
+                  <option value="message_only">Message Only</option>
+                  <option value="message_and_voice">Message + Voice</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Monthly Message Limit</label>
+                <input id="newMaxMessages" type="number" placeholder="Leave blank = unlimited" min="0">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── AI Credentials ── -->
+        <details class="credentials-section">
+          <summary>AI &amp; Knowledge Base Credentials <span class="cred-hint">(optional — falls back to server defaults)</span></summary>
+          <div class="credentials-body">
+            <div class="form-group">
+              <label>Gemini API Key</label>
+              <div class="input-reveal">
+                <input id="newGeminiKey" type="password" placeholder="AIzaSy...">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newGeminiKey', this)">Show</button>
+              </div>
+              <div class="field-hint">If blank, all clients share the server's GEMINI_API_KEY.</div>
+            </div>
+            <div class="form-group">
+              <label>Pinecone Namespace</label>
+              <input id="newPineconeIndex" type="text" placeholder="e.g. kigali-hospital">
+              <div class="field-hint">Unique slug that isolates this client's knowledge base in Pinecone. Use lowercase, hyphens only.</div>
+            </div>
+          </div>
+        </details>
+
+      </form>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeCreateClientModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveNewClient()">Register Client</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       EDIT CLIENT MODAL
+  ══════════════════════════════════════════════════════ -->
+  <div class="modal" id="editClientModal">
+    <div class="modal-content modal-xl">
+      <h3>✏️ Edit — <span id="editClientName" style="color:#667eea"></span></h3>
+      <p class="modal-subtitle">Update any setting for this client. Blank credential fields keep the existing encrypted value.</p>
+
+      <!-- ── Basic Info ── -->
+      <div class="form-section">
+        <div class="form-section-title">Basic Info</div>
+        <div class="form-section-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Contact Name</label>
+              <input id="editName" type="text" placeholder="Jean Bosco">
+            </div>
+            <div class="form-group">
+              <label>Company (legal name)</label>
+              <input id="editCompany" type="text" placeholder="Kigali Hospital Ltd">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Email</label>
+              <input id="editEmail" type="email" placeholder="admin@company.com">
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input id="editPhone" type="text" placeholder="+250780000000">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── WhatsApp ── -->
+      <div class="form-section">
+        <div class="form-section-title">WhatsApp Configuration</div>
+        <div class="form-section-body">
+          <div class="form-group">
+            <label>WhatsApp Business Phone Number ID</label>
+            <input id="editWaBid" type="text" placeholder="123456789012345">
+          </div>
+          <div class="form-group">
+            <label>WhatsApp Token <span style="font-weight:400; color:#a0aec0; font-size:11px">(leave blank to keep existing)</span></label>
+            <div class="input-reveal">
+              <input id="editWaToken" type="password" placeholder="Paste new token to replace…">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editWaToken', this)">Show</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Bot Branding & Business Config ── -->
+      <div class="form-section">
+        <div class="form-section-title">Bot Branding &amp; Business Config</div>
+        <div class="form-section-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Display Name (shown in chat)</label>
+              <input id="editCompanyName" type="text" placeholder="e.g. Kigali Hospital">
+            </div>
+            <div class="form-group">
+              <label>Timezone</label>
+              <select id="editTimezone">
+                <option value="Africa/Kigali">Africa/Kigali</option>
+                <option value="Africa/Nairobi">Africa/Nairobi</option>
+                <option value="Africa/Lagos">Africa/Lagos</option>
+                <option value="Africa/Johannesburg">Africa/Johannesburg</option>
+                <option value="Europe/London">Europe/London</option>
+                <option value="Europe/Paris">Europe/Paris</option>
+                <option value="America/New_York">America/New_York</option>
+                <option value="America/Los_Angeles">America/Los_Angeles</option>
+                <option value="Asia/Dubai">Asia/Dubai</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Currency</label>
+              <select id="editCurrency">
+                <option value="RWF">RWF — Rwandan Franc</option>
+                <option value="USD">USD — US Dollar</option>
+                <option value="EUR">EUR — Euro</option>
+                <option value="GBP">GBP — British Pound</option>
+                <option value="KES">KES — Kenyan Shilling</option>
+                <option value="UGX">UGX — Ugandan Shilling</option>
+                <option value="TZS">TZS — Tanzanian Shilling</option>
+                <option value="NGN">NGN — Nigerian Naira</option>
+                <option value="ZAR">ZAR — South African Rand</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Consultation Deposit Amount</label>
+              <input id="editDepositAmount" type="number" placeholder="e.g. 5000" min="0">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Payment Redirect URL</label>
+            <input id="editPaymentRedirectUrl" type="url" placeholder="https://yoursite.com/booking-confirmed">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Subscription ── -->
+      <div class="form-section">
+        <div class="form-section-title">Subscription</div>
+        <div class="form-section-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Plan</label>
+              <select id="editPlan">
+                <option value="message_only">Message Only</option>
+                <option value="message_and_voice">Message + Voice</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select id="editStatus">
+                <option value="trial">Trial</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Subscription End Date</label>
+              <input id="editSubEnd" type="date">
+            </div>
+            <div class="form-group">
+              <label>Monthly Message Limit</label>
+              <input id="editMaxMessages" type="number" placeholder="Leave blank = unlimited" min="0">
+            </div>
+          </div>
+          <div class="form-group">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; text-transform:none; font-size:14px; font-weight:500; letter-spacing:0;">
+              <input id="editIsActive" type="checkbox" style="width:auto; accent-color:#667eea; transform:scale(1.3);">
+              Client is Active (can send &amp; receive messages)
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── AI Credentials ── -->
+      <details class="credentials-section">
+        <summary>AI &amp; Knowledge Base Credentials <span class="cred-hint">(leave blank to keep existing)</span></summary>
+        <div class="credentials-body">
+          <div class="form-group">
+            <label>Gemini API Key</label>
+            <div class="input-reveal">
+              <input id="editGeminiKey" type="password" placeholder="Paste new key to replace…">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editGeminiKey', this)">Show</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Pinecone Namespace</label>
+            <input id="editPineconeIndex" type="text" placeholder="e.g. kigali-hospital">
+          </div>
+        </div>
+      </details>
+
+      <hr class="modal-divider">
+
+      <div class="modal-actions space-between">
+        <button class="btn btn-outline-danger" onclick="resetClientMessages()">Reset Message Count</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-secondary" onclick="closeEditClientModal()">Cancel</button>
+          <button class="btn btn-primary"   onclick="saveClientEdit()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       CONNECT CALENDAR MODAL
+  ══════════════════════════════════════════════════════ -->
+  <div class="modal" id="calendarConnectModal">
+    <div class="modal-content">
+      <h3>📅 Connect Google Calendar</h3>
+      <p class="modal-subtitle">Link a Google account so the bot can read calendar availability for this client.</p>
+
+      <div class="form-group">
+        <label>Select Client <span class="required">*</span></label>
+        <select id="calClientId">
+          <option value="">— Select a client —</option>
+        </select>
+      </div>
+
+      <div style="background:#f7fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; font-size:13px; color:#4a5568; line-height:1.6; margin-bottom:4px;">
+        <strong style="display:block; margin-bottom:4px;">What happens next:</strong>
+        Clicking Connect will open Google's sign-in page. Sign in with the Google account whose calendar contains the client's availability. On success, the bot will be able to offer real appointment slots.
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeCalendarConnectModal()">Cancel</button>
+        <button class="btn btn-success"   onclick="openCalendarAuth()">Connect Google Calendar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SYNC MODAL
+  ══════════════════════════════════════════════════════ -->
   <div class="modal" id="syncModal">
     <div class="modal-content modal-lg">
       <h3>🔄 Sync Knowledge Base</h3>
       <p class="modal-subtitle">Pull the latest data from any connected source into the AI knowledge base.</p>
 
-      <!-- Client selector -->
       <div class="form-group" style="margin-bottom:18px">
-        <label style="font-size:13px; font-weight:600; color:#4a5568; text-transform:uppercase; letter-spacing:.5px">Sync for Client</label>
+        <label style="font-size:12px; font-weight:700; color:#4a5568; text-transform:uppercase; letter-spacing:.5px">Sync for Client <span class="required">*</span></label>
         <select id="syncClientId" style="margin-top:6px">
           <option value="">— Select a client —</option>
         </select>
-        <p style="font-size:12px; color:#a0aec0; margin-top:4px">Content and knowledge base are isolated per client.</p>
+        <p style="font-size:12px; color:#a0aec0; margin-top:4px">Each client has an isolated knowledge base (Pinecone namespace).</p>
       </div>
 
       <!-- Confluence — featured -->
@@ -751,25 +1088,19 @@
         <span class="sync-status-label">Syncing…</span>
       </div>
 
-      <!-- Google Sheets + Microsoft Excel -->
       <div class="sync-cards">
         <div class="sync-card" id="syncCardGoogle">
           <span class="sync-card-logo">📊</span>
           <h4>Google Sheets</h4>
           <p>Syncs service data from your connected Google Spreadsheet via OAuth.</p>
-          <button class="sync-btn sync-btn-google" onclick="syncFromGoogle()">
-            Sync from Google Sheets
-          </button>
+          <button class="sync-btn sync-btn-google" onclick="syncFromGoogle()">Sync from Google Sheets</button>
           <span class="sync-status-label">Syncing…</span>
         </div>
-
         <div class="sync-card" id="syncCardMicrosoft">
           <span class="sync-card-logo">📗</span>
           <h4>Microsoft Excel</h4>
           <p>Syncs service data from your OneDrive / SharePoint file via Microsoft Graph API.</p>
-          <button class="sync-btn sync-btn-microsoft" onclick="syncFromMicrosoft()">
-            Sync from Microsoft Excel
-          </button>
+          <button class="sync-btn sync-btn-microsoft" onclick="syncFromMicrosoft()">Sync from Microsoft Excel</button>
           <span class="sync-status-label">Syncing…</span>
         </div>
       </div>
@@ -790,155 +1121,7 @@
       </p>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeReminderModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="sendReminderBroadcast()">Send Broadcast</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Create Client Modal ── -->
-  <div class="modal" id="createClientModal">
-    <div class="modal-content modal-lg">
-      <h3>🏢 Register New Client</h3>
-      <p class="modal-subtitle">Add a business client and assign their WhatsApp AI subscription plan.</p>
-      <form id="createClientForm" onsubmit="return false">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Name <span class="required">*</span></label>
-            <input id="newName" type="text" placeholder="Contact or company name" required>
-          </div>
-          <div class="form-group">
-            <label>Company</label>
-            <input id="newCompany" type="text" placeholder="Company (optional)">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Email <span class="required">*</span></label>
-            <input id="newEmail" type="email" placeholder="admin@company.com" required>
-          </div>
-          <div class="form-group">
-            <label>Phone <span class="required">*</span></label>
-            <input id="newPhone" type="text" placeholder="+250780000000" required>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>WhatsApp Business Phone Number ID</label>
-          <input id="newWaBid" type="text" placeholder="e.g. 123456789012345 (from Meta Business Manager)">
-        </div>
-        <div class="form-group">
-          <label>Subscription Plan</label>
-          <select id="newPlan">
-            <option value="message_only">Message Only</option>
-            <option value="message_and_voice">Message + Voice</option>
-          </select>
-        </div>
-
-        <details class="credentials-section">
-          <summary>API Credentials <span class="cred-hint">(optional — falls back to server defaults)</span></summary>
-          <div class="credentials-body">
-            <div class="form-group">
-              <label>WhatsApp Token</label>
-              <div class="input-reveal">
-                <input id="newWaToken" type="password" placeholder="EAAxxxxxxx...">
-                <button type="button" class="btn-reveal" onclick="toggleReveal('newWaToken', this)">Show</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Gemini API Key</label>
-              <div class="input-reveal">
-                <input id="newGeminiKey" type="password" placeholder="AIzaSy...">
-                <button type="button" class="btn-reveal" onclick="toggleReveal('newGeminiKey', this)">Show</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Pinecone Index / Namespace</label>
-              <input id="newPineconeIndex" type="text" placeholder="e.g. client-acme">
-            </div>
-          </div>
-        </details>
-      </form>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeCreateClientModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveNewClient()">Register Client</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Edit Client Modal ── -->
-  <div class="modal" id="editClientModal">
-    <div class="modal-content modal-lg">
-      <h3>✏️ Edit — <span id="editClientName" style="color:#667eea"></span></h3>
-      <p class="modal-subtitle">Update subscription plan, status, limits, and access settings.</p>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label>Subscription Plan</label>
-          <select id="editPlan">
-            <option value="message_only">Message Only</option>
-            <option value="message_and_voice">Message + Voice</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Subscription Status</label>
-          <select id="editStatus">
-            <option value="trial">Trial</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="expired">Expired</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label>Subscription End Date</label>
-          <input id="editSubEnd" type="date">
-        </div>
-        <div class="form-group">
-          <label>Monthly Message Limit</label>
-          <input id="editMaxMessages" type="number" placeholder="Leave empty for unlimited" min="0">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; text-transform:none; font-size:14px;">
-          <input id="editIsActive" type="checkbox" style="width:auto; accent-color:#667eea; transform:scale(1.3);">
-          Client is Active (can send &amp; receive messages)
-        </label>
-      </div>
-
-      <details class="credentials-section">
-        <summary>Update API Credentials <span class="cred-hint">(leave blank to keep existing)</span></summary>
-        <div class="credentials-body">
-          <div class="form-group">
-            <label>WhatsApp Token</label>
-            <div class="input-reveal">
-              <input id="editWaToken" type="password" placeholder="Paste new token to replace...">
-              <button type="button" class="btn-reveal" onclick="toggleReveal('editWaToken', this)">Show</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Gemini API Key</label>
-            <div class="input-reveal">
-              <input id="editGeminiKey" type="password" placeholder="Paste new key to replace...">
-              <button type="button" class="btn-reveal" onclick="toggleReveal('editGeminiKey', this)">Show</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Pinecone Index / Namespace</label>
-            <input id="editPineconeIndex" type="text" placeholder="e.g. client-acme">
-          </div>
-        </div>
-      </details>
-
-      <hr class="modal-divider">
-
-      <div class="modal-actions space-between">
-        <button class="btn btn-outline-danger" onclick="resetClientMessages()">Reset Message Count</button>
-        <div style="display:flex; gap:10px;">
-          <button class="btn btn-secondary" onclick="closeEditClientModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveClientEdit()">Save Changes</button>
-        </div>
+        <button class="btn btn-primary"   onclick="sendReminderBroadcast()">Send Broadcast</button>
       </div>
     </div>
   </div>
@@ -946,18 +1129,11 @@
   <!-- Toast -->
   <div class="toast" id="toast"><span id="toastMessage"></span></div>
 
-  <!-- Refresh notice -->
-  <div class="refresh-notice">
-    <span>🔄</span>
-    <span>Updated services? Sync &amp; refresh to see changes.</span>
-    <button class="btn-refresh" onclick="location.reload()">Refresh</button>
-  </div>
-
   <script>
-    const API_BASE = 'http://localhost:3000/api';
+    const API_BASE = '';  // same origin
 
-    let cachedData     = { users: null, services: null, appointments: null, clients: null, employees: null };
-    let clientsMap     = {};
+    let cachedData      = { users: null, services: null, appointments: null, clients: null, employees: null };
+    let clientsMap      = {};
     let editingClientId = null;
 
     // ──────────────────────── Data Fetching ────────────────────────
@@ -965,11 +1141,11 @@
     async function fetchData() {
       try {
         const [usersRes, servicesRes, appointmentsRes, clientsRes, employeesRes] = await Promise.all([
-          fetch(`${API_BASE}/outreach/users`),
-          fetch(`${API_BASE}/outreach/services`),
-          fetch(`${API_BASE}/outreach/appointments`),
-          fetch(`${API_BASE}/outreach/clients`),
-          fetch(`${API_BASE}/outreach/employees`)
+          fetch(`/api/outreach/users`),
+          fetch(`/api/outreach/services`),
+          fetch(`/api/outreach/appointments`),
+          fetch(`/api/outreach/clients`),
+          fetch(`/api/outreach/employees`)
         ]);
 
         cachedData.users        = await usersRes.json();
@@ -991,9 +1167,8 @@
 
     function displayStats() {
       const { users, services, appointments, clients } = cachedData;
-
-      document.getElementById('totalUsers').textContent        = users?.users?.length ?? '—';
-      document.getElementById('totalClients').textContent      = clients?.clients?.length ?? '—';
+      document.getElementById('totalUsers').textContent           = users?.users?.length ?? '—';
+      document.getElementById('totalClients').textContent         = clients?.clients?.length ?? '—';
       document.getElementById('upcomingAppointments').textContent = appointments?.appointments?.length ?? '—';
 
       const voiceCount = (clients?.clients || []).filter(c => c.subscriptionPlan === 'message_and_voice').length;
@@ -1077,7 +1252,7 @@
 
       let html = `<div class="table-container"><table>
         <thead><tr>
-          <th>Client</th><th>Contact</th><th>WA Phone Number ID</th>
+          <th>Client</th><th>Contact</th><th>WA Phone ID</th>
           <th>Plan</th><th>Status</th><th>Ends</th>
           <th>Messages</th><th>Active</th><th>Actions</th>
         </tr></thead><tbody>`;
@@ -1097,7 +1272,7 @@
         html += `<tr>
           <td><strong>${c.name}</strong><small>${c.company || '—'}</small></td>
           <td>${c.email}<small>${c.phone}</small></td>
-          <td><code>${c.whatsappBusinessId?.slice(0,6)+ '****' || '—'}</code></td>
+          <td><code>${c.whatsappBusinessId ? c.whatsappBusinessId.slice(0,6) + '****' : '—'}</code></td>
           <td>${mkPlanBadge(c.subscriptionPlan)}</td>
           <td>${mkStatusBadge(c.subscriptionStatus)}</td>
           <td style="font-size:13px">${endDate}</td>
@@ -1105,7 +1280,9 @@
           <td>${c.isActive ? '<span class="badge badge-active">Yes</span>' : '<span class="badge badge-inactive">No</span>'}</td>
           <td>
             <div class="action-btns">
-              <button class="btn btn-primary btn-sm" onclick="openEditClientModal('${c.id}')">Edit</button>
+              <button class="btn btn-primary btn-sm"  onclick="openEditClientModal('${c.id}')">Edit</button>
+              <button class="btn btn-success btn-sm"  onclick="openSyncModalFor('${c.id}')">Sync KB</button>
+              <button class="btn btn-warning btn-sm"  onclick="openCalendarConnectModalFor('${c.id}')">📅 Calendar</button>
             </div>
           </td>
         </tr>`;
@@ -1128,13 +1305,14 @@
         (c.phone   || '').includes(search) ||
         (c.company || '').toLowerCase().includes(search)
       );
-      if (planF) filtered = filtered.filter(c => c.subscriptionPlan    === planF);
-      if (statF) filtered = filtered.filter(c => c.subscriptionStatus  === statF);
+      if (planF) filtered = filtered.filter(c => c.subscriptionPlan   === planF);
+      if (statF) filtered = filtered.filter(c => c.subscriptionStatus === statF);
 
       displayClients(filtered);
     }
 
-    // Create client
+    // ── Register Client ──
+
     function openCreateClientModal() {
       document.getElementById('createClientForm').reset();
       document.getElementById('createClientModal').classList.add('active');
@@ -1149,22 +1327,32 @@
       const phone              = document.getElementById('newPhone').value.trim();
       const company            = document.getElementById('newCompany').value.trim();
       const whatsappBusinessId = document.getElementById('newWaBid').value.trim();
-      const subscriptionPlan   = document.getElementById('newPlan').value;
       const whatsappToken      = document.getElementById('newWaToken').value.trim();
+      const companyName        = document.getElementById('newCompanyName').value.trim();
+      const timezone           = document.getElementById('newTimezone').value;
+      const currency           = document.getElementById('newCurrency').value;
+      const depositAmountRaw   = document.getElementById('newDepositAmount').value;
+      const paymentRedirectUrl = document.getElementById('newPaymentRedirectUrl').value.trim();
+      const subscriptionPlan   = document.getElementById('newPlan').value;
+      const maxMsgRaw          = document.getElementById('newMaxMessages').value;
       const geminiApiKey       = document.getElementById('newGeminiKey').value.trim();
       const pineconeIndex      = document.getElementById('newPineconeIndex').value.trim();
 
       if (!name || !email || !phone) { showToast('Name, email, and phone are required', 'error'); return; }
 
-      const payload = { name, email, phone, subscriptionPlan };
+      const payload = { name, email, phone, subscriptionPlan, timezone, currency };
       if (company)            payload.company            = company;
       if (whatsappBusinessId) payload.whatsappBusinessId = whatsappBusinessId;
       if (whatsappToken)      payload.whatsappToken      = whatsappToken;
+      if (companyName)        payload.companyName        = companyName;
+      if (paymentRedirectUrl) payload.paymentRedirectUrl = paymentRedirectUrl;
+      if (depositAmountRaw)   payload.depositAmount      = parseInt(depositAmountRaw, 10);
+      if (maxMsgRaw)          payload.maxMonthlyMessages = parseInt(maxMsgRaw, 10);
       if (geminiApiKey)       payload.geminiApiKey       = geminiApiKey;
       if (pineconeIndex)      payload.pineconeIndex      = pineconeIndex;
 
       try {
-        const res = await fetch(`${API_BASE}/outreach/clients`, {
+        const res = await fetch(`/api/outreach/clients`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1183,24 +1371,42 @@
       }
     }
 
-    // Edit client
+    // ── Edit Client ──
+
     function openEditClientModal(clientId) {
       const c = clientsMap[clientId];
       if (!c) return;
       editingClientId = clientId;
-      document.getElementById('editClientName').textContent = c.name;
-      document.getElementById('editPlan').value             = c.subscriptionPlan;
-      document.getElementById('editStatus').value           = c.subscriptionStatus;
-      document.getElementById('editIsActive').checked       = c.isActive;
-      document.getElementById('editMaxMessages').value      = c.maxMonthlyMessages ?? '';
-      document.getElementById('editSubEnd').value           = c.subscriptionEndDate
+
+      document.getElementById('editClientName').textContent      = c.name;
+      // Basic info
+      document.getElementById('editName').value                  = c.name || '';
+      document.getElementById('editCompany').value               = c.company || '';
+      document.getElementById('editEmail').value                 = c.email || '';
+      document.getElementById('editPhone').value                 = c.phone || '';
+      // WhatsApp
+      document.getElementById('editWaBid').value                 = c.whatsappBusinessId || '';
+      document.getElementById('editWaToken').value               = '';
+      // Bot branding
+      document.getElementById('editCompanyName').value           = c.companyName || '';
+      document.getElementById('editTimezone').value              = c.timezone || 'Africa/Kigali';
+      document.getElementById('editCurrency').value              = c.currency || 'RWF';
+      document.getElementById('editDepositAmount').value         = c.depositAmount ?? '';
+      document.getElementById('editPaymentRedirectUrl').value    = c.paymentRedirectUrl || '';
+      // Subscription
+      document.getElementById('editPlan').value                  = c.subscriptionPlan;
+      document.getElementById('editStatus').value                = c.subscriptionStatus;
+      document.getElementById('editIsActive').checked            = c.isActive;
+      document.getElementById('editMaxMessages').value           = c.maxMonthlyMessages ?? '';
+      document.getElementById('editSubEnd').value                = c.subscriptionEndDate
         ? new Date(c.subscriptionEndDate).toISOString().split('T')[0] : '';
-      // Tokens are encrypted server-side — show only pinecone index; tokens must be re-entered to change
-      document.getElementById('editPineconeIndex').value    = c.pineconeIndex || '';
-      document.getElementById('editWaToken').value          = '';
-      document.getElementById('editGeminiKey').value        = '';
+      // Credentials
+      document.getElementById('editPineconeIndex').value         = c.pineconeIndex || '';
+      document.getElementById('editGeminiKey').value             = '';
+
       document.getElementById('editClientModal').classList.add('active');
     }
+
     function closeEditClientModal() {
       document.getElementById('editClientModal').classList.remove('active');
       editingClientId = null;
@@ -1208,24 +1414,35 @@
 
     async function saveClientEdit() {
       if (!editingClientId) return;
-      const maxMsgRaw      = document.getElementById('editMaxMessages').value;
+
       const waToken        = document.getElementById('editWaToken').value.trim();
       const geminiKey      = document.getElementById('editGeminiKey').value.trim();
-      const pineconeIndex  = document.getElementById('editPineconeIndex').value.trim();
+      const maxMsgRaw      = document.getElementById('editMaxMessages').value;
+      const depositRaw     = document.getElementById('editDepositAmount').value;
 
       const updates = {
+        name:                document.getElementById('editName').value.trim(),
+        company:             document.getElementById('editCompany').value.trim(),
+        email:               document.getElementById('editEmail').value.trim(),
+        phone:               document.getElementById('editPhone').value.trim(),
+        whatsappBusinessId:  document.getElementById('editWaBid').value.trim() || null,
+        companyName:         document.getElementById('editCompanyName').value.trim() || null,
+        timezone:            document.getElementById('editTimezone').value,
+        currency:            document.getElementById('editCurrency').value,
+        depositAmount:       depositRaw !== '' ? parseInt(depositRaw, 10) : null,
+        paymentRedirectUrl:  document.getElementById('editPaymentRedirectUrl').value.trim() || null,
         subscriptionPlan:    document.getElementById('editPlan').value,
         subscriptionStatus:  document.getElementById('editStatus').value,
         isActive:            document.getElementById('editIsActive').checked,
         subscriptionEndDate: document.getElementById('editSubEnd').value || null,
         maxMonthlyMessages:  maxMsgRaw !== '' ? parseInt(maxMsgRaw, 10) : null,
-        pineconeIndex:       pineconeIndex || null,
+        pineconeIndex:       document.getElementById('editPineconeIndex').value.trim() || null,
       };
-      // Only send credentials if explicitly provided (they're encrypted; blank = keep existing)
-      if (waToken)    updates.whatsappToken = waToken;
-      if (geminiKey)  updates.geminiApiKey  = geminiKey;
+      if (waToken)   updates.whatsappToken = waToken;
+      if (geminiKey) updates.geminiApiKey  = geminiKey;
+
       try {
-        const res = await fetch(`${API_BASE}/outreach/clients/${editingClientId}`, {
+        const res = await fetch(`/api/outreach/clients/${editingClientId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates)
@@ -1247,21 +1464,112 @@
     async function resetClientMessages() {
       if (!editingClientId) return;
       try {
-        const res = await fetch(`${API_BASE}/outreach/clients/${editingClientId}`, {
+        const res = await fetch(`/api/outreach/clients/${editingClientId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messageCount: 0 })
         });
+        if (res.ok) showToast('Message count reset to 0', 'success');
+        else showToast('Failed to reset message count', 'error');
+        await fetchData();
+      } catch { showToast('Network error', 'error'); }
+    }
+
+    // ──────────────────────── Calendar Connect ────────────────────────
+
+    function populateCalendarClientSelect(preselectedId = '') {
+      const sel = document.getElementById('calClientId');
+      sel.innerHTML = '<option value="">— Select a client —</option>';
+      (cachedData.clients?.clients || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name}${c.company ? ' · ' + c.company : ''}`;
+        if (c.id === preselectedId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    function openCalendarConnectModal() {
+      populateCalendarClientSelect();
+      document.getElementById('calendarConnectModal').classList.add('active');
+    }
+
+    function openCalendarConnectModalFor(clientId) {
+      populateCalendarClientSelect(clientId);
+      document.getElementById('calendarConnectModal').classList.add('active');
+    }
+
+    function closeCalendarConnectModal() {
+      document.getElementById('calendarConnectModal').classList.remove('active');
+    }
+
+    function openCalendarAuth() {
+      const clientId = document.getElementById('calClientId').value;
+      if (!clientId) { showToast('Please select a client first', 'error'); return; }
+      window.open(`/auth?clientId=${clientId}`, '_blank');
+      closeCalendarConnectModal();
+      showToast('Google sign-in opened — complete the flow in the new tab', 'success');
+    }
+
+    // ──────────────────────── Sync ────────────────────────
+
+    function populateSyncClientSelect(preselectedId = '') {
+      const sel = document.getElementById('syncClientId');
+      sel.innerHTML = '<option value="">— Select a client —</option>';
+      (cachedData.clients?.clients || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name}${c.company ? ' · ' + c.company : ''}`;
+        if (c.id === preselectedId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    function openSyncModal() {
+      populateSyncClientSelect();
+      document.getElementById('syncModal').classList.add('active');
+    }
+
+    function openSyncModalFor(clientId) {
+      populateSyncClientSelect(clientId);
+      document.getElementById('syncModal').classList.add('active');
+    }
+
+    function closeSyncModal() { document.getElementById('syncModal').classList.remove('active'); }
+
+    async function runSync(cardId, endpoint, label) {
+      const clientId = document.getElementById('syncClientId').value;
+      if (!clientId) { showToast('Please select a client before syncing', 'error'); return; }
+
+      const card = document.getElementById(cardId);
+      card.classList.add('syncing');
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId }),
+          signal: AbortSignal.timeout(120000)
+        });
+        const result = await res.json().catch(() => ({}));
         if (res.ok) {
-          showToast('Message count reset to 0', 'success');
-          await fetchData();
+          const count = result.count != null ? ` (${result.count} chunks)` : '';
+          showToast(`${label} synced successfully${count}`, 'success');
+          closeSyncModal();
+          fetchData();
         } else {
-          showToast('Failed to reset message count', 'error');
+          showToast(result.error || result.message || `${label} sync failed`, 'error');
         }
       } catch (err) {
-        showToast('Network error', 'error');
+        if (err.name === 'TimeoutError') showToast(`${label} sync is taking longer than expected — may still complete in background`, 'error');
+        else showToast(`${label} sync failed`, 'error');
+      } finally {
+        card.classList.remove('syncing');
       }
     }
+
+    function syncFromConfluence() { runSync('syncCardConfluence', `/api/kb/sync/confluence`,  'Confluence'); }
+    function syncFromGoogle()     { runSync('syncCardGoogle',     `/api/kb/sync/sheets`,      'Google Sheets'); }
+    function syncFromMicrosoft()  { runSync('syncCardMicrosoft',  `/api/kb/sync/microsoft`,   'Microsoft Excel'); }
 
     // ──────────────────────── Users ────────────────────────
 
@@ -1270,10 +1578,7 @@
       if (!users?.users?.length) { container.innerHTML = '<div class="no-data">No users found</div>'; return; }
 
       let html = `<div class="table-container"><table>
-        <thead><tr>
-          <th>Name</th><th>Phone</th><th>Selected Service</th><th>Conversations</th><th>Last Access</th>
-        </tr></thead><tbody>`;
-
+        <thead><tr><th>Name</th><th>Phone</th><th>Selected Service</th><th>Conversations</th><th>Last Access</th></tr></thead><tbody>`;
       users.users.forEach(u => {
         html += `<tr>
           <td><strong>${u.name || 'N/A'}</strong></td>
@@ -1283,7 +1588,6 @@
           <td>${u.lastAccess ? new Date(u.lastAccess).toLocaleString() : 'N/A'}</td>
         </tr>`;
       });
-
       html += '</tbody></table></div>';
       container.innerHTML = html;
     }
@@ -1296,7 +1600,6 @@
 
       let html = `<div class="table-container"><table>
         <thead><tr><th>Service Name</th><th>Short Description</th><th>Details</th><th>Status</th></tr></thead><tbody>`;
-
       servicesData.forEach(doc => {
         (doc.services || []).forEach(s => {
           html += `<tr>
@@ -1307,7 +1610,6 @@
           </tr>`;
         });
       });
-
       html += '</tbody></table></div>';
       container.innerHTML = html;
     }
@@ -1324,14 +1626,12 @@
       let html = `<div class="table-container"><table>
         <thead><tr>
           <th>Service</th><th>Client</th><th>Email</th>
-          <th>Amount</th><th>Payment</th><th>Status</th>
-          <th>Start Time</th><th>Created</th>
+          <th>Amount</th><th>Payment</th><th>Status</th><th>Start Time</th><th>Created</th>
         </tr></thead><tbody>`;
 
       appointments.appointments.forEach(apt => {
         const payClass  = ({ paid: 'badge-paid', pending: 'badge-pending', refunded: 'badge-refunded' })[apt.paymentStatus]  || 'badge-new';
         const statClass = ({ confirmed: 'badge-confirmed', new: 'badge-new', failed: 'badge-failed' })[apt.status] || 'badge-new';
-
         const startTime = apt.startTime
           ? new Date(apt.startTime).toLocaleString('en-US', { timeZone: 'Africa/Kigali' })
           : '—';
@@ -1358,13 +1658,12 @@
       const container = document.getElementById('employeesContent');
       const employees = data?.employees || [];
       if (!employees.length) {
-        container.innerHTML = '<div class="no-data">No employees found.<br>Connect a Google Calendar account via <strong>/auth</strong>.</div>';
+        container.innerHTML = '<div class="no-data">No calendars connected yet.<br>Use the "📅 Calendar" button on a client row to connect their Google Calendar.</div>';
         return;
       }
 
       let html = `<div class="table-container"><table>
-        <thead><tr><th>Name</th><th>Email</th><th>Calendar</th><th>Added</th></tr></thead><tbody>`;
-
+        <thead><tr><th>Name</th><th>Email</th><th>Calendar</th><th>Connected</th></tr></thead><tbody>`;
       employees.forEach(emp => {
         html += `<tr>
           <td><strong>${emp.name}</strong></td>
@@ -1373,7 +1672,6 @@
           <td>${new Date(emp.createdAt).toLocaleDateString()}</td>
         </tr>`;
       });
-
       html += '</tbody></table></div>';
       container.innerHTML = html;
     }
@@ -1393,7 +1691,7 @@
     async function sendReminderBroadcast() {
       closeReminderModal();
       try {
-        const res = await fetch(`${API_BASE}/outreach/template`, {
+        const res = await fetch(`/api/outreach/template`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ templateName: 'mconsultation_reminder' })
@@ -1402,81 +1700,16 @@
         if (res.ok) showToast(`Message sent to ${result.sent || result.count || 'all'} contacts`, 'success');
         else showToast(result.error || 'Failed to send broadcast', 'error');
         fetchData();
-      } catch (err) {
-        showToast('Network error – could not send broadcast', 'error');
-      }
-    }
-
-    // ──────────────────────── Sync Services ────────────────────────
-
-    function openSyncModal() {
-      // Populate client dropdown with registered clients
-      const sel = document.getElementById('syncClientId');
-      sel.innerHTML = '<option value="">— Select a client —</option>';
-      (cachedData.clients?.clients || []).forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = `${c.name}${c.company ? ' · ' + c.company : ''}`;
-        sel.appendChild(opt);
-      });
-      document.getElementById('syncModal').classList.add('active');
-    }
-    function closeSyncModal() { document.getElementById('syncModal').classList.remove('active'); }
-
-    async function runSync(cardId, endpoint, label) {
-      const clientId = document.getElementById('syncClientId').value;
-      if (!clientId) { showToast('Please select a client before syncing', 'error'); return; }
-
-      const card = document.getElementById(cardId);
-      card.classList.add('syncing');
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clientId }),
-          signal: AbortSignal.timeout(60000)
-        });
-        const result = await res.json().catch(() => ({}));
-        if (res.ok) {
-          const count = result.count != null ? ` (${result.count} chunks)` : '';
-          showToast(`${label} synced successfully${count}`, 'success');
-          closeSyncModal();
-          fetchData();
-        } else {
-          showToast(result.error || result.message || `${label} sync failed`, 'error');
-        }
-      } catch (err) {
-        if (err.name === 'TimeoutError') showToast(`${label} sync is taking longer than expected — may still complete`, 'error');
-        else showToast(`${label} sync failed`, 'error');
-      } finally {
-        card.classList.remove('syncing');
-      }
-    }
-
-    function syncFromConfluence() {
-      runSync('syncCardConfluence', `${API_BASE}/kb/sync/confluence`, 'Confluence');
-    }
-    function syncFromGoogle() {
-      runSync('syncCardGoogle', `${API_BASE}/kb/sync/sheets`, 'Google Sheets');
-    }
-    function syncFromMicrosoft() {
-      runSync('syncCardMicrosoft', `${API_BASE}/kb/sync/microsoft`, 'Microsoft Excel');
+      } catch { showToast('Network error – could not send broadcast', 'error'); }
     }
 
     // ──────────────────────── Helpers ────────────────────────
 
     function toggleReveal(inputId, btn) {
       const input = document.getElementById(inputId);
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = 'Hide';
-      } else {
-        input.type = 'password';
-        btn.textContent = 'Show';
-      }
+      if (input.type === 'password') { input.type = 'text';     btn.textContent = 'Hide'; }
+      else                           { input.type = 'password'; btn.textContent = 'Show'; }
     }
-
-    // ──────────────────────── Toast ────────────────────────
 
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toast');
@@ -1485,9 +1718,8 @@
       setTimeout(() => toast.classList.remove('show'), 4000);
     }
 
-    // ──────────────────────── Click-outside close ────────────────────────
-
-    ['syncModal', 'reminderModal', 'createClientModal', 'editClientModal'].forEach(id => {
+    // Click-outside to close modals
+    ['syncModal', 'reminderModal', 'createClientModal', 'editClientModal', 'calendarConnectModal'].forEach(id => {
       document.getElementById(id).addEventListener('click', e => {
         if (e.target === e.currentTarget) {
           e.currentTarget.classList.remove('active');
