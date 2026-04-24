@@ -3,7 +3,14 @@ import knowledgeBaseService from '../services/knowledge-base.service.js';
 import ragService from '../services/rag.service.js';
 import logger from '../logger/logger.js';
 import ragConfig from '../config/rag.config.js';
+import dbConfig from '../models/index.js';
 const router = express.Router();
+
+async function resolveNamespace(clientId) {
+    if (!clientId) return 'default';
+    const client = await dbConfig.db.Client.findOne({ where: { id: clientId }, attributes: ['pineconeIndex'] });
+    return client?.pineconeIndex || clientId;
+}
 
 /**
  * Knowledge Base Admin API Routes
@@ -30,7 +37,8 @@ const authenticateAdmin = (req, res, next) => {
 router.post('/kb/sync/sheets', async (req, res) => {
     try {
         const clientId = req.body?.clientId || null;
-        const count = await knowledgeBaseService.syncServicesFromSheets(clientId);
+        const namespace = await resolveNamespace(clientId);
+        const count = await knowledgeBaseService.syncServicesFromSheets(clientId, namespace);
 
         res.json({
             success: true,
@@ -51,7 +59,8 @@ router.post('/kb/sync/sheets', async (req, res) => {
 router.post('/kb/sync/microsoft', async (req, res) => {
     try {
         const clientId = req.body?.clientId || null;
-        const count = await knowledgeBaseService.syncServicesFromMicrosoft(clientId);
+        const namespace = await resolveNamespace(clientId);
+        const count = await knowledgeBaseService.syncServicesFromMicrosoft(clientId, namespace);
 
         res.json({
             success: true,
@@ -86,7 +95,8 @@ router.post('/kb/sync/confluence', async (req, res) => {
         }
 
         const clientId = req.body?.clientId || null;
-        const count = await knowledgeBaseService.syncFromConfluence({}, clientId);
+        const namespace = await resolveNamespace(clientId);
+        const count = await knowledgeBaseService.syncFromConfluence({ namespace }, clientId);
 
         res.json({
             success: true,

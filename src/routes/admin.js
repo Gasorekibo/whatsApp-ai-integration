@@ -101,7 +101,7 @@ router.put('/clients/:id', async (req, res) => {
       'isActive', 'messageCount', 'maxMonthlyMessages',
       'whatsappToken', 'geminiApiKey', 'pineconeIndex', 'whatsappBusinessId',
       'name', 'email', 'phone', 'company',"timezone","currency","depositAmount",
-      "paymentRedirectUrl"
+      "paymentRedirectUrl", "companyName"
     ];
     const updates = {};
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
