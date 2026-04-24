@@ -53,8 +53,7 @@ app.get('/auth', (req, res) => {
     requestId: req.requestId,
     ip: req.ip
   });
-  // Pass clientId through OAuth state so the callback can link the employee
-  const state = req.query.clientId ? Buffer.from(JSON.stringify({ clientId: req.query.clientId })).toString('base64') : undefined;
+  // Pass clientId through OAuth state — UUID is URL-safe so no encoding needed
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: [
@@ -65,17 +64,15 @@ app.get('/auth', (req, res) => {
       'https://www.googleapis.com/auth/spreadsheets.readonly'
     ],
     prompt: 'consent',
-    ...(state && { state })
+    state: req.query.clientId || ''
   });
   res.redirect(url);
 });
 
 app.get('/oauth/callback', async (req, res) => {
   const { code, state } = req.query;
-  let clientId = null;
-  try {
-    if (state) clientId = JSON.parse(Buffer.from(state, 'base64').toString()).clientId || null;
-  } catch { /* malformed state — proceed without clientId */ }
+  // state is the raw clientId UUID passed from /auth?clientId=
+  const clientId = (state && state.length > 0) ? state : null;
   logger.info('Google OAuth callback received', {
     requestId: req.requestId,
     hasCode: !!code
