@@ -41,7 +41,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   const paymentRedirectUrl = clientConfig.paymentRedirectUrl || process.env.PAYMENT_REDIRECT_URL || '';
   const depositAmount      = clientConfig.depositAmount      || parseInt(process.env.DEPOSIT_AMOUNT || 5000);
   const currency           = clientConfig.currency           || process.env.CURRENCY || 'RWF';
-  const namespace          = clientConfig.pineconeIndex      || 'default';
+  const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
 
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
