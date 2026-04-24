@@ -59,11 +59,11 @@ class KnowledgeBaseService {
      * Sync services from Google Sheets
      * @returns {Promise<number>} - Number of services synced
      */
-    async syncServicesFromSheets() {
+    async syncServicesFromSheets(clientId = null) {
         try {
-            logger.info('Syncing services from Google Sheets');
+            logger.info('Syncing services from Google Sheets', { clientId });
 
-            const services = await googleSheets.getActiveServices();
+            const services = await googleSheets.getActiveServices(clientId);
 
             if (!services || services.length === 0) {
                 logger.warn('No services found in Google Sheets');
@@ -99,9 +99,9 @@ class KnowledgeBaseService {
      * Sync services from Microsoft Excel
      * @returns {Promise<number>} - Number of services synced
      */
-    async syncServicesFromMicrosoft() {
+    async syncServicesFromMicrosoft(clientId = null) {
         try {
-            logger.info('Syncing services from Microsoft Excel');
+            logger.info('Syncing services from Microsoft Excel', { clientId });
 
             const services = await syncServicesMicrosoftHandler();
 
@@ -114,7 +114,7 @@ class KnowledgeBaseService {
                 count: services.length
             });
 
-            const result = await this.upsertServices(services, 'microsoft-excel');
+            const result = await this.upsertServices(services, 'microsoft-excel', clientId);
 
             this.lastSync.microsoftExcel = new Date().toISOString();
 
@@ -140,9 +140,9 @@ class KnowledgeBaseService {
      * @param {object} options - Sync options
      * @returns {Promise<number>} - Number of chunks synced
      */
-    async syncFromConfluence(options = {}) {
+    async syncFromConfluence(options = {}, clientId = null) {
         try {
-            logger.info('Syncing data from Confluence');
+            logger.info('Syncing data from Confluence', { clientId });
 
             const confluenceConfig = ragConfig.sync.confluence;
             
@@ -218,8 +218,9 @@ class KnowledgeBaseService {
                 }
             }));
 
-            // Upsert to vector DB
-            const result = await vectorDBService.upsertDocuments(documents, 'default');
+            // Upsert to vector DB — scoped to this client's Pinecone namespace
+            const namespace = clientId || 'default';
+            const result = await vectorDBService.upsertDocuments(documents, namespace);
 
             this.lastSync.confluence = new Date().toISOString();
 
@@ -246,7 +247,7 @@ class KnowledgeBaseService {
      * @param {string} source - Data source name
      * @returns {Promise<object>} - Result summary
      */
-    async upsertServices(services, source) {
+    async upsertServices(services, source, clientId = null) {
         try {
             if (!this.initialized) {
                 await this.initialize();
@@ -290,8 +291,8 @@ class KnowledgeBaseService {
                 count: documents.length
             });
 
-            // Upsert to vector DB
-            const result = await vectorDBService.upsertDocuments(documents, 'default');
+            // Upsert to vector DB — scoped to this client's Pinecone namespace
+            const result = await vectorDBService.upsertDocuments(documents, clientId || 'default');
 
             logger.info('Service upsert complete', {
                 source,

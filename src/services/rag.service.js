@@ -374,7 +374,7 @@ JSON Output:`;
      * @param {number} topK - Number of results to retrieve
      * @returns {Promise<object>} - Retrieved context and metadata
      */
-    async retrieveContext(userMessage, conversationHistory = [], topK = null) {
+    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default') {
         try {
             if (!this.isInitialized) {
                 await this.initialize();
@@ -423,11 +423,12 @@ JSON Output:`;
                 filter
             });
 
-            // Search for similar documents
+            // Search for similar documents — scoped to this client's namespace
             const results = await vectorDBService.searchSimilar(
                 queryEmbedding,
                 retrievalTopK,
-                filter
+                filter,
+                namespace
             );
 
             // Post-process and rank results
@@ -744,11 +745,11 @@ JSON Output:`;
      * @param {object} dynamicData - Dynamic data (slots, date, etc.)
      * @returns {string} - Complete augmented prompt
      */
-    buildAugmentedPrompt(retrievedData, userMessage, dynamicData = {}) {
+    buildAugmentedPrompt(retrievedData, userMessage, dynamicData = {}, clientConfig = {}) {
         const parts = [];
 
         // Base instruction
-        parts.push(this.getBaseInstruction(retrievedData.language, retrievedData.intent));
+        parts.push(this.getBaseInstruction(retrievedData.language, retrievedData.intent, clientConfig));
         parts.push('');
 
         // Retrieved context (most important)
@@ -791,7 +792,7 @@ JSON Output:`;
      * @param {string} intent - User intent
      * @returns {string} - Base instruction
      */
-    getBaseInstruction(_language, intent) {
+    getBaseInstruction(_language, intent, clientConfig = {}) {
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
             service_inquiry: 'Provide detailed service information from the knowledge base.',
@@ -801,7 +802,8 @@ JSON Output:`;
             general: 'Be friendly and helpful.'
         }[intent] || 'Be helpful and professional.';
 
-        return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
+        const companyName = clientConfig.companyName || 'our company';
+        return `You are a professional AI assistant for ${companyName}.
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.

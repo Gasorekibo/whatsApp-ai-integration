@@ -3,6 +3,7 @@ const router = express.Router();
 import initiateWhatsappMessage from '../controllers/initiateMessage.js';
 import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
+import { invalidateClient } from '../services/clientService.js';
 
 router.post('/template', async (req, res) => {
   const contacts = await fetch('http://localhost:3000/api/zoho/contacts')
@@ -69,7 +70,7 @@ router.get('/clients', async (req, res) => {
 
 router.post('/clients', async (req, res) => {
   try {
-    const { name, email, phone, company, whatsappBusinessId, subscriptionPlan } = req.body;
+    const { name, email, phone, company, whatsappBusinessId, whatsappToken, geminiApiKey, pineconeIndex, subscriptionPlan } = req.body;
     if (!name || !email || !phone) {
       return res.status(400).json({ error: 'name, email, and phone are required' });
     }
@@ -77,9 +78,12 @@ router.post('/clients', async (req, res) => {
       name,
       email,
       phone,
-      company: company || null,
+      company:            company            || null,
       whatsappBusinessId: whatsappBusinessId || null,
-      subscriptionPlan: subscriptionPlan || 'message_only'
+      whatsappToken:      whatsappToken      || null,
+      geminiApiKey:       geminiApiKey       || null,
+      pineconeIndex:      pineconeIndex      || null,
+      subscriptionPlan:   subscriptionPlan   || 'message_only'
     });
     res.status(201).json({ client });
   } catch (error) {
@@ -92,11 +96,21 @@ router.put('/clients/:id', async (req, res) => {
     const client = await dbConfig.db.Client?.findByPk(req.params.id);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
-    const allowed = ['subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate', 'isActive', 'messageCount', 'maxMonthlyMessages'];
+    const allowed = [
+      'subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate',
+      'isActive', 'messageCount', 'maxMonthlyMessages',
+      'whatsappToken', 'geminiApiKey', 'pineconeIndex', 'whatsappBusinessId',
+      'name', 'email', 'phone', 'company',"timezone","currency","depositAmount",
+      "paymentRedirectUrl"
+    ];
     const updates = {};
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
 
     await client.update(updates);
+
+    // Invalidate cache so next request gets fresh credentials
+    if (client.whatsappBusinessId) invalidateClient(client.whatsappBusinessId);
+
     res.json({ client });
   } catch (error) {
     res.status(500).json({ error: error.message });

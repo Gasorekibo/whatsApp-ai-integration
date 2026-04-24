@@ -328,6 +328,25 @@
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
     .modal-actions.space-between { justify-content: space-between; align-items: center; }
 
+    .credentials-section { margin-top: 16px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+    .credentials-section summary {
+      padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 600;
+      color: #4a5568; background: #f7fafc; user-select: none; list-style: none;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .credentials-section summary::before { content: '▶'; font-size: 10px; transition: transform .2s; }
+    .credentials-section[open] summary::before { transform: rotate(90deg); }
+    .cred-hint { font-weight: 400; color: #a0aec0; font-size: 12px; margin-left: 4px; }
+    .credentials-body { padding: 14px; background: #fff; display: flex; flex-direction: column; gap: 12px; }
+    .input-reveal { display: flex; gap: 6px; }
+    .input-reveal input { flex: 1; }
+    .btn-reveal {
+      padding: 0 12px; border: 1px solid #e2e8f0; border-radius: 6px;
+      background: #f7fafc; color: #4a5568; font-size: 12px; cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-reveal:hover { background: #edf2f7; }
+
     /* ── States ── */
     .no-data { text-align: center; padding: 40px; color: #a0aec0; font-size: 14px; line-height: 1.6; }
     .loading  { text-align: center; padding: 40px; color: #667eea; }
@@ -710,6 +729,15 @@
       <h3>🔄 Sync Knowledge Base</h3>
       <p class="modal-subtitle">Pull the latest data from any connected source into the AI knowledge base.</p>
 
+      <!-- Client selector -->
+      <div class="form-group" style="margin-bottom:18px">
+        <label style="font-size:13px; font-weight:600; color:#4a5568; text-transform:uppercase; letter-spacing:.5px">Sync for Client</label>
+        <select id="syncClientId" style="margin-top:6px">
+          <option value="">— Select a client —</option>
+        </select>
+        <p style="font-size:12px; color:#a0aec0; margin-top:4px">Content and knowledge base are isolated per client.</p>
+      </div>
+
       <!-- Confluence — featured -->
       <div class="sync-featured" id="syncCardConfluence">
         <span class="sync-featured-logo">🔵</span>
@@ -804,6 +832,30 @@
             <option value="message_and_voice">Message + Voice</option>
           </select>
         </div>
+
+        <details class="credentials-section">
+          <summary>API Credentials <span class="cred-hint">(optional — falls back to server defaults)</span></summary>
+          <div class="credentials-body">
+            <div class="form-group">
+              <label>WhatsApp Token</label>
+              <div class="input-reveal">
+                <input id="newWaToken" type="password" placeholder="EAAxxxxxxx...">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newWaToken', this)">Show</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Gemini API Key</label>
+              <div class="input-reveal">
+                <input id="newGeminiKey" type="password" placeholder="AIzaSy...">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newGeminiKey', this)">Show</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Pinecone Index / Namespace</label>
+              <input id="newPineconeIndex" type="text" placeholder="e.g. client-acme">
+            </div>
+          </div>
+        </details>
       </form>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeCreateClientModal()">Cancel</button>
@@ -854,6 +906,30 @@
           Client is Active (can send &amp; receive messages)
         </label>
       </div>
+
+      <details class="credentials-section">
+        <summary>Update API Credentials <span class="cred-hint">(leave blank to keep existing)</span></summary>
+        <div class="credentials-body">
+          <div class="form-group">
+            <label>WhatsApp Token</label>
+            <div class="input-reveal">
+              <input id="editWaToken" type="password" placeholder="Paste new token to replace...">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editWaToken', this)">Show</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Gemini API Key</label>
+            <div class="input-reveal">
+              <input id="editGeminiKey" type="password" placeholder="Paste new key to replace...">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editGeminiKey', this)">Show</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Pinecone Index / Namespace</label>
+            <input id="editPineconeIndex" type="text" placeholder="e.g. client-acme">
+          </div>
+        </div>
+      </details>
 
       <hr class="modal-divider">
 
@@ -1074,14 +1150,24 @@
       const company            = document.getElementById('newCompany').value.trim();
       const whatsappBusinessId = document.getElementById('newWaBid').value.trim();
       const subscriptionPlan   = document.getElementById('newPlan').value;
+      const whatsappToken      = document.getElementById('newWaToken').value.trim();
+      const geminiApiKey       = document.getElementById('newGeminiKey').value.trim();
+      const pineconeIndex      = document.getElementById('newPineconeIndex').value.trim();
 
       if (!name || !email || !phone) { showToast('Name, email, and phone are required', 'error'); return; }
+
+      const payload = { name, email, phone, subscriptionPlan };
+      if (company)            payload.company            = company;
+      if (whatsappBusinessId) payload.whatsappBusinessId = whatsappBusinessId;
+      if (whatsappToken)      payload.whatsappToken      = whatsappToken;
+      if (geminiApiKey)       payload.geminiApiKey       = geminiApiKey;
+      if (pineconeIndex)      payload.pineconeIndex      = pineconeIndex;
 
       try {
         const res = await fetch(`${API_BASE}/outreach/clients`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, phone, company, whatsappBusinessId, subscriptionPlan })
+          body: JSON.stringify(payload)
         });
         const result = await res.json();
         if (res.ok) {
@@ -1109,6 +1195,10 @@
       document.getElementById('editMaxMessages').value      = c.maxMonthlyMessages ?? '';
       document.getElementById('editSubEnd').value           = c.subscriptionEndDate
         ? new Date(c.subscriptionEndDate).toISOString().split('T')[0] : '';
+      // Tokens are encrypted server-side — show only pinecone index; tokens must be re-entered to change
+      document.getElementById('editPineconeIndex').value    = c.pineconeIndex || '';
+      document.getElementById('editWaToken').value          = '';
+      document.getElementById('editGeminiKey').value        = '';
       document.getElementById('editClientModal').classList.add('active');
     }
     function closeEditClientModal() {
@@ -1118,14 +1208,22 @@
 
     async function saveClientEdit() {
       if (!editingClientId) return;
-      const maxMsgRaw = document.getElementById('editMaxMessages').value;
+      const maxMsgRaw      = document.getElementById('editMaxMessages').value;
+      const waToken        = document.getElementById('editWaToken').value.trim();
+      const geminiKey      = document.getElementById('editGeminiKey').value.trim();
+      const pineconeIndex  = document.getElementById('editPineconeIndex').value.trim();
+
       const updates = {
         subscriptionPlan:    document.getElementById('editPlan').value,
         subscriptionStatus:  document.getElementById('editStatus').value,
         isActive:            document.getElementById('editIsActive').checked,
         subscriptionEndDate: document.getElementById('editSubEnd').value || null,
-        maxMonthlyMessages:  maxMsgRaw !== '' ? parseInt(maxMsgRaw, 10) : null
+        maxMonthlyMessages:  maxMsgRaw !== '' ? parseInt(maxMsgRaw, 10) : null,
+        pineconeIndex:       pineconeIndex || null,
       };
+      // Only send credentials if explicitly provided (they're encrypted; blank = keep existing)
+      if (waToken)    updates.whatsappToken = waToken;
+      if (geminiKey)  updates.geminiApiKey  = geminiKey;
       try {
         const res = await fetch(`${API_BASE}/outreach/clients/${editingClientId}`, {
           method: 'PUT',
@@ -1311,16 +1409,31 @@
 
     // ──────────────────────── Sync Services ────────────────────────
 
-    function openSyncModal()  { document.getElementById('syncModal').classList.add('active'); }
+    function openSyncModal() {
+      // Populate client dropdown with registered clients
+      const sel = document.getElementById('syncClientId');
+      sel.innerHTML = '<option value="">— Select a client —</option>';
+      (cachedData.clients?.clients || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name}${c.company ? ' · ' + c.company : ''}`;
+        sel.appendChild(opt);
+      });
+      document.getElementById('syncModal').classList.add('active');
+    }
     function closeSyncModal() { document.getElementById('syncModal').classList.remove('active'); }
 
-    async function runSync(cardId, endpoint, method, label) {
+    async function runSync(cardId, endpoint, label) {
+      const clientId = document.getElementById('syncClientId').value;
+      if (!clientId) { showToast('Please select a client before syncing', 'error'); return; }
+
       const card = document.getElementById(cardId);
       card.classList.add('syncing');
       try {
         const res = await fetch(endpoint, {
-          method,
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId }),
           signal: AbortSignal.timeout(60000)
         });
         const result = await res.json().catch(() => ({}));
@@ -1341,13 +1454,26 @@
     }
 
     function syncFromConfluence() {
-      runSync('syncCardConfluence', `${API_BASE}/kb/sync/confluence`, 'POST', 'Confluence');
+      runSync('syncCardConfluence', `${API_BASE}/kb/sync/confluence`, 'Confluence');
     }
     function syncFromGoogle() {
-      runSync('syncCardGoogle', `${API_BASE}/kb/sync/sheets`, 'POST', 'Google Sheets');
+      runSync('syncCardGoogle', `${API_BASE}/kb/sync/sheets`, 'Google Sheets');
     }
     function syncFromMicrosoft() {
-      runSync('syncCardMicrosoft', `${API_BASE}/sync-services/microsoft`, 'GET', 'Microsoft Excel');
+      runSync('syncCardMicrosoft', `${API_BASE}/kb/sync/microsoft`, 'Microsoft Excel');
+    }
+
+    // ──────────────────────── Helpers ────────────────────────
+
+    function toggleReveal(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = 'Hide';
+      } else {
+        input.type = 'password';
+        btn.textContent = 'Show';
+      }
     }
 
     // ──────────────────────── Toast ────────────────────────

@@ -53,6 +53,8 @@ app.get('/auth', (req, res) => {
     requestId: req.requestId,
     ip: req.ip
   });
+  // Pass clientId through OAuth state so the callback can link the employee
+  const state = req.query.clientId ? Buffer.from(JSON.stringify({ clientId: req.query.clientId })).toString('base64') : undefined;
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: [
@@ -63,12 +65,17 @@ app.get('/auth', (req, res) => {
       'https://www.googleapis.com/auth/spreadsheets.readonly'
     ],
     prompt: 'consent',
+    ...(state && { state })
   });
   res.redirect(url);
 });
 
 app.get('/oauth/callback', async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
+  let clientId = null;
+  try {
+    if (state) clientId = JSON.parse(Buffer.from(state, 'base64').toString()).clientId || null;
+  } catch { /* malformed state — proceed without clientId */ }
   logger.info('Google OAuth callback received', {
     requestId: req.requestId,
     hasCode: !!code
@@ -99,35 +106,36 @@ app.get('/oauth/callback', async (req, res) => {
       duration: userInfoDuration,
       email: userInfo.email ? `${userInfo.email.substring(0, 3)}***` : 'none'
     });
-    // Find or create employee (Sequelize)
-    let employee = await dbConfig.db.Employee.findOne({
-      where: { email: userInfo.email }
-    });
+    // Find or create employee — scoped to this client when clientId is present
+    const employeeWhere = clientId
+      ? { clientId, email: userInfo.email }
+      : { email: userInfo.email };
+
+    let employee = await dbConfig.db.Employee.findOne({ where: employeeWhere });
 
     if (employee) {
       employee.name = userInfo.name;
-      employee.email = userInfo.email;
-      if (tokens.refresh_token) {
-        employee.refreshToken = tokens.refresh_token;
-      }
-
+      if (tokens.refresh_token) employee.refreshToken = tokens.refresh_token;
+      if (clientId && !employee.clientId) employee.clientId = clientId;
       await employee.save();
       logger.info('Employee record updated', {
         requestId: req.requestId,
         employeeId: employee.id,
+        clientId,
         email: `${userInfo.email.substring(0, 3)}***`,
         hasNewRefreshToken: !!tokens.refresh_token
       });
     } else {
-      // Create new employee
       employee = await dbConfig.db.Employee.create({
-        name: userInfo.name,
-        email: userInfo.email,
+        name:         userInfo.name,
+        email:        userInfo.email,
+        clientId:     clientId || null,
         refreshToken: tokens.refresh_token || null
       });
       logger.info('New employee record created', {
         requestId: req.requestId,
         employeeId: employee.id,
+        clientId,
         email: `${userInfo.email.substring(0, 3)}***`
       });
     }
@@ -190,55 +198,9 @@ app.post('/calendar-data', calendarDataHandler);
 // Google Sheets Sync
 app.post('/api/sync-services', syncServicesHandler);
 app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler);
-app.get('/api/sync-services/microsoft', async (req, res) => {
-  logger.info('Microsoft services sync initiated', {
-    requestId: req.requestId
-  });
-  try {
-    const syncStartTime = Date.now();
-    const services = await syncServicesMicrosoftHandler();
-    const syncDuration = Date.now() - syncStartTime;
-    logger.info('Microsoft services synced', {
-      requestId: req.requestId,
-      duration: syncDuration,
-      servicesCount: services?.length || 0
-    });
-    let content = await dbConfig.db.Content.findOne()
-    if (content) {
-      content.services = services;
-      content.updatedAt = new Date();
-      await content.save();
-      logger.info('Content updated with Microsoft services', {
-        requestId: req.requestId,
-        contentId: content.id
-      });
-    } else {
-      content = await dbConfig.db.Content.create({
-        services,
-        updatedAt: new Date()
-      });
-      logger.info('New content created with Microsoft services', {
-        requestId: req.requestId,
-        contentId: content.id
-      });
-    }
-    res.json({
-      success: true,
-      services: content.services
-    });
-  } catch (error) {
-    logger.error('Microsoft services sync failed', {
-      requestId: req.requestId,
-      error: error.message,
-      stack: error.stack
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync services from Microsoft',
-      error: error.message
-    });
-  }
+// Legacy GET kept for backward-compat; real sync now goes through POST /api/kb/sync/microsoft
+app.get('/api/sync-services/microsoft', (req, res) => {
+  res.status(301).json({ message: 'Use POST /api/kb/sync/microsoft with { clientId } in body' });
 });
 // Health check endpoint
 app.get('/health', async (req, res) => {
@@ -305,10 +267,6 @@ app.use((err, req, res, next) => {
     logger.info('Initializing database connection');
     await dbConfig.syncDatabase({ alter: false });
     logger.info('Database synced successfully');
-
-    logger.info('Initializing services from Google Sheets');
-    await googleSheetServices.initializeServices();
-    logger.info('Services initialized successfully');
 
     // Start server
     app.listen(PORT, () => {

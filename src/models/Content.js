@@ -7,6 +7,11 @@ export default (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    clientId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      comment: 'Tenant key — each client has their own services and FAQs row'
+    },
     services: {
       type: DataTypes.JSONB,
       allowNull: true,

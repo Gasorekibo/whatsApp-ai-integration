@@ -15,11 +15,21 @@ async function syncServicesHandler(req, res) {
       });
     }
 
-    const employee = await dbConfig.db.Employee.findOne({ where: { email: process.env.EMPLOYEE_EMAIL } });
+    // clientId can be passed explicitly by the admin UI; falls back to null (legacy)
+    const clientId = req?.body?.clientId || null;
+
+    // Find the employee whose calendar/OAuth token will be used for the sync.
+    // When clientId is provided we look up the client's own employee; otherwise
+    // fall back to the global EMPLOYEE_EMAIL env variable.
+    const employeeWhere = clientId
+      ? { clientId }
+      : { email: process.env.EMPLOYEE_EMAIL };
+
+    const employee = await dbConfig.db.Employee.findOne({ where: employeeWhere });
     if (!employee) {
       return res.status(404).json({
         success: false,
-        error: 'Employee not found. Please authenticate first at /auth'
+        error: 'Employee not found for this client. Please authenticate at /auth'
       });
     }
 
@@ -31,16 +41,13 @@ async function syncServicesHandler(req, res) {
       });
     }
 
-    const result = await googlesheets.syncServicesFromSheet(spreadsheetId, token);
+    const result = await googlesheets.syncServicesFromSheet(spreadsheetId, token, clientId);
     res.json(result);
 
   } catch (error) {
     logger.error('Sync error', { error: error.message });
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
-};
+}
 
 export default syncServicesHandler;

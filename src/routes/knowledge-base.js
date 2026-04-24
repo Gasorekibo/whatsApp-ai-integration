@@ -29,7 +29,8 @@ const authenticateAdmin = (req, res, next) => {
 // Sync services from Google Sheets
 router.post('/kb/sync/sheets', async (req, res) => {
     try {
-        const count = await knowledgeBaseService.syncServicesFromSheets();
+        const clientId = req.body?.clientId || null;
+        const count = await knowledgeBaseService.syncServicesFromSheets(clientId);
 
         res.json({
             success: true,
@@ -49,7 +50,8 @@ router.post('/kb/sync/sheets', async (req, res) => {
 // Sync services from Microsoft Excel
 router.post('/kb/sync/microsoft', async (req, res) => {
     try {
-        const count = await knowledgeBaseService.syncServicesFromMicrosoft();
+        const clientId = req.body?.clientId || null;
+        const count = await knowledgeBaseService.syncServicesFromMicrosoft(clientId);
 
         res.json({
             success: true,
@@ -83,7 +85,8 @@ router.post('/kb/sync/confluence', async (req, res) => {
             });
         }
 
-        const count = await knowledgeBaseService.syncFromConfluence();
+        const clientId = req.body?.clientId || null;
+        const count = await knowledgeBaseService.syncFromConfluence({}, clientId);
 
         res.json({
             success: true,
