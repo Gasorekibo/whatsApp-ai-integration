@@ -6,6 +6,11 @@ export default (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    clientId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      comment: 'Tenant key — links booking/inquiry to the Client that received the WhatsApp message'
+    },
     service: {
       type: DataTypes.STRING,
       allowNull: false
