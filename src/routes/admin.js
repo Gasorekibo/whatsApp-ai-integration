@@ -64,6 +64,7 @@ router.get('/services', async (req, res) => {
 router.get('/clients', async (req, res) => {
   try {
     const clients = await dbConfig.db.Client?.findAll({ order: [['createdAt', 'DESC']] });
+    console.log('Fetched clients:', clients);
     res.json({ clients: clients || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -72,20 +73,48 @@ router.get('/clients', async (req, res) => {
 
 router.post('/clients', async (req, res) => {
   try {
-    const { name, email, phone, company, whatsappBusinessId, whatsappToken, geminiApiKey, pineconeIndex, subscriptionPlan } = req.body;
+    const {
+      name, email, phone, company,
+      whatsappBusinessId, whatsappToken, whatsappAccountId, whatsappWebhookVerifyToken, whatsappToNumber,
+      geminiApiKey, pineconeIndex, pineconeApiKey, pineconeIndexName, pineconeEnvironment,
+      flutterwaveSecretKey, flutterwaveWebhookSecret,
+      googleSheetId, googleSheetsWebhookToken,
+      microsoftClientId, microsoftObjectId, microsoftTenantId, microsoftClientSecret, microsoftUserEmail, microsoftDriveId, microsoftItemId,
+      confluenceBaseUrl, confluenceEmail, confluenceApiToken, confluenceSpaceKey,
+      subscriptionPlan
+    } = req.body;
     if (!name || !email || !phone) {
       return res.status(400).json({ error: 'name, email, and phone are required' });
     }
     const client = await dbConfig.db.Client.create({
-      name,
-      email,
-      phone,
-      company:            company            || null,
-      whatsappBusinessId: whatsappBusinessId || null,
-      whatsappToken:      whatsappToken      || null,
-      geminiApiKey:       geminiApiKey       || null,
-      pineconeIndex:      pineconeIndex      || null,
-      subscriptionPlan:   subscriptionPlan   || 'message_only'
+      name, email, phone,
+      company:                    company                    || null,
+      subscriptionPlan:           subscriptionPlan           || 'message_only',
+      whatsappBusinessId:         whatsappBusinessId         || null,
+      whatsappToken:              whatsappToken              || null,
+      whatsappAccountId:          whatsappAccountId          || null,
+      whatsappWebhookVerifyToken: whatsappWebhookVerifyToken || null,
+      whatsappToNumber:           whatsappToNumber           || null,
+      geminiApiKey:               geminiApiKey               || null,
+      pineconeIndex:              pineconeIndex              || null,
+      pineconeApiKey:             pineconeApiKey             || null,
+      pineconeIndexName:          pineconeIndexName          || null,
+      pineconeEnvironment:        pineconeEnvironment        || null,
+      flutterwaveSecretKey:       flutterwaveSecretKey       || null,
+      flutterwaveWebhookSecret:   flutterwaveWebhookSecret   || null,
+      googleSheetId:              googleSheetId              || null,
+      googleSheetsWebhookToken:   googleSheetsWebhookToken   || null,
+      microsoftClientId:          microsoftClientId          || null,
+      microsoftObjectId:          microsoftObjectId          || null,
+      microsoftTenantId:          microsoftTenantId          || null,
+      microsoftClientSecret:      microsoftClientSecret      || null,
+      microsoftUserEmail:         microsoftUserEmail         || null,
+      microsoftDriveId:           microsoftDriveId           || null,
+      microsoftItemId:            microsoftItemId            || null,
+      confluenceBaseUrl:          confluenceBaseUrl          || null,
+      confluenceEmail:            confluenceEmail            || null,
+      confluenceApiToken:         confluenceApiToken         || null,
+      confluenceSpaceKey:         confluenceSpaceKey         || null,
     });
     res.status(201).json({ client });
   } catch (error) {
@@ -99,11 +128,14 @@ router.put('/clients/:id', async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     const allowed = [
-      'subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate',
-      'isActive', 'messageCount', 'maxMonthlyMessages',
-      'whatsappToken', 'geminiApiKey', 'pineconeIndex', 'whatsappBusinessId',
-      'name', 'email', 'phone', 'company',"timezone","currency","depositAmount",
-      "paymentRedirectUrl", "companyName"
+      'name', 'email', 'phone', 'company', 'timezone', 'currency', 'depositAmount', 'paymentRedirectUrl', 'companyName',
+      'subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate', 'isActive', 'messageCount', 'maxMonthlyMessages',
+      'whatsappBusinessId', 'whatsappToken', 'whatsappAccountId', 'whatsappWebhookVerifyToken', 'whatsappToNumber',
+      'geminiApiKey', 'pineconeIndex', 'pineconeApiKey', 'pineconeIndexName', 'pineconeEnvironment',
+      'flutterwaveSecretKey', 'flutterwaveWebhookSecret',
+      'googleSheetId', 'googleSheetsWebhookToken',
+      'microsoftClientId', 'microsoftObjectId', 'microsoftTenantId', 'microsoftClientSecret', 'microsoftUserEmail', 'microsoftDriveId', 'microsoftItemId',
+      'confluenceBaseUrl', 'confluenceEmail', 'confluenceApiToken', 'confluenceSpaceKey'
     ];
     const updates = {};
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });

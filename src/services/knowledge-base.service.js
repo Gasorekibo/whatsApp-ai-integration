@@ -107,7 +107,18 @@ class KnowledgeBaseService {
             namespace = namespace || clientId || 'default';
             logger.info('Syncing services from Microsoft Excel', { clientId, namespace });
 
-            const services = await syncServicesMicrosoftHandler();
+            let driveId = null;
+            let itemId  = null;
+            if (clientId) {
+                const client = await dbConfig.db.Client.findOne({
+                    where: { id: clientId },
+                    attributes: ['microsoftDriveId', 'microsoftItemId']
+                });
+                driveId = client?.microsoftDriveId || null;
+                itemId  = client?.microsoftItemId  || null;
+            }
+
+            const services = await syncServicesMicrosoftHandler(driveId, itemId);
 
             if (!services || services.length === 0) {
                 logger.warn('No services found in Microsoft Excel');
@@ -149,16 +160,25 @@ class KnowledgeBaseService {
         try {
             logger.info('Syncing data from Confluence', { clientId });
 
-            const confluenceConfig = ragConfig.sync.confluence;
-            
-            // Validate configuration
+            // Prefer per-client Confluence config stored in DB; fall back to env vars
+            let clientConfluenceConfig = null;
+            if (clientId) {
+                const client = await dbConfig.db.Client.findOne({
+                    where: { id: clientId },
+                    attributes: ['confluenceBaseUrl', 'confluenceEmail', 'confluenceApiToken', 'confluenceSpaceKey']
+                });
+                clientConfluenceConfig = client?.getConfluenceConfig?.() || null;
+            }
+
+            const confluenceConfig = clientConfluenceConfig || ragConfig.sync.confluence;
+
             if (!confluenceConfig.baseUrl || !confluenceConfig.apiToken) {
-                throw new Error('Confluence configuration incomplete');
+                throw new Error('Confluence configuration incomplete — set credentials in the client edit form or .env');
             }
 
             const pages = await confluence.fetchPages(
                 options.spaceKey || confluenceConfig.spaceKey,
-                options.maxPages || confluenceConfig.maxPages
+                clientConfluenceConfig
             );
 
             if (!pages || pages.length === 0) {

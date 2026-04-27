@@ -37,13 +37,20 @@ const authenticateAdmin = (req, res, next) => {
 // Sync services from Google Sheets
 router.post('/kb/sync/sheets', async (req, res) => {
     try {
-        const clientId       = req.body?.clientId || null;
-        const spreadsheetId  = req.body?.spreadsheetId || process.env.GOOGLE_SHEET_ID;
+        const clientId = req.body?.clientId || null;
+
+        // Resolve spreadsheet ID: request body → client's saved googleSheetId → server default
+        let spreadsheetId = req.body?.spreadsheetId || null;
+        if (!spreadsheetId && clientId) {
+            const clientRow = await dbConfig.db.Client.findOne({ where: { id: clientId }, attributes: ['googleSheetId'] });
+            spreadsheetId = clientRow?.googleSheetId || null;
+        }
+        spreadsheetId = spreadsheetId || process.env.GOOGLE_SHEET_ID;
 
         if (!spreadsheetId) {
             return res.status(400).json({
                 success: false,
-                message: 'spreadsheetId is required in body or set GOOGLE_SHEET_ID in .env'
+                message: 'No spreadsheet configured. Set a Google Sheet ID in the client settings or GOOGLE_SHEET_ID env var.'
             });
         }
 

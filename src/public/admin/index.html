@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Moyo Tech Admin Dashboard</title>
+  <title>MOYOTECH Admin Dashboard</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -373,6 +373,19 @@
     }
     .btn-reveal:hover { background: #edf2f7; }
 
+    /* ── Knowledge Base Source Tabs ── */
+    .ds-tab-bar { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 2px solid #e2e8f0; padding-bottom: 0; }
+    .ds-tab {
+      padding: 7px 14px; border: none; background: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; color: #718096; border-radius: 6px 6px 0 0;
+      border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s;
+    }
+    .ds-tab:hover { color: #667eea; background: #f0f4ff; }
+    .ds-tab.active { color: #667eea; border-bottom-color: #667eea; background: #f0f4ff; }
+    .ds-panel { display: none; }
+    .ds-panel.active { display: block; }
+    .ds-desc { font-size: 12px; color: #718096; margin: 0 0 12px; line-height: 1.5; background: #f7fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #667eea; }
+
     /* ── Calendar connect banner ── */
     .cal-banner {
       background: linear-gradient(135deg, #ebf8ff 0%, #e9d8fd 100%);
@@ -519,7 +532,7 @@
   <!-- ── Sidebar ── -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h2>Moyo Tech</h2>
+      <h2>MOYOTECH</h2>
       <p>Admin Dashboard</p>
     </div>
     <div class="sidebar-menu">
@@ -744,18 +757,37 @@
         <div class="form-section">
           <div class="form-section-title">WhatsApp Configuration</div>
           <div class="form-section-body">
-            <div class="form-group">
-              <label>WhatsApp Business Phone Number ID <span class="required">*</span></label>
-              <input id="newWaBid" type="text" placeholder="e.g. 123456789012345">
-              <div class="field-hint">Found in Meta Business Manager → WhatsApp → API Setup → Phone Number ID</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Phone Number ID</label>
+                <input id="newWaBid" type="text" placeholder="908772575661941">
+                <div class="field-hint">Meta → WhatsApp → API Setup → Phone Number ID</div>
+              </div>
+              <div class="form-group">
+                <label>Business Account ID (WABA)</label>
+                <input id="newWaAccountId" type="text" placeholder="863459623353177">
+                <div class="field-hint">Meta Business Manager → WhatsApp Accounts → Account ID</div>
+              </div>
             </div>
             <div class="form-group">
-              <label>WhatsApp Permanent Token <span class="required">*</span></label>
+              <label>Permanent Token</label>
               <div class="input-reveal">
                 <input id="newWaToken" type="password" placeholder="EAAxxxxxxx...">
                 <button type="button" class="btn-reveal" onclick="toggleReveal('newWaToken', this)">Show</button>
               </div>
-              <div class="field-hint">Generate a permanent token from a System User in Meta Business Suite (not the temporary one)</div>
+              <div class="field-hint">Create via Meta Business Suite → System Users → Generate Token (not the temporary test token)</div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Webhook Verify Token</label>
+                <input id="newWaWebhookToken" type="text" placeholder="my_secret_verify_token">
+                <div class="field-hint">A secret string you set in Meta → Webhooks to verify incoming events</div>
+              </div>
+              <div class="form-group">
+                <label>Default Recipient Number</label>
+                <input id="newWaToNumber" type="text" placeholder="+250780000000">
+                <div class="field-hint">Used for test sends. Include country code.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -834,9 +866,9 @@
           </div>
         </div>
 
-        <!-- ── AI Credentials ── -->
+        <!-- ── AI ── -->
         <details class="credentials-section">
-          <summary>AI &amp; Knowledge Base Credentials <span class="cred-hint">(optional — falls back to server defaults)</span></summary>
+          <summary>🤖 AI Configuration <span class="cred-hint">(falls back to server defaults if blank)</span></summary>
           <div class="credentials-body">
             <div class="form-group">
               <label>Gemini API Key</label>
@@ -844,12 +876,154 @@
                 <input id="newGeminiKey" type="password" placeholder="AIzaSy...">
                 <button type="button" class="btn-reveal" onclick="toggleReveal('newGeminiKey', this)">Show</button>
               </div>
-              <div class="field-hint">If blank, all clients share the server's GEMINI_API_KEY.</div>
+              <div class="field-hint">Get from Google AI Studio (aistudio.google.com). Blank = shared server key.</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- ── Payments ── -->
+        <details class="credentials-section" style="margin-top:8px">
+          <summary>💳 Payments (Flutterwave) <span class="cred-hint">(falls back to server defaults if blank)</span></summary>
+          <div class="credentials-body">
+            <div class="form-group">
+              <label>Secret Key</label>
+              <div class="input-reveal">
+                <input id="newFlwSecretKey" type="password" placeholder="FLWSECK_TEST-...">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newFlwSecretKey', this)">Show</button>
+              </div>
+              <div class="field-hint">Flutterwave Dashboard → Settings → API Keys → Secret Key</div>
             </div>
             <div class="form-group">
-              <label>Pinecone Namespace</label>
-              <input id="newPineconeIndex" type="text" placeholder="e.g. kigali-hospital">
-              <div class="field-hint">Unique slug that isolates this client's knowledge base in Pinecone. Use lowercase, hyphens only.</div>
+              <label>Webhook Secret</label>
+              <div class="input-reveal">
+                <input id="newFlwWebhookSecret" type="password" placeholder="your-webhook-secret">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newFlwWebhookSecret', this)">Show</button>
+              </div>
+              <div class="field-hint">Flutterwave Dashboard → Settings → Webhooks → Secret Hash</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- ── Knowledge Base Sources ── -->
+        <details class="credentials-section" style="margin-top:8px">
+          <summary>📦 Knowledge Base Sources <span class="cred-hint">(data the AI learns from)</span></summary>
+          <div class="credentials-body">
+            <div class="ds-tab-bar">
+              <button type="button" class="ds-tab active"  onclick="showDsTab('new','pinecone',this)">🔷 Pinecone</button>
+              <button type="button" class="ds-tab"         onclick="showDsTab('new','sheets',this)">📊 Google Sheets</button>
+              <button type="button" class="ds-tab"         onclick="showDsTab('new','microsoft',this)">📁 Microsoft</button>
+              <button type="button" class="ds-tab"         onclick="showDsTab('new','confluence',this)">🗂️ Confluence</button>
+            </div>
+
+            <!-- Pinecone -->
+            <div id="new-ds-pinecone" class="ds-panel active">
+              <p class="ds-desc">Vector database for AI knowledge retrieval. Each client uses an isolated namespace. Get credentials from pinecone.io → your project.</p>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Namespace (per-client slug)</label>
+                  <input id="newPineconeIndex" type="text" placeholder="kigali-hospital">
+                  <div class="field-hint">Lowercase, hyphens. Isolates this client's data.</div>
+                </div>
+                <div class="form-group">
+                  <label>Index Name</label>
+                  <input id="newPineconeIndexName" type="text" placeholder="moyo-tech-chatbot">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>API Key</label>
+                <div class="input-reveal">
+                  <input id="newPineconeApiKey" type="password" placeholder="pcsk_...">
+                  <button type="button" class="btn-reveal" onclick="toggleReveal('newPineconeApiKey',this)">Show</button>
+                </div>
+                <div class="field-hint">Blank = uses server PINECONE_API_KEY.</div>
+              </div>
+              <div class="form-group">
+                <label>Environment</label>
+                <input id="newPineconeEnvironment" type="text" placeholder="us-east-1-aws">
+              </div>
+            </div>
+
+            <!-- Google Sheets -->
+            <div id="new-ds-sheets" class="ds-panel">
+              <p class="ds-desc">Link the client's Google Sheet (service list). Connect their Google account via the 📅 Calendar button after registration.</p>
+              <div class="form-group">
+                <label>Spreadsheet ID</label>
+                <input id="newGoogleSheetId" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+                <div class="field-hint">From the URL: /spreadsheets/d/<strong>[ID]</strong>/edit</div>
+              </div>
+              <div class="form-group">
+                <label>Sheets Webhook Token</label>
+                <input id="newGoogleSheetsWebhookToken" type="text" placeholder="superdupersecret123">
+                <div class="field-hint">Used to validate push notifications from Google Sheets.</div>
+              </div>
+            </div>
+
+            <!-- Microsoft Excel -->
+            <div id="new-ds-microsoft" class="ds-panel">
+              <p class="ds-desc">Connect an Excel file in OneDrive via Microsoft Graph API. Get IDs from portal.azure.com and the Graph Explorer.</p>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Azure App (Client) ID</label>
+                  <input id="newMicrosoftClientId" type="text" placeholder="2bfc96b6-1353-4ae7-90d7-...">
+                </div>
+                <div class="form-group">
+                  <label>Object ID</label>
+                  <input id="newMicrosoftObjectId" type="text" placeholder="18c4ecd8-5344-49b9-...">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Tenant (Directory) ID</label>
+                  <input id="newMicrosoftTenantId" type="text" placeholder="bdc996a3-5320-4a47-...">
+                </div>
+                <div class="form-group">
+                  <label>User Email</label>
+                  <input id="newMicrosoftUserEmail" type="email" placeholder="hello@company.com">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Client Secret</label>
+                <div class="input-reveal">
+                  <input id="newMicrosoftClientSecret" type="password" placeholder="nQj8Q~...">
+                  <button type="button" class="btn-reveal" onclick="toggleReveal('newMicrosoftClientSecret',this)">Show</button>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Drive ID</label>
+                  <input id="newMicrosoftDriveId" type="text" placeholder="b!zn3vYtjcr0qRrsqK...">
+                </div>
+                <div class="form-group">
+                  <label>Excel File Item ID</label>
+                  <input id="newMicrosoftItemId" type="text" placeholder="3C0B812E-67B5-...">
+                </div>
+              </div>
+            </div>
+
+            <!-- Confluence -->
+            <div id="new-ds-confluence" class="ds-panel">
+              <p class="ds-desc">Sync Atlassian Confluence pages into the AI knowledge base. Generate an API token at id.atlassian.com → Security → API tokens.</p>
+              <div class="form-group">
+                <label>Base URL</label>
+                <input id="newConfluenceBaseUrl" type="url" placeholder="https://yourcompany.atlassian.net/wiki">
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Atlassian Email</label>
+                  <input id="newConfluenceEmail" type="email" placeholder="you@company.com">
+                </div>
+                <div class="form-group">
+                  <label>Space Key</label>
+                  <input id="newConfluenceSpaceKey" type="text" placeholder="MYSPACE">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>API Token</label>
+                <div class="input-reveal">
+                  <input id="newConfluenceApiToken" type="password" placeholder="ATATT3xFfGF0…">
+                  <button type="button" class="btn-reveal" onclick="toggleReveal('newConfluenceApiToken',this)">Show</button>
+                </div>
+              </div>
             </div>
           </div>
         </details>
@@ -902,15 +1076,31 @@
       <div class="form-section">
         <div class="form-section-title">WhatsApp Configuration</div>
         <div class="form-section-body">
-          <div class="form-group">
-            <label>WhatsApp Business Phone Number ID</label>
-            <input id="editWaBid" type="text" placeholder="123456789012345">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Phone Number ID</label>
+              <input id="editWaBid" type="text" placeholder="908772575661941">
+            </div>
+            <div class="form-group">
+              <label>Business Account ID (WABA)</label>
+              <input id="editWaAccountId" type="text" placeholder="863459623353177">
+            </div>
           </div>
           <div class="form-group">
-            <label>WhatsApp Token <span style="font-weight:400; color:#a0aec0; font-size:11px">(leave blank to keep existing)</span></label>
+            <label>Permanent Token <span style="font-weight:400;color:#a0aec0;font-size:11px">(blank = keep existing)</span></label>
             <div class="input-reveal">
               <input id="editWaToken" type="password" placeholder="Paste new token to replace…">
-              <button type="button" class="btn-reveal" onclick="toggleReveal('editWaToken', this)">Show</button>
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editWaToken',this)">Show</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Webhook Verify Token</label>
+              <input id="editWaWebhookToken" type="text" placeholder="my_secret_verify_token">
+            </div>
+            <div class="form-group">
+              <label>Default Recipient Number</label>
+              <input id="editWaToNumber" type="text" placeholder="+250780000000">
             </div>
           </div>
         </div>
@@ -1008,20 +1198,154 @@
         </div>
       </div>
 
-      <!-- ── AI Credentials ── -->
+      <!-- ── AI ── -->
       <details class="credentials-section">
-        <summary>AI &amp; Knowledge Base Credentials <span class="cred-hint">(leave blank to keep existing)</span></summary>
+        <summary>🤖 AI Configuration <span class="cred-hint">(blank = keep existing)</span></summary>
         <div class="credentials-body">
           <div class="form-group">
             <label>Gemini API Key</label>
             <div class="input-reveal">
               <input id="editGeminiKey" type="password" placeholder="Paste new key to replace…">
-              <button type="button" class="btn-reveal" onclick="toggleReveal('editGeminiKey', this)">Show</button>
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editGeminiKey',this)">Show</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── Payments ── -->
+      <details class="credentials-section" style="margin-top:8px">
+        <summary>💳 Payments (Flutterwave) <span class="cred-hint">(blank = keep existing)</span></summary>
+        <div class="credentials-body">
+          <div class="form-group">
+            <label>Secret Key</label>
+            <div class="input-reveal">
+              <input id="editFlwSecretKey" type="password" placeholder="Paste new key to replace…">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editFlwSecretKey',this)">Show</button>
             </div>
           </div>
           <div class="form-group">
-            <label>Pinecone Namespace</label>
-            <input id="editPineconeIndex" type="text" placeholder="e.g. kigali-hospital">
+            <label>Webhook Secret</label>
+            <div class="input-reveal">
+              <input id="editFlwWebhookSecret" type="password" placeholder="Paste new secret to replace…">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editFlwWebhookSecret',this)">Show</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── Knowledge Base Sources ── -->
+      <details class="credentials-section" style="margin-top:8px">
+        <summary>📦 Knowledge Base Sources <span class="cred-hint">(data the AI learns from)</span></summary>
+        <div class="credentials-body">
+          <div class="ds-tab-bar">
+            <button type="button" class="ds-tab active"  onclick="showDsTab('edit','pinecone',this)">🔷 Pinecone</button>
+            <button type="button" class="ds-tab"         onclick="showDsTab('edit','sheets',this)">📊 Google Sheets</button>
+            <button type="button" class="ds-tab"         onclick="showDsTab('edit','microsoft',this)">📁 Microsoft</button>
+            <button type="button" class="ds-tab"         onclick="showDsTab('edit','confluence',this)">🗂️ Confluence</button>
+          </div>
+
+          <!-- Pinecone -->
+          <div id="edit-ds-pinecone" class="ds-panel active">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Namespace (per-client slug)</label>
+                <input id="editPineconeIndex" type="text" placeholder="kigali-hospital">
+              </div>
+              <div class="form-group">
+                <label>Index Name</label>
+                <input id="editPineconeIndexName" type="text" placeholder="moyo-tech-chatbot">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>API Key <span style="font-weight:400;color:#a0aec0;font-size:11px">(blank = keep existing)</span></label>
+              <div class="input-reveal">
+                <input id="editPineconeApiKey" type="password" placeholder="Paste new key to replace…">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('editPineconeApiKey',this)">Show</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Environment</label>
+              <input id="editPineconeEnvironment" type="text" placeholder="us-east-1-aws">
+            </div>
+          </div>
+
+          <!-- Google Sheets -->
+          <div id="edit-ds-sheets" class="ds-panel">
+            <div class="form-group">
+              <label>Spreadsheet ID</label>
+              <input id="editGoogleSheetId" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+              <div class="field-hint">From the URL: /spreadsheets/d/<strong>[ID]</strong>/edit</div>
+            </div>
+            <div class="form-group">
+              <label>Sheets Webhook Token</label>
+              <input id="editGoogleSheetsWebhookToken" type="text" placeholder="superdupersecret123">
+            </div>
+          </div>
+
+          <!-- Microsoft Excel -->
+          <div id="edit-ds-microsoft" class="ds-panel">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Azure App (Client) ID</label>
+                <input id="editMicrosoftClientId" type="text" placeholder="2bfc96b6-...">
+              </div>
+              <div class="form-group">
+                <label>Object ID</label>
+                <input id="editMicrosoftObjectId" type="text" placeholder="18c4ecd8-...">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Tenant (Directory) ID</label>
+                <input id="editMicrosoftTenantId" type="text" placeholder="bdc996a3-...">
+              </div>
+              <div class="form-group">
+                <label>User Email</label>
+                <input id="editMicrosoftUserEmail" type="email" placeholder="hello@company.com">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Client Secret <span style="font-weight:400;color:#a0aec0;font-size:11px">(blank = keep existing)</span></label>
+              <div class="input-reveal">
+                <input id="editMicrosoftClientSecret" type="password" placeholder="Paste new secret to replace…">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('editMicrosoftClientSecret',this)">Show</button>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Drive ID</label>
+                <input id="editMicrosoftDriveId" type="text" placeholder="b!zn3vYtjcr0qRrsqK...">
+              </div>
+              <div class="form-group">
+                <label>Excel File Item ID</label>
+                <input id="editMicrosoftItemId" type="text" placeholder="3C0B812E-67B5-...">
+              </div>
+            </div>
+          </div>
+
+          <!-- Confluence -->
+          <div id="edit-ds-confluence" class="ds-panel">
+            <div class="form-group">
+              <label>Base URL</label>
+              <input id="editConfluenceBaseUrl" type="url" placeholder="https://yourcompany.atlassian.net/wiki">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Atlassian Email</label>
+                <input id="editConfluenceEmail" type="email" placeholder="you@company.com">
+              </div>
+              <div class="form-group">
+                <label>Space Key</label>
+                <input id="editConfluenceSpaceKey" type="text" placeholder="MYSPACE">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>API Token <span style="font-weight:400;color:#a0aec0;font-size:11px">(blank = keep existing)</span></label>
+              <div class="input-reveal">
+                <input id="editConfluenceApiToken" type="password" placeholder="Paste new token to replace…">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('editConfluenceApiToken',this)">Show</button>
+              </div>
+            </div>
           </div>
         </div>
       </details>
@@ -1329,35 +1653,44 @@
       document.getElementById('createClientModal').classList.remove('active');
     }
 
-    async function saveNewClient() {
-      const name               = document.getElementById('newName').value.trim();
-      const email              = document.getElementById('newEmail').value.trim();
-      const phone              = document.getElementById('newPhone').value.trim();
-      const company            = document.getElementById('newCompany').value.trim();
-      const whatsappBusinessId = document.getElementById('newWaBid').value.trim();
-      const whatsappToken      = document.getElementById('newWaToken').value.trim();
-      const companyName        = document.getElementById('newCompanyName').value.trim();
-      const timezone           = document.getElementById('newTimezone').value;
-      const currency           = document.getElementById('newCurrency').value;
-      const depositAmountRaw   = document.getElementById('newDepositAmount').value;
-      const paymentRedirectUrl = document.getElementById('newPaymentRedirectUrl').value.trim();
-      const subscriptionPlan   = document.getElementById('newPlan').value;
-      const maxMsgRaw          = document.getElementById('newMaxMessages').value;
-      const geminiApiKey       = document.getElementById('newGeminiKey').value.trim();
-      const pineconeIndex      = document.getElementById('newPineconeIndex').value.trim();
+    function _gv(id) { return document.getElementById(id)?.value?.trim() || null; }
 
+    async function saveNewClient() {
+      const name   = _gv('newName');
+      const email  = _gv('newEmail');
+      const phone  = _gv('newPhone');
       if (!name || !email || !phone) { showToast('Name, email, and phone are required', 'error'); return; }
 
-      const payload = { name, email, phone, subscriptionPlan, timezone, currency };
-      if (company)            payload.company            = company;
-      if (whatsappBusinessId) payload.whatsappBusinessId = whatsappBusinessId;
-      if (whatsappToken)      payload.whatsappToken      = whatsappToken;
-      if (companyName)        payload.companyName        = companyName;
-      if (paymentRedirectUrl) payload.paymentRedirectUrl = paymentRedirectUrl;
-      if (depositAmountRaw)   payload.depositAmount      = parseInt(depositAmountRaw, 10);
-      if (maxMsgRaw)          payload.maxMonthlyMessages = parseInt(maxMsgRaw, 10);
-      if (geminiApiKey)       payload.geminiApiKey       = geminiApiKey;
-      if (pineconeIndex)      payload.pineconeIndex      = pineconeIndex;
+      const depositRaw = document.getElementById('newDepositAmount').value;
+      const maxMsgRaw  = document.getElementById('newMaxMessages').value;
+
+      const payload = {
+        name, email, phone,
+        subscriptionPlan: document.getElementById('newPlan').value,
+        timezone:         document.getElementById('newTimezone').value,
+        currency:         document.getElementById('newCurrency').value,
+      };
+      const optional = {
+        company: _gv('newCompany'), companyName: _gv('newCompanyName'),
+        paymentRedirectUrl: _gv('newPaymentRedirectUrl'),
+        whatsappBusinessId: _gv('newWaBid'), whatsappToken: _gv('newWaToken'),
+        whatsappAccountId: _gv('newWaAccountId'), whatsappWebhookVerifyToken: _gv('newWaWebhookToken'),
+        whatsappToNumber: _gv('newWaToNumber'),
+        geminiApiKey: _gv('newGeminiKey'),
+        pineconeIndex: _gv('newPineconeIndex'), pineconeIndexName: _gv('newPineconeIndexName'),
+        pineconeApiKey: _gv('newPineconeApiKey'), pineconeEnvironment: _gv('newPineconeEnvironment'),
+        flutterwaveSecretKey: _gv('newFlwSecretKey'), flutterwaveWebhookSecret: _gv('newFlwWebhookSecret'),
+        googleSheetId: _gv('newGoogleSheetId'), googleSheetsWebhookToken: _gv('newGoogleSheetsWebhookToken'),
+        microsoftClientId: _gv('newMicrosoftClientId'), microsoftObjectId: _gv('newMicrosoftObjectId'),
+        microsoftTenantId: _gv('newMicrosoftTenantId'), microsoftClientSecret: _gv('newMicrosoftClientSecret'),
+        microsoftUserEmail: _gv('newMicrosoftUserEmail'),
+        microsoftDriveId: _gv('newMicrosoftDriveId'), microsoftItemId: _gv('newMicrosoftItemId'),
+        confluenceBaseUrl: _gv('newConfluenceBaseUrl'), confluenceEmail: _gv('newConfluenceEmail'),
+        confluenceApiToken: _gv('newConfluenceApiToken'), confluenceSpaceKey: _gv('newConfluenceSpaceKey'),
+      };
+      Object.entries(optional).forEach(([k, v]) => { if (v) payload[k] = v; });
+      if (depositRaw) payload.depositAmount      = parseInt(depositRaw, 10);
+      if (maxMsgRaw)  payload.maxMonthlyMessages = parseInt(maxMsgRaw, 10);
 
       try {
         const res = await fetch(`/api/outreach/clients`, {
@@ -1393,24 +1726,50 @@
       document.getElementById('editEmail').value                 = c.email || '';
       document.getElementById('editPhone').value                 = c.phone || '';
       // WhatsApp
-      document.getElementById('editWaBid').value                 = c.whatsappBusinessId || '';
-      document.getElementById('editWaToken').value               = '';
+      document.getElementById('editWaBid').value              = c.whatsappBusinessId       || '';
+      document.getElementById('editWaAccountId').value        = c.whatsappAccountId        || '';
+      document.getElementById('editWaToken').value            = '';
+      document.getElementById('editWaWebhookToken').value     = c.whatsappWebhookVerifyToken || '';
+      document.getElementById('editWaToNumber').value         = c.whatsappToNumber         || '';
       // Bot branding
-      document.getElementById('editCompanyName').value           = c.companyName || '';
-      document.getElementById('editTimezone').value              = c.timezone || 'Africa/Kigali';
-      document.getElementById('editCurrency').value              = c.currency || 'RWF';
-      document.getElementById('editDepositAmount').value         = c.depositAmount ?? '';
-      document.getElementById('editPaymentRedirectUrl').value    = c.paymentRedirectUrl || '';
+      document.getElementById('editCompanyName').value        = c.companyName || '';
+      document.getElementById('editTimezone').value           = c.timezone || 'Africa/Kigali';
+      document.getElementById('editCurrency').value           = c.currency || 'RWF';
+      document.getElementById('editDepositAmount').value      = c.depositAmount ?? '';
+      document.getElementById('editPaymentRedirectUrl').value = c.paymentRedirectUrl || '';
       // Subscription
-      document.getElementById('editPlan').value                  = c.subscriptionPlan;
-      document.getElementById('editStatus').value                = c.subscriptionStatus;
-      document.getElementById('editIsActive').checked            = c.isActive;
-      document.getElementById('editMaxMessages').value           = c.maxMonthlyMessages ?? '';
-      document.getElementById('editSubEnd').value                = c.subscriptionEndDate
+      document.getElementById('editPlan').value               = c.subscriptionPlan;
+      document.getElementById('editStatus').value             = c.subscriptionStatus;
+      document.getElementById('editIsActive').checked         = c.isActive;
+      document.getElementById('editMaxMessages').value        = c.maxMonthlyMessages ?? '';
+      document.getElementById('editSubEnd').value             = c.subscriptionEndDate
         ? new Date(c.subscriptionEndDate).toISOString().split('T')[0] : '';
-      // Credentials
-      document.getElementById('editPineconeIndex').value         = c.pineconeIndex || '';
-      document.getElementById('editGeminiKey').value             = '';
+      // AI
+      document.getElementById('editGeminiKey').value          = '';
+      // Payments
+      document.getElementById('editFlwSecretKey').value       = '';
+      document.getElementById('editFlwWebhookSecret').value   = '';
+      // Pinecone
+      document.getElementById('editPineconeIndex').value      = c.pineconeIndex       || '';
+      document.getElementById('editPineconeIndexName').value  = c.pineconeIndexName   || '';
+      document.getElementById('editPineconeApiKey').value     = '';
+      document.getElementById('editPineconeEnvironment').value= c.pineconeEnvironment || '';
+      // Google Sheets
+      document.getElementById('editGoogleSheetId').value             = c.googleSheetId            || '';
+      document.getElementById('editGoogleSheetsWebhookToken').value  = c.googleSheetsWebhookToken || '';
+      // Microsoft
+      document.getElementById('editMicrosoftClientId').value     = c.microsoftClientId  || '';
+      document.getElementById('editMicrosoftObjectId').value     = c.microsoftObjectId  || '';
+      document.getElementById('editMicrosoftTenantId').value     = c.microsoftTenantId  || '';
+      document.getElementById('editMicrosoftClientSecret').value = '';
+      document.getElementById('editMicrosoftUserEmail').value    = c.microsoftUserEmail || '';
+      document.getElementById('editMicrosoftDriveId').value      = c.microsoftDriveId   || '';
+      document.getElementById('editMicrosoftItemId').value       = c.microsoftItemId    || '';
+      // Confluence
+      document.getElementById('editConfluenceBaseUrl').value     = c.confluenceBaseUrl  || '';
+      document.getElementById('editConfluenceEmail').value       = c.confluenceEmail    || '';
+      document.getElementById('editConfluenceApiToken').value    = '';
+      document.getElementById('editConfluenceSpaceKey').value    = c.confluenceSpaceKey || '';
 
       document.getElementById('editClientModal').classList.add('active');
     }
@@ -1423,31 +1782,59 @@
     async function saveClientEdit() {
       if (!editingClientId) return;
 
-      const waToken        = document.getElementById('editWaToken').value.trim();
-      const geminiKey      = document.getElementById('editGeminiKey').value.trim();
-      const maxMsgRaw      = document.getElementById('editMaxMessages').value;
-      const depositRaw     = document.getElementById('editDepositAmount').value;
+      const maxMsgRaw  = document.getElementById('editMaxMessages').value;
+      const depositRaw = document.getElementById('editDepositAmount').value;
 
       const updates = {
-        name:                document.getElementById('editName').value.trim(),
-        company:             document.getElementById('editCompany').value.trim(),
-        email:               document.getElementById('editEmail').value.trim(),
-        phone:               document.getElementById('editPhone').value.trim(),
-        whatsappBusinessId:  document.getElementById('editWaBid').value.trim() || null,
-        companyName:         document.getElementById('editCompanyName').value.trim() || null,
-        timezone:            document.getElementById('editTimezone').value,
-        currency:            document.getElementById('editCurrency').value,
+        name:    _gv('editName'),    email:   _gv('editEmail'),
+        phone:   _gv('editPhone'),   company: _gv('editCompany') || null,
+        companyName:        _gv('editCompanyName')        || null,
+        timezone:           document.getElementById('editTimezone').value,
+        currency:           document.getElementById('editCurrency').value,
+        paymentRedirectUrl: _gv('editPaymentRedirectUrl') || null,
+        subscriptionPlan:   document.getElementById('editPlan').value,
+        subscriptionStatus: document.getElementById('editStatus').value,
+        isActive:           document.getElementById('editIsActive').checked,
+        subscriptionEndDate: _gv('editSubEnd')            || null,
+        maxMonthlyMessages:  maxMsgRaw  !== '' ? parseInt(maxMsgRaw,  10) : null,
         depositAmount:       depositRaw !== '' ? parseInt(depositRaw, 10) : null,
-        paymentRedirectUrl:  document.getElementById('editPaymentRedirectUrl').value.trim() || null,
-        subscriptionPlan:    document.getElementById('editPlan').value,
-        subscriptionStatus:  document.getElementById('editStatus').value,
-        isActive:            document.getElementById('editIsActive').checked,
-        subscriptionEndDate: document.getElementById('editSubEnd').value || null,
-        maxMonthlyMessages:  maxMsgRaw !== '' ? parseInt(maxMsgRaw, 10) : null,
-        pineconeIndex:       document.getElementById('editPineconeIndex').value.trim() || null,
+        // WhatsApp
+        whatsappBusinessId:         _gv('editWaBid')          || null,
+        whatsappAccountId:          _gv('editWaAccountId')    || null,
+        whatsappWebhookVerifyToken: _gv('editWaWebhookToken') || null,
+        whatsappToNumber:           _gv('editWaToNumber')     || null,
+        // Pinecone
+        pineconeIndex:       _gv('editPineconeIndex')       || null,
+        pineconeIndexName:   _gv('editPineconeIndexName')   || null,
+        pineconeEnvironment: _gv('editPineconeEnvironment') || null,
+        // Google Sheets
+        googleSheetId:            _gv('editGoogleSheetId')            || null,
+        googleSheetsWebhookToken: _gv('editGoogleSheetsWebhookToken') || null,
+        // Microsoft
+        microsoftClientId:  _gv('editMicrosoftClientId')  || null,
+        microsoftObjectId:  _gv('editMicrosoftObjectId')  || null,
+        microsoftTenantId:  _gv('editMicrosoftTenantId')  || null,
+        microsoftUserEmail: _gv('editMicrosoftUserEmail') || null,
+        microsoftDriveId:   _gv('editMicrosoftDriveId')   || null,
+        microsoftItemId:    _gv('editMicrosoftItemId')    || null,
+        // Confluence
+        confluenceBaseUrl:  _gv('editConfluenceBaseUrl')  || null,
+        confluenceEmail:    _gv('editConfluenceEmail')    || null,
+        confluenceSpaceKey: _gv('editConfluenceSpaceKey') || null,
       };
-      if (waToken)   updates.whatsappToken = waToken;
-      if (geminiKey) updates.geminiApiKey  = geminiKey;
+      // Encrypted fields — only send if the user typed a new value
+      const secrets = {
+        whatsappToken:          'editWaToken',
+        geminiApiKey:           'editGeminiKey',
+        flutterwaveSecretKey:   'editFlwSecretKey',
+        flutterwaveWebhookSecret: 'editFlwWebhookSecret',
+        pineconeApiKey:         'editPineconeApiKey',
+        microsoftClientSecret:  'editMicrosoftClientSecret',
+        confluenceApiToken:     'editConfluenceApiToken',
+      };
+      Object.entries(secrets).forEach(([field, id]) => {
+        const v = _gv(id); if (v) updates[field] = v;
+      });
 
       try {
         const res = await fetch(`/api/outreach/clients/${editingClientId}`, {
@@ -1756,6 +2143,15 @@
     }
 
     // ──────────────────────── Helpers ────────────────────────
+
+    function showDsTab(prefix, tab, btn) {
+      const bar = btn.closest('.ds-tab-bar');
+      bar.querySelectorAll('.ds-tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      const body = bar.closest('.credentials-body');
+      body.querySelectorAll('.ds-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(`${prefix}-ds-${tab}`).classList.add('active');
+    }
 
     function toggleReveal(inputId, btn) {
       const input = document.getElementById(inputId);
