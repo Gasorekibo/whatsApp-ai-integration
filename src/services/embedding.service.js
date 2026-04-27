@@ -252,12 +252,18 @@ class EmbeddingService {
             return result.embedding.values;
 
         } catch (error) {
+            const isRateLimit = error.status === 503 || error.status === 429
+                || error.message?.includes('503') || error.message?.includes('429')
+                || error.message?.includes('overloaded') || error.message?.includes('quota');
+
             if (retryCount < this.retryConfig.maxRetries) {
-                const delay = this.retryConfig.retryDelay *
-                    Math.pow(this.retryConfig.retryBackoff, retryCount);
+                // Rate-limit errors get a much longer backoff (5s, 15s, 45s)
+                const baseDelay = isRateLimit ? 5000 : this.retryConfig.retryDelay;
+                const delay = baseDelay * Math.pow(3, retryCount);
 
                 logger.warn(`Embedding failed, retrying (${retryCount + 1}/${this.retryConfig.maxRetries})`, {
                     error: error.message,
+                    isRateLimit,
                     delay,
                     textLength: text.length
                 });
