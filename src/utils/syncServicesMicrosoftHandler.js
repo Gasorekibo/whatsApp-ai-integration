@@ -28,11 +28,11 @@ const getAuthenticatedClient = () => {
   });
 };
 
-async function syncServicesMicrosoftHandler() {
+async function syncServicesMicrosoftHandler(driveId = null, itemId = null) {
   try {
     const client = getAuthenticatedClient();
-    const driveId = process.env.MICROSOFT_DRIVE_ID;
-    const itemId = process.env.MICROSOFT_ITEM_ID;
+    driveId = driveId || process.env.MICROSOFT_DRIVE_ID;
+    itemId  = itemId  || process.env.MICROSOFT_ITEM_ID;
     const worksheetName = 'Services';
     const response = await client
       .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheetName}/usedRange`)
