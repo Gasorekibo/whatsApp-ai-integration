@@ -52,7 +52,9 @@ router.get('/appointments', async (req, res) => {
 
 router.get('/services', async (req, res) => {
   try {
-    const services = await dbConfig.db.Content?.findAll();
+    const where = {};
+    if (req.query.clientId) where.clientId = req.query.clientId;
+    const services = await dbConfig.db.Content?.findAll({ where });
     res.json(services || []);
   } catch (error) {
     res.status(500).json({ error: error.message });

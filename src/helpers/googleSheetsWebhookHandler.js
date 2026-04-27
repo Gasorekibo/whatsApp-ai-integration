@@ -29,7 +29,6 @@ async function googleSheetsWebhookHandler(req, res) {
 
     const token  = employee.getDecryptedToken();
     const result = await googleSheet.syncServicesFromSheet(sheetId, token, clientId);
-
     res.json(result);
 
   } catch (error) {

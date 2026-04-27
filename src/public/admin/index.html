@@ -662,7 +662,13 @@
     <div class="content-section" id="services">
       <div class="section-header">
         <h2>⚙️ Services</h2>
-        <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <select class="filter-select" id="servicesClientFilter" onchange="loadServicesForClient()" style="min-width:200px">
+            <option value="">— All Clients —</option>
+          </select>
+          <span id="servicesCount" style="font-size:13px;color:#718096;white-space:nowrap;"></span>
+          <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
+        </div>
       </div>
       <div id="servicesContent">
         <div class="loading"><div class="spinner"></div>Loading services…</div>
@@ -1159,6 +1165,8 @@
 
         displayStats();
         updateOverview();
+        populateServicesClientFilter();
+        loadServicesForClient();
       } catch (err) {
         console.error('Failed to fetch data:', err);
         showToast('Failed to load dashboard data', 'error');
@@ -1221,7 +1229,7 @@
       if (window.innerWidth <= 768) toggleSidebar();
 
       if      (section === 'users'        && cachedData.users)        displayUsers(cachedData.users);
-      else if (section === 'services'     && cachedData.services)     displayServices(cachedData.services);
+      else if (section === 'services') { populateServicesClientFilter(); loadServicesForClient(); }
       else if (section === 'appointments' && cachedData.appointments) displayAppointments(cachedData.appointments);
       else if (section === 'clients'      && cachedData.clients)      displayClients(cachedData.clients.clients || []);
       else if (section === 'employees'    && cachedData.employees)    displayEmployees(cachedData.employees);
@@ -1594,24 +1602,68 @@
 
     // ──────────────────────── Services ────────────────────────
 
-    function displayServices(servicesData) {
-      const container = document.getElementById('servicesContent');
-      if (!servicesData?.length) { container.innerHTML = '<div class="no-data">No services found</div>'; return; }
+    function populateServicesClientFilter() {
+      const sel = document.getElementById('servicesClientFilter');
+      const current = sel.value;
+      sel.innerHTML = '<option value="">— All Clients —</option>';
+      (cachedData.clients?.clients || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name}${c.company ? ' · ' + c.company : ''}`;
+        if (c.id === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
 
+    async function loadServicesForClient() {
+      const clientId = document.getElementById('servicesClientFilter').value;
+      const container = document.getElementById('servicesContent');
+      container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+
+      try {
+        const url = clientId ? `/api/outreach/services?clientId=${clientId}` : '/api/outreach/services';
+        const res  = await fetch(url);
+        const data = await res.json();
+        displayServices(data, clientId);
+      } catch {
+        container.innerHTML = '<div class="no-data">Failed to load services</div>';
+      }
+    }
+
+    function displayServices(servicesData, selectedClientId = null) {
+      const container = document.getElementById('servicesContent');
+      const countEl   = document.getElementById('servicesCount');
+
+      if (!servicesData?.length) {
+        container.innerHTML = selectedClientId
+          ? '<div class="no-data">No services synced for this client yet.<br>Use the 🔄 Sync Services button to import them.</div>'
+          : '<div class="no-data">No services found across any client.</div>';
+        countEl.textContent = '';
+        return;
+      }
+
+      let totalServices = 0;
       let html = `<div class="table-container"><table>
-        <thead><tr><th>Service Name</th><th>Short Description</th><th>Details</th><th>Status</th></tr></thead><tbody>`;
+        <thead><tr><th>Client</th><th>Service Name</th><th>Short</th><th>Details</th><th>Status</th></tr></thead><tbody>`;
+
       servicesData.forEach(doc => {
+        const client = clientsMap[doc.clientId] || null;
+        const clientLabel = client ? `${client.name}${client.company ? ' · ' + client.company : ''}` : '—';
         (doc.services || []).forEach(s => {
+          totalServices++;
           html += `<tr>
+            <td style="font-size:12px; color:#718096">${clientLabel}</td>
             <td><strong>${s.name || 'N/A'}</strong></td>
-            <td>${s.short || 'N/A'}</td>
-            <td style="max-width:280px; font-size:13px">${s.details || 'N/A'}</td>
-            <td><span class="badge ${s.active ? 'badge-active' : 'badge-inactive'}">${s.active ? 'Active' : 'Inactive'}</span></td>
+            <td>${s.short || '—'}</td>
+            <td style="max-width:260px; font-size:13px">${s.details || '—'}</td>
+            <td><span class="badge ${s.active !== false ? 'badge-active' : 'badge-inactive'}">${s.active !== false ? 'Active' : 'Inactive'}</span></td>
           </tr>`;
         });
       });
+
       html += '</tbody></table></div>';
       container.innerHTML = html;
+      countEl.textContent = `${totalServices} service${totalServices !== 1 ? 's' : ''}`;
     }
 
     // ──────────────────────── Appointments ────────────────────────
