@@ -36,7 +36,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken, clientId = nul
         name:    row[1]?.trim() || '',
         short:   row[2]?.trim() || '',
         details: row[3]?.trim() || '',
-        active:  row[4]?.toLowerCase() === 'true' || row[4] === '1' || row[4]?.toLowerCase() === 'yes'
+        active:  row[4] == null || row[4] === '' ? true : (['true','1','yes'].includes(String(row[4]).toLowerCase()))
       }))
       .filter(s => s.id && s.name);
 
@@ -72,15 +72,13 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken, clientId = nul
 async function getActiveServices(clientId = null) {
   try {
     const content = await dbConfig.db.Content.findOne({ where: { clientId } });
-
     if (content?.services?.length > 0) {
       return content.services.filter(s => s.active !== false);
     }
-    return getDefaultServices();
-
+    return [];
   } catch (error) {
     logger.error('Error fetching services', { error: error.message });
-    return getDefaultServices();
+    return [];
   }
 }
 
@@ -91,25 +89,14 @@ async function getActiveServices(clientId = null) {
 async function getAllServices(clientId = null) {
   try {
     const content = await dbConfig.db.Content.findOne({ where: { clientId } });
-
     if (content?.services?.length > 0) {
       return content.services;
     }
-    return getDefaultServices();
-
+    return [];
   } catch (error) {
     logger.error('Error fetching all services', { error: error.message });
-    return getDefaultServices();
+    return [];
   }
-}
-
-function getDefaultServices() {
-  return [
-    { id: 'sap',      name: 'SAP Consulting',     short: 'SAP Consulting', details: 'ERP & SAP Solutions',          active: true },
-    { id: 'dev',      name: 'Custom Development',  short: 'Custom Dev',     details: 'Web/Mobile/Enterprise Apps',   active: true },
-    { id: 'qa',       name: 'Quality Assurance',   short: 'QA & Testing',   details: 'Manual + Automation Testing',  active: true },
-    { id: 'training', name: 'IT Training',         short: 'IT Training',    details: 'Certifications & Workshops',   active: true }
-  ];
 }
 
 /**

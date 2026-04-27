@@ -4,6 +4,7 @@ import ragService from '../services/rag.service.js';
 import logger from '../logger/logger.js';
 import ragConfig from '../config/rag.config.js';
 import dbConfig from '../models/index.js';
+import googleSheets from '../utils/googlesheets.js';
 const router = express.Router();
 
 async function resolveNamespace(clientId) {
@@ -36,20 +37,65 @@ const authenticateAdmin = (req, res, next) => {
 // Sync services from Google Sheets
 router.post('/kb/sync/sheets', async (req, res) => {
     try {
-        const clientId = req.body?.clientId || null;
+        const clientId       = req.body?.clientId || null;
+        const spreadsheetId  = req.body?.spreadsheetId || process.env.GOOGLE_SHEET_ID;
+
+        if (!spreadsheetId) {
+            return res.status(400).json({
+                success: false,
+                message: 'spreadsheetId is required in body or set GOOGLE_SHEET_ID in .env'
+            });
+        }
+
+        // Step 1 — find the employee OAuth token for this client
+        const employeeWhere = clientId
+            ? { clientId }
+            : { email: process.env.EMPLOYEE_EMAIL };
+
+        const employee = await dbConfig.db.Employee.findOne({ where: employeeWhere });
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: 'No Google account connected for this client. Use the 📅 Calendar button to connect one first.'
+            });
+        }
+
+        const token = employee.getDecryptedToken();
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: 'Google OAuth token missing. Reconnect the calendar via the 📅 Calendar button.'
+            });
+        }
+
+        // Step 2 — pull from Google Sheets → save to Content table (PostgreSQL)
+        logger.info('Calling syncServicesFromSheet', { spreadsheetId, clientId, hasToken: !!token });
+        const sheetResult = await googleSheets.syncServicesFromSheet(spreadsheetId, token, clientId);
+        logger.info('syncServicesFromSheet result', { success: sheetResult.success, message: sheetResult.message, serviceCount: sheetResult.services?.length ?? 'N/A' });
+
+        if (!sheetResult.success) {
+            return res.status(500).json({
+                success: false,
+                message: `Google Sheets read failed: ${sheetResult.message}`
+            });
+        }
+
+        // Step 3 — push Content table services → Pinecone (RAG)
         const namespace = await resolveNamespace(clientId);
+        logger.info('Pushing to Pinecone', { clientId, namespace });
         const count = await knowledgeBaseService.syncServicesFromSheets(clientId, namespace);
 
         res.json({
             success: true,
-            message: 'Services synced from Google Sheets',
-            count
+            message: `Synced ${sheetResult.services?.length || 0} services from Google Sheets`,
+            dbCount:  sheetResult.services?.length || 0,
+            ragChunks: count
         });
     } catch (error) {
         logger.error('Sync error', { error: error.message });
         res.status(500).json({
             success: false,
-            message: 'Failed to sync services',
+            message: 'Failed to sync services from Google Sheets',
             error: error.message
         });
     }
@@ -61,7 +107,7 @@ router.post('/kb/sync/microsoft', async (req, res) => {
         const clientId = req.body?.clientId || null;
         const namespace = await resolveNamespace(clientId);
         const count = await knowledgeBaseService.syncServicesFromMicrosoft(clientId, namespace);
-
+console.log('clientId:', clientId, 'namespace:', namespace, 'count:', count);
         res.json({
             success: true,
             message: 'Services synced from Microsoft Excel',

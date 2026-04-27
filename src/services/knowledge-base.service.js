@@ -6,6 +6,7 @@ import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHand
 import confluence from '../utils/confluence.js';
 import ragConfig from '../config/rag.config.js';
 import logger from '../logger/logger.js';
+import dbConfig from '../models/index.js';
 
 /**
  * Enhanced Knowledge Base Management Service
@@ -64,7 +65,7 @@ class KnowledgeBaseService {
             namespace = namespace || clientId || 'default';
             logger.info('Syncing services from Google Sheets', { clientId, namespace });
 
-            const services = await googleSheets.getActiveServices(clientId);
+            const services = await googleSheets.getAllServices(clientId);
 
             if (!services || services.length === 0) {
                 logger.warn('No services found in Google Sheets');
@@ -75,6 +76,7 @@ class KnowledgeBaseService {
                 count: services.length
             });
 
+            await this._saveServicesToContentTable(services, clientId);
             const result = await this.upsertServices(services, 'google-sheets', namespace);
 
             this.lastSync.googleSheets = new Date().toISOString();
@@ -116,6 +118,7 @@ class KnowledgeBaseService {
                 count: services.length
             });
 
+            await this._saveServicesToContentTable(services, clientId);
             const result = await this.upsertServices(services, 'microsoft-excel', namespace);
 
             this.lastSync.microsoftExcel = new Date().toISOString();
@@ -249,6 +252,44 @@ class KnowledgeBaseService {
      * @param {string} source - Data source name
      * @returns {Promise<object>} - Result summary
      */
+    /**
+     * Persist services into the PostgreSQL Content table so the WhatsApp
+     * interactive service list reflects the synced data immediately.
+     */
+    async _saveServicesToContentTable(rawServices, clientId) {
+        try {
+            const getField = (obj, keys) => {
+                for (const key of keys) {
+                    if (obj[key] !== undefined && obj[key] !== '') return obj[key];
+                    const found = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+                    if (found && obj[found] !== undefined && obj[found] !== '') return obj[found];
+                }
+                return null;
+            };
+
+            const services = rawServices.map((s, i) => ({
+                id:      String(getField(s, ['id', 'service_id']) || `svc-${i + 1}`),
+                name:    String(getField(s, ['name', 'service_name', 'title']) || `Service ${i + 1}`),
+                short:   String(getField(s, ['short', 'name', 'service_name', 'title']) || `Service ${i + 1}`),
+                details: String(getField(s, ['details', 'description', 'desc']) || ''),
+                active:  ['true', '1', 'yes', true, 1].includes(getField(s, ['active', 'status']) ?? true)
+            }));
+
+            let content = await dbConfig.db.Content.findOne({ where: { clientId } });
+            if (content) {
+                content.services  = services;
+                content.updatedAt = new Date();
+                await content.save();
+            } else {
+                await dbConfig.db.Content.create({ clientId, services, updatedAt: new Date() });
+            }
+
+            logger.info('Services saved to Content table', { clientId, count: services.length });
+        } catch (err) {
+            logger.error('Failed to save services to Content table', { error: err.message, clientId });
+        }
+    }
+
     async upsertServices(services, source, namespace = 'default') {
         try {
             if (!this.initialized) {

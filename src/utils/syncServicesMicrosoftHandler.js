@@ -39,10 +39,7 @@ async function syncServicesMicrosoftHandler() {
       .get();
     const rows = response.values;
     if (!rows || rows.length === 0) {
-      return {
-        success: false,
-        message: 'No data found in the worksheet'
-      };
+      return [];
     }
     const headers = rows[0];
     const data = rows.slice(1).map(row => {
@@ -56,11 +53,7 @@ async function syncServicesMicrosoftHandler() {
 
   } catch (error) {
     logger.error('Microsoft Sheets sync error', { error: error.message });
-    return {
-      success: false,
-      message: error.message,
-      error: error.toString()
-    };
+    throw error;
   }
 }
 // OHTER USEFUL FUNCTIONS
