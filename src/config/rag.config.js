@@ -70,7 +70,7 @@ export default {
     // Retrieval Configuration
     retrieval: {
         topK: 8, // Increased from 5 for better recall
-        minScore: 0.65, // Similarity threshold (0-1)
+        minScore: 0.30, // Similarity threshold (0-1)
 	maxContextChunks: 5,
         includeMetadata: true,
         includeValues: false,

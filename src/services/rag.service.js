@@ -376,7 +376,7 @@ JSON Output:`;
      */
     async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default') {
         try {
-            if (!this.isInitialized) {
+            if (!this.initialized) {
                 await this.initialize();
             }
 
@@ -653,10 +653,6 @@ JSON Output:`;
             // Pinecone filter format
             filter.type = { $in: types };
         }
-
-        // All documents are stored in English — always retrieve English docs regardless of user's language.
-        // Language filtering by user language would exclude all results since no non-English docs exist.
-        filter.language = { $in: ['en'] };
 
         return filter;
     }
