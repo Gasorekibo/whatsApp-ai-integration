@@ -2,10 +2,15 @@ import { DataTypes } from 'sequelize';
 
 export default (sequelize) => {
   const UserSession = sequelize.define('UserSession', {
-     id: {
+    id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
+    },
+    clientId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      comment: 'Tenant key — links session to the Client record that owns this conversation'
     },
     name: {
       type: DataTypes.STRING,
@@ -13,8 +18,8 @@ export default (sequelize) => {
     },
     phone: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+      allowNull: false
+      // unique removed — enforced as composite (clientId, phone) in indexes below
     },
     history: {
       type: DataTypes.JSONB,
@@ -46,6 +51,9 @@ export default (sequelize) => {
   }, {
     tableName: 'user_sessions',
     timestamps: true,
+    indexes: [
+      { unique: true, fields: ['client_id', 'phone'], name: 'idx_user_sessions_client_phone' }
+    ],
     hooks: {
       beforeCreate: (userSession) => {
         if (!userSession.lastAccess) {

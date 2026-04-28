@@ -3,12 +3,12 @@ import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
 
 /**
- * Sync services from Google Sheet to PostgreSQL
- * @param {string} spreadsheetId - The Google Sheet ID
- * @param {string} refreshToken - OAuth refresh token
- * @returns {Object} Sync result
+ * Sync services from Google Sheet into the client's Content row.
+ * @param {string} spreadsheetId
+ * @param {string} refreshToken
+ * @param {string|null} clientId - Tenant key; null = legacy single-tenant
  */
-async function syncServicesFromSheet(spreadsheetId, refreshToken) {
+async function syncServicesFromSheet(spreadsheetId, refreshToken, clientId = null) {
   try {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -18,7 +18,7 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
 
     oauth2Client.setCredentials({ refresh_token: refreshToken });
 
-    const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
+    const sheets   = google.sheets({ version: 'v4', auth: oauth2Client });
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Services!A2:E',
@@ -32,157 +32,95 @@ async function syncServicesFromSheet(spreadsheetId, refreshToken) {
     const services = rows
       .filter(row => row[0])
       .map(row => ({
-        id: row[0]?.trim() || '',
-        name: row[1]?.trim() || '',
-        short: row[2]?.trim() || '',
+        id:      row[0]?.trim() || '',
+        name:    row[1]?.trim() || '',
+        short:   row[2]?.trim() || '',
         details: row[3]?.trim() || '',
-        active: row[4]?.toLowerCase() === 'true' || row[4] === '1' || row[4]?.toLowerCase() === 'yes'
+        active:  row[4] == null || row[4] === '' ? true : (['true','1','yes'].includes(String(row[4]).toLowerCase()))
       }))
       .filter(s => s.id && s.name);
 
-    // Find existing content or get first record
-    let content = await dbConfig.db.Content.findOne();
+    // Find or create the Content row scoped to this client
+    let content = await dbConfig.db.Content.findOne({ where: { clientId } });
 
     if (content) {
-      // Update existing record
-      content.services = services;
+      content.services  = services;
       content.updatedAt = new Date();
       await content.save();
     } else {
-      // Create new record
-      content = await dbConfig.db.Content.create({
-        services,
-        updatedAt: new Date()
-      });
+      content = await dbConfig.db.Content.create({ clientId, services, updatedAt: new Date() });
     }
 
     return {
-      success: true,
-      message: `Successfully synced ${services.length} services`,
+      success:  true,
+      message:  `Successfully synced ${services.length} services`,
       services: content.services,
       syncedAt: new Date().toISOString()
     };
 
   } catch (error) {
     logger.error('Google Sheets sync error', { error: error.message });
-    return {
-      success: false,
-      message: error.message,
-      error: error.toString()
-    };
+    return { success: false, message: error.message, error: error.toString() };
   }
 }
 
 /**
- * Get active services from PostgreSQL
- * Falls back to default services if none found
- * @returns {Array} Active services
+ * Get active services for a specific client.
+ * Falls back to default services if none found.
+ * @param {string|null} clientId
  */
-async function getActiveServices() {
+async function getActiveServices(clientId = null) {
   try {
-    const content = await dbConfig.db.Content.findOne();
-
-    if (content && content.services && content.services.length > 0) {
-      // Filter active services
-      const activeServices = content.services.filter(s => s.active !== false);
-      return activeServices;
+    const content = await dbConfig.db.Content.findOne({ where: { clientId } });
+    if (content?.services?.length > 0) {
+      return content.services.filter(s => s.active !== false);
     }
-    return getDefaultServices();
-
+    return [];
   } catch (error) {
     logger.error('Error fetching services', { error: error.message });
-    // Return default services on error
-    return getDefaultServices();
+    return [];
   }
 }
 
 /**
- * Get all services (including inactive)
- * @returns {Array} All services
+ * Get all services (including inactive) for a specific client.
+ * @param {string|null} clientId
  */
-async function getAllServices() {
+async function getAllServices(clientId = null) {
   try {
-    const content = await dbConfig.db.Content.findOne();
-
-    if (content && content.services && content.services.length > 0) {
+    const content = await dbConfig.db.Content.findOne({ where: { clientId } });
+    if (content?.services?.length > 0) {
       return content.services;
     }
-
-    return getDefaultServices();
-
+    return [];
   } catch (error) {
     logger.error('Error fetching all services', { error: error.message });
-    return getDefaultServices();
+    return [];
   }
 }
 
 /**
- * Default services as fallback
- * @returns {Array} 
+ * Seed default services for a client if their Content row is empty.
+ * @param {string|null} clientId
  */
-function getDefaultServices() {
-  return [
-    {
-      id: 'sap',
-      name: 'SAP Consulting',
-      short: 'SAP Consulting',
-      details: 'ERP & SAP Solutions',
-      active: true
-    },
-    {
-      id: 'dev',
-      name: 'Custom Development',
-      short: 'Custom Dev',
-      details: 'Web/Mobile/Enterprise Apps',
-      active: true
-    },
-    {
-      id: 'qa',
-      name: 'Quality Assurance',
-      short: 'QA & Testing',
-      details: 'Manual + Automation Testing',
-      active: true
-    },
-    {
-      id: 'training',
-      name: 'IT Training',
-      short: 'IT Training',
-      details: 'Certifications & Workshops',
-      active: true
-    }
-  ];
-}
-
-async function initializeServices() {
+async function initializeServices(clientId = null) {
   try {
-    let content = await dbConfig.db.Content.findOne();
+    let content = await dbConfig.db.Content.findOne({ where: { clientId } });
 
-    if (!content || !content.services || content.services.length === 0) {
+    if (!content?.services?.length) {
       const defaultServices = getDefaultServices();
-
       if (content) {
-        // Update existing record
-        content.services = defaultServices;
+        content.services  = defaultServices;
         content.updatedAt = new Date();
         await content.save();
       } else {
-        // Create new record
-        content = await dbConfig.db.Content.create({
-          services: defaultServices,
-          updatedAt: new Date()
-        });
+        await dbConfig.db.Content.create({ clientId, services: defaultServices, updatedAt: new Date() });
       }
-
-      logger.info('Services initialized successfully');
+      logger.info('Services initialized', { clientId });
     }
   } catch (error) {
     logger.error('Error initializing services', { error: error.message });
   }
 }
 
-export default {
-  syncServicesFromSheet,
-  getActiveServices,
-  getAllServices,
-  initializeServices
-}
+export default { syncServicesFromSheet, getActiveServices, getAllServices, initializeServices };

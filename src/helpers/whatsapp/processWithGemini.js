@@ -9,135 +9,141 @@ import logger from '../../logger/logger.js';
 import ragService from '../../services/rag.service.js';
 
 dotenv.config();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const EMPLOYEE_EMAIL = process.env.EMPLOYEE_EMAIL;
 
 import { DateTime } from 'luxon';
 
-function toKigaliDisplay(date, locale = 'en') {
-  const dt = DateTime.fromJSDate(date).setZone('Africa/Kigali').setLocale(locale);
+function toDisplay(date, timezone) {
+  const dt = DateTime.fromJSDate(date).setZone(timezone);
   return {
     dayName: dt.toFormat('EEEE'),
-    date: dt.toFormat('LLLL d, yyyy'),
-    time: dt.toFormat('t')
+    date:    dt.toFormat('LLLL d, yyyy'),
+    time:    dt.toFormat('t')
   };
 }
 
-// Flag to enable/disable RAG (for gradual rollout)
-const USE_RAG = process.env.USE_RAG !== 'false'; // Default to true
+// Intents and keywords that require live calendar data
+const BOOKING_INTENTS  = new Set(['booking', 'payment']);
+const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session)\b/i;
 
-export async function processWithGemini(phoneNumber, message, history = [], userEmail = null, currentLanguage = null) {
+function needsCalendar(intent, message) {
+  return BOOKING_INTENTS.has(intent) || BOOKING_KEYWORDS.test(message);
+}
+
+const USE_RAG = process.env.USE_RAG !== 'false';
+
+export async function processWithGemini(phoneNumber, message, history = [], userEmail = null, currentLanguage = null, clientConfig = {}) {
   const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
 
+  // ── Per-client configuration ──────────────────────────────────────────────
+  const genAI              = new GoogleGenerativeAI(clientConfig.geminiApiKey || process.env.GEMINI_API_KEY);
+  const timezone           = clientConfig.timezone           || 'Africa/Kigali';
+  const companyName        = clientConfig.companyName        || process.env.COMPANY_NAME || 'Our Company';
+  const paymentRedirectUrl = clientConfig.paymentRedirectUrl || process.env.PAYMENT_REDIRECT_URL || '';
+  const depositAmount      = clientConfig.depositAmount      || parseInt(process.env.DEPOSIT_AMOUNT || 5000);
+  const currency           = clientConfig.currency           || process.env.CURRENCY || 'RWF';
+  const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
+  const clientId           = clientConfig.clientId           || null;
+
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
-    phone: sanitizedPhone,
-    messageLength: message.length,
-    historyLength: history.length,
-    hasUserEmail: !!userEmail
+    phone: sanitizedPhone, messageLength: message.length,
+    historyLength: history.length, hasUserEmail: !!userEmail, clientId, namespace
   });
+
   try {
-    logger.debug('Fetching employee calendar data, From Process Gemini', {
-      phone: sanitizedPhone,
-      employeeEmail: EMPLOYEE_EMAIL
-    });
-    const employee = await dbConfig.db.Employee.findOne({ where: { email: EMPLOYEE_EMAIL } });
-    if (!employee) {
-      logger.error('Employee not found for calendar access', {
-        phone: sanitizedPhone,
-        employeeEmail: EMPLOYEE_EMAIL
-      });
-      throw new Error("Calendar not connected")
+    // ── Lazy calendar loader — fetches once per request, only when needed ──
+    let _employee    = null;
+    let _freeSlots   = null;
+    let _currentDate = null;
+
+    const loadEmployee = async () => {
+      if (_employee !== null) return _employee;
+      const where = clientId ? { clientId } : { email: process.env.EMPLOYEE_EMAIL };
+      _employee = await dbConfig.db.Employee.findOne({ where });
+      if (!_employee) throw new Error('Calendar not connected');
+      return _employee;
     };
 
-    const token = employee.getDecryptedToken();
-    const calendarStartTime = Date.now();
-    const calendar = await getCalendarData(EMPLOYEE_EMAIL, token);
-    const calendarDuration = Date.now() - calendarStartTime;
-    logger.info('Calendar data retrieved', {
-      phone: sanitizedPhone,
-      duration: calendarDuration,
-      freeSlotsCount: calendar.freeSlots?.length || 0
-    });
-    const now = new Date();
-    const kigaliTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Kigali' }));
+    const loadSlots = async () => {
+      if (_freeSlots !== null) return _freeSlots;
 
-    // Minimum slot duration in milliseconds (60 minutes)
-    const MIN_SLOT_DURATION_MS = 60 * 60 * 1000;
+      const emp   = await loadEmployee();
+      const token = emp.getDecryptedToken();
 
-    const freeSlots = calendar.freeSlots
-      .map(s => {
-        const start = new Date(s.start);
-        const end = new Date(s.end);
-        const slotStart = start > kigaliTime ? start : kigaliTime;
-        return { start, end, slotStart };
-      })
-      // Filter out slots where the adjusted start is at or past the end,
-      // or where less than 30 minutes remain in the slot
-      .filter(({ slotStart, end }) => (end - slotStart) >= MIN_SLOT_DURATION_MS)
-      .map(({ slotStart, end }) => {
-        const s = toKigaliDisplay(slotStart);
-        const e = toKigaliDisplay(end);
-        return {
-          isoStart: slotStart.toISOString(),
-          isoEnd: end.toISOString(),
-          display: `${s.dayName}, ${s.date} at ${s.time}`,
-          dayName: s.dayName,
-          date: s.date,
-          time: `${s.time} - ${e.time}`
-        };
+      const t0       = Date.now();
+      const calendar = await getCalendarData(emp.email, token);
+      logger.info('Calendar data retrieved', {
+        phone: sanitizedPhone, duration: Date.now() - t0,
+        freeSlotsCount: calendar.freeSlots?.length || 0
       });
 
-    const services = await googleSheets.getActiveServices();
-    logger.debug('Services loaded from ProcessWithGemini', {
-      phone: sanitizedPhone,
-      servicesCount: services.length
-    });
-    const servicesList = services.map(s =>
-      `• ${s.name}${s.details ? ' - ' + s.details : ''}`
-    ).join('\n');
-    const slotDetails = freeSlots.map((s, i) =>
-      `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`
-    ).join('\n');
+      const now      = new Date();
+      const localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+      _currentDate   = (() => { const d = toDisplay(now, timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
 
-    const { dayName: cdDay, date: cdDate, time: cdTime } = toKigaliDisplay(now);
-    const currentDate = `${cdDay}, ${cdDate} at ${cdTime}`;
+      _freeSlots = calendar.freeSlots
+        .map(s => {
+          const start     = new Date(s.start);
+          const end       = new Date(s.end);
+          const slotStart = start > localNow ? start : localNow;
+          return { start, end, slotStart };
+        })
+        .filter(({ slotStart, end }) => (end - slotStart) >= 60 * 60 * 1000)
+        .map(({ slotStart, end }) => {
+          const s = toDisplay(slotStart, timezone);
+          const e = toDisplay(end, timezone);
+          return {
+            isoStart: slotStart.toISOString(),
+            isoEnd:   end.toISOString(),
+            display:  `${s.dayName}, ${s.date} at ${s.time}`,
+            dayName:  s.dayName,
+            date:     s.date,
+            time:     `${s.time} - ${e.time}`
+          };
+        });
 
-    // --- TOOL DEFINITIONS ---
+      return _freeSlots;
+    };
+
+    // ── Services (always needed for the menu / AI context) ────────────────
+    const services     = await googleSheets.getActiveServices(clientId);
+    const servicesList = services.map(s => `• ${s.name}${s.details ? ' - ' + s.details : ''}`).join('\n');
+
+    // ── Tool definitions ──────────────────────────────────────────────────
     const tools = [
       {
         functionDeclarations: [
           {
-            name: "show_services",
-            description: "Show the list of available services to the user."
+            name: 'show_services',
+            description: 'Show the list of available services to the user.'
           },
           {
-            name: "initiate_payment",
-            description: "Initiate a payment for a consultation booking.",
+            name: 'initiate_payment',
+            description: 'Initiate a payment for a consultation booking.',
             parameters: {
-              type: "OBJECT",
+              type: 'OBJECT',
               properties: {
-                service: { type: "STRING", description: "The service name" },
-                name: { type: "STRING", description: "Customer name" },
-                email: { type: "STRING", description: "Customer email" },
-                start: { type: "STRING", description: "ISO start time of the slot" },
-                details: { type: "STRING", description: "Service specific details" },
-                company: { type: "STRING", description: "Company name (optional)" }
+                service: { type: 'STRING', description: 'The service name' },
+                name:    { type: 'STRING', description: 'Customer name' },
+                email:   { type: 'STRING', description: 'Customer email' },
+                start:   { type: 'STRING', description: 'ISO start time of the slot' },
+                details: { type: 'STRING', description: 'Service specific details' },
+                company: { type: 'STRING', description: 'Company name (optional)' }
               },
-              required: ["service", "name", "email", "start"]
+              required: ['service', 'name', 'email', 'start']
             }
           },
           {
-            name: "save_inquiry",
-            description: "Save an inquiry when a user is interested but not ready to book.",
+            name: 'save_inquiry',
+            description: 'Save an inquiry when a user is interested but not ready to book.',
             parameters: {
-              type: "OBJECT",
+              type: 'OBJECT',
               properties: {
-                service: { type: "STRING" },
-                name: { type: "STRING" },
-                email: { type: "STRING" },
-                details: { type: "STRING" },
-                timeline: { type: "STRING" },
-                budget: { type: "STRING" }
+                service:  { type: 'STRING' },
+                name:     { type: 'STRING' },
+                email:    { type: 'STRING' },
+                details:  { type: 'STRING' },
+                timeline: { type: 'STRING' },
+                budget:   { type: 'STRING' }
               }
             }
           }
@@ -145,313 +151,214 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       }
     ];
 
+    // ── Build prompt ──────────────────────────────────────────────────────
     let prompt;
     let detectedLanguage = 'en';
+    let ragIntent        = 'general';
 
-    // RAG-based approach
     if (USE_RAG) {
       try {
-        const retrievedData = await ragService.retrieveContext(message, history);
-        // detectedLanguage is used only for the show_services early return.
-        // The prompt itself instructs Gemini to auto-detect language from the current message,
-        // so we don't inject detectedLanguage into the prompt anymore.
-        detectedLanguage = currentLanguage || retrievedData.language || 'en';
+        const retrievedData = await ragService.retrieveContext(message, history, null, namespace);
+        detectedLanguage    = currentLanguage || retrievedData.language || 'en';
+        ragIntent           = retrievedData.intent || 'general';
 
-        // Build dynamic data that changes frequently
+        // Only fetch calendar if this looks like a booking conversation
+        const calendarNeeded = needsCalendar(ragIntent, message);
+        logger.debug('Calendar needed check', { sanitizedPhone, ragIntent, calendarNeeded });
+
+        const slots = calendarNeeded ? await loadSlots() : [];
+        const slotDetails = slots.length
+          ? slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n')
+          : 'No slots preloaded — if the user wants to book, call the show_services or initiate_payment tool.';
+
+        const now       = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
         const dynamicData = {
           availableSlots: slotDetails,
-          currentDate: currentDate,
-          depositInfo: `All consultations require a commitment deposit of ${process.env.DEPOSIT_AMOUNT} ${process.env.CURRENCY} to confirm booking.`
+          currentDate:    now,
+          depositInfo: `All consultations require a commitment deposit of ${depositAmount} ${currency} to confirm booking.`
         };
 
-        // Build augmented prompt
-        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData);
-
-        logger.info(`RAG retrieved ${retrievedData.relevantDocs} relevant documents`);
+        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { companyName });
+        logger.info(`RAG retrieved ${retrievedData.relevantDocs} docs, intent=${ragIntent}, calendar=${calendarNeeded}`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
         detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-        prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
+        const calendarNeeded = needsCalendar('general', message);
+        const slots = calendarNeeded ? await loadSlots() : [];
+        const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
+        const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
+        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
       }
     } else {
       detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-      prompt = await buildFallbackPrompt(slotDetails, currentDate, detectedLanguage);
+      const calendarNeeded = needsCalendar('general', message);
+      const slots = calendarNeeded ? await loadSlots() : [];
+      const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
+      const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
+      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
     }
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      tools: tools
-    });
-
-    // Always start a fresh chat to ensure the systemInstruction (prompt) 
-    // is updated with the latest RAG context from this specific message.
-    const chat = model.startChat({
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', tools });
+    const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
       history: history.map(h => ({
-        role: h.role === 'user' ? 'user' : 'model',
+        role:  h.role === 'user' ? 'user' : 'model',
         parts: [{ text: h.content }]
       }))
     });
 
-    // Append the detected language as an in-message hint.
-    // System instructions can be overridden by conversation history language momentum,
-    // but an explicit hint inside the message itself is much harder for the model to ignore.
-    const langNames = { en: 'English', fr: 'French', rw: 'Kinyarwanda', de: 'German', sw: 'Swahili', kis: 'Swahili' };
-    const msgLangName = langNames[currentLanguage];
+    const langNames    = { en: 'English', fr: 'French', rw: 'Kinyarwanda', de: 'German', sw: 'Swahili', kis: 'Swahili' };
+    const msgLangName  = langNames[currentLanguage];
     const messageToSend = msgLangName
       ? `${message}\n\n[IMPORTANT: This message is in ${msgLangName}. You MUST respond ONLY in ${msgLangName}.]`
       : message;
 
-    let result = await chat.sendMessage(messageToSend);
+    let result   = await chat.sendMessage(messageToSend);
     let response = result.response;
-    let text = response.text();
+    let text     = response.text();
 
-    // Loop to handle potential function calls
-    while (response.candidates?.[0]?.content?.parts?.some(part => part.functionCall)) {
+    // ── Tool call loop ────────────────────────────────────────────────────
+    while (response.candidates?.[0]?.content?.parts?.some(p => p.functionCall)) {
       const functionCalls = response.candidates[0].content.parts
-        .filter(part => part.functionCall)
-        .map(part => part.functionCall);
+        .filter(p => p.functionCall).map(p => p.functionCall);
 
       const toolResults = [];
 
       for (const call of functionCalls) {
 
-        if (call.name === "show_services") {
-          logger.info('Show services tool called', { call });
+        if (call.name === 'show_services') {
+          // Fetch slots on-demand since user is heading toward booking
+          const freeSlots = await loadSlots().catch(() => []);
           toolResults.push({
-            functionResponse: {
-              name: "show_services",
-              response: { success: true, message: "Displaying services list to user." }
-            }
+            functionResponse: { name: 'show_services', response: { success: true, message: 'Displaying services list to user.' } }
           });
-          // Return early to handle special UI response
           return { reply: null, showServices: true, showSlots: false, freeSlots, language: detectedLanguage };
         }
 
-        if (call.name === "initiate_payment") {
-          const data = call.args;
-          logger.info('Initiating payment tool called', { data });
+        if (call.name === 'initiate_payment') {
+          const data           = call.args;
           const requestedStart = new Date(data.start);
+          logger.info('initiate_payment tool called', { data });
 
-          const matchingSlot = freeSlots.find(slot => {
-            const slotStart = new Date(slot.isoStart);
-            return Math.abs(slotStart - requestedStart) < 60000;
-          });
+          // Ensure slots are loaded before matching
+          const freeSlots = await loadSlots().catch(() => []);
+          const matchingSlot = freeSlots.find(slot =>
+            Math.abs(new Date(slot.isoStart) - requestedStart) < 60000
+          );
 
           if (!matchingSlot) {
-            const errorMsg = "Time slot no longer available.";
-            toolResults.push({ functionResponse: { name: "initiate_payment", response: { success: false, error: errorMsg } } });
+            toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Time slot no longer available.' } } });
             continue;
           }
 
           try {
-            const tx_ref = `moyo-deposit-${phoneNumber.replace(/\+/g, '')}-${Date.now()}`;
-            const amount = parseInt(process.env.DEPOSIT_AMOUNT || 5000);
+            const safePrefix = (companyName || 'deposit').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
+            const tx_ref     = `${safePrefix}-${phoneNumber.replace(/\+/g, '')}-${Date.now()}`;
 
-            // Create a ServiceRequest record to track this booking attempt
             await dbConfig.db.ServiceRequest.create({
-              service: data.service,
-              name: data.name,
-              email: data.email,
-              phone: phoneNumber,
-              company: data.company,
-              details: data.details,
-              startTime: matchingSlot.isoStart,
-              endTime: matchingSlot.isoEnd,
-              txRef: tx_ref,
-              amount: amount,
+              clientId,
+              service:       data.service,
+              name:          data.name,
+              email:         data.email,
+              phone:         phoneNumber,
+              company:       data.company,
+              details:       data.details,
+              startTime:     matchingSlot.isoStart,
+              endTime:       matchingSlot.isoEnd,
+              txRef:         tx_ref,
+              amount:        depositAmount,
               paymentStatus: 'pending',
-              status: 'pending_payment'
+              status:        'pending_payment'
             });
 
-            const paymentApiResponse = await fetch('https://api.flutterwave.com/v3/payments', {
+            const paymentRes = await fetch('https://api.flutterwave.com/v3/payments', {
               method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${process.env.FLW_SECRET_KEY}`,
-                'Content-Type': 'application/json'
-              },
+              headers: { 'Authorization': `Bearer ${process.env.FLW_SECRET_KEY}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 tx_ref,
-                amount: parseInt(process.env.DEPOSIT_AMOUNT || 5000),
-                currency: process.env.CURRENCY || "RWF",
-                redirect_url: "https://goldenlion.group/ai/payment-success",
-                customer: {
-                  email: data.email || "customer@example.com",
-                  phone_number: phoneNumber.replace('+', ''),
-                  name: data.name
-                },
-                customizations: {
-                  title: "Moyo Tech Consultation Deposit",
-                  description: `Deposit for ${data.service} consultation`
-                },
-                meta: {
-                  phone: phoneNumber,
-                  booking_details: JSON.stringify({
-                    ...data,
-                    slotStart: matchingSlot.isoStart,
-                    slotEnd: matchingSlot.isoEnd,
-                    tx_ref
-                  })
-                }
+                amount:        depositAmount,
+                currency,
+                redirect_url:  paymentRedirectUrl,
+                customer:      { email: data.email || 'customer@example.com', phone_number: phoneNumber.replace('+', ''), name: data.name },
+                customizations:{ title: `${companyName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
+                meta:          { phone: phoneNumber, booking_details: JSON.stringify({ ...data, slotStart: matchingSlot.isoStart, slotEnd: matchingSlot.isoEnd, tx_ref }) }
               })
             });
 
-            const paymentResponse = await paymentApiResponse.json();
-            if (paymentResponse.status === "success") {
-
-              toolResults.push({
-                functionResponse: {
-                  name: "initiate_payment",
-                  response: { success: true, paymentLink: paymentResponse.data.link }
-                }
-              });
-            } else {
-              toolResults.push({ functionResponse: { name: "initiate_payment", response: { success: false, error: "Payment gateway error" } } });
-            }
+            const paymentData = await paymentRes.json();
+            toolResults.push(paymentData.status === 'success'
+              ? { functionResponse: { name: 'initiate_payment', response: { success: true, paymentLink: paymentData.data.link } } }
+              : { functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment gateway error' } } }
+            );
           } catch (e) {
-            logger.error('Error in initiate_payment tool', { error: e.message, stack: e.stack });
-            toolResults.push({ functionResponse: { name: "initiate_payment", response: { success: false, error: e.message } } });
+            logger.error('Error in initiate_payment tool', { error: e.message });
+            toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: e.message } } });
           }
         }
 
-        if (call.name === "save_inquiry") {
+        if (call.name === 'save_inquiry') {
           try {
-            await dbConfig.db.ServiceRequest.create({
-              ...call.args,
-              phone: phoneNumber,
-              status: 'new'
-            });
-            toolResults.push({
-              functionResponse: {
-                name: "save_inquiry",
-                response: { success: true, message: "Inquiry saved successfully." }
-              }
-            });
+            await dbConfig.db.ServiceRequest.create({ ...call.args, clientId, phone: phoneNumber, status: 'new' });
+            toolResults.push({ functionResponse: { name: 'save_inquiry', response: { success: true, message: 'Inquiry saved successfully.' } } });
           } catch (e) {
-            toolResults.push({ functionResponse: { name: "save_inquiry", response: { success: false, error: e.message } } });
+            toolResults.push({ functionResponse: { name: 'save_inquiry', response: { success: false, error: e.message } } });
           }
         }
       }
 
-      // Send tool results back to Gemini to get the final textual response
-      result = await chat.sendMessage(toolResults);
+      result   = await chat.sendMessage(toolResults);
       response = result.response;
-      text = response.text(); // Update text for next loop iteration or final parsing
+      text     = response.text();
     }
 
     const responseText = result.response.text();
     let parsedResult;
-
     try {
-      // Try to find JSON block in case model added text around it
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
-      parsedResult = JSON.parse(jsonToParse);
-    } catch (parseErr) {
-      logger.error('Gemini JSON parse error, attempting fallback', {
-        error: parseErr.message,
-        text: responseText.slice(0, 50) + '...'
-      });
-      // Fallback: Treat as plain text if it's not valid JSON
-      parsedResult = {
-        reply: responseText,
-        language: detectedLanguage, // Use detectedLanguage as fallback
-        showServices: false,
-        showSlots: false
-      };
-    }
-
-    // Final cleanup of the reply and language
-    let finalReply = parsedResult.reply;
-    let finalLanguage = parsedResult.language || detectedLanguage || 'en';
-
-    // If Gemini failed to return a JSON with a reply, use the text it returned
-    if (!finalReply && text) {
-      finalReply = text;
+      parsedResult    = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+    } catch {
+      parsedResult = { reply: responseText, language: detectedLanguage, showServices: false, showSlots: false };
     }
 
     return {
-      reply: finalReply,
-      language: finalLanguage,
+      reply:        parsedResult.reply || text || null,
+      language:     parsedResult.language || detectedLanguage || 'en',
       showServices: parsedResult.showServices || false,
-      showSlots: parsedResult.showSlots || false,
-      freeSlots: parsedResult.freeSlots || []
+      showSlots:    parsedResult.showSlots    || false,
+      freeSlots:    parsedResult.freeSlots    || []
     };
 
   } catch (err) {
-    console.log('======>Error in processWithGemini:', err);
-    logger.error("Gemini processing error", {
-      phone: sanitizedPhone,
-      error: err.message,
-      stack: err.stack,
-      errorType: err.constructor.name,
-      status: err.status
-    });
-    if (err.status === 429) {
-      logger.warn('Gemini rate limit exceeded', {
-        phone: sanitizedPhone,
-        status: 429
-      });
-      return {
-        reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.",
-        showServices: false,
-        showSlots: false,
-        freeSlots: []
-      };
-    } else {
-      logger.error('Gemini unexpected error', {
-        phone: sanitizedPhone,
-        status: err.status
-      });
-      return {
-        reply: "I'm having trouble connecting right now. Please try again in a moment!",
-        showServices: false,
-        showSlots: false,
-        freeSlots: []
-      };
-    }
+    logger.error('Gemini processing error', { phone: sanitizedPhone, error: err.message, stack: err.stack, status: err.status });
+
+    if (err.status === 429) return { reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.", showServices: false, showSlots: false, freeSlots: [] };
+    if (err.status === 503) return { reply: "⚠️ Our AI is currently busy. Please try again in a few seconds.", showServices: false, showSlots: false, freeSlots: [] };
+    return { reply: "I'm having trouble connecting right now. Please try again in a moment!", showServices: false, showSlots: false, freeSlots: [] };
   }
 }
 
-/**
- * Build fallback prompt using original approach
- * Used when RAG is disabled or fails
- */
-async function buildFallbackPrompt(slotDetails, currentDate, locale = 'en') {
-  const services = await dbConfig.db.Content.findOne();
-  const servicesList = services ? services.services : 'Consultation services';
-
+function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', companyName = 'Our Company', depositAmount = 5000, currency = 'RWF') {
   return `
-You are a warm, professional AI assistant for Moyo Tech Solutions — a leading IT consultancy in Rwanda.
+You are a warm, professional AI assistant for ${companyName}.
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.
-- Determine the language by reading ONLY the user's current message — do NOT use the conversation history.
-- If the user writes in Kinyarwanda → respond in Kinyarwanda.
-- If in French → respond in French. If in English → respond in English.
 - Supported: English (en), French (fr), Kinyarwanda (rw), Swahili (sw), German (de).
 - NEVER default to English if the user's current message is in another language.
 
 CORE BEHAVIOR:
 - Be friendly but brief and to-the-point
 - Keep responses under 3 sentences unless asking follow-up questions
-- Get straight to what the user needs
 
-SERVICES WE OFFER:
-${servicesList}
-
-AVAILABLE CONSULTATION SLOTS:
-${slotDetails}
-
+${slotDetails ? `AVAILABLE CONSULTATION SLOTS:\n${slotDetails}\n` : ''}
 Current Date: ${currentDate}
+${slotDetails ? `Deposit required to confirm booking: ${depositAmount} ${currency}` : ''}
 
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:
 {
-  "language": "iso_code", // Language matching the user's current message: en, fr, rw, sw, or de
+  "language": "iso_code",
   "reply": "your response text here"
 }
-
-If information is not available, politely say so.
 `;
 }

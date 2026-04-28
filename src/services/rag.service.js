@@ -71,40 +71,59 @@ class RAGService {
             // Check intent cache first
             if (this.intentCache?.has(normalizedMessage)) {
                 logger.debug('Intent cache hit');
-                const cached = this.intentCache.get(normalizedMessage);
-                return cached;
+                return this.intentCache.get(normalizedMessage);
             }
 
-            // Quick pattern matching for common intents (always 'general' for now)
+            // 1. Detect language cheaply via patterns (no Gemini call needed for common languages)
+            const patternLanguage = await this.detectCurrentLanguage(message);
+
+            // 2. Quick pattern-based intent check
             const quickIntent = this._quickIntentCheck(normalizedMessage);
             if (quickIntent) {
-                const result = { intent: quickIntent, language: await this.detectLanguage(message, history) };
+                // Use history language override only if pattern matched non-English
+                const language = patternLanguage !== 'en'
+                    ? patternLanguage
+                    : (await this._languageFromHistory(history)) || patternLanguage;
+                const result = { intent: quickIntent, language };
                 this._cacheIntent(normalizedMessage, result);
                 return result;
             }
 
-            // Keyword-based intent detection
+            // 3. Keyword-based intent detection
             const keywordIntent = this._detectIntentByKeywords(message);
             if (keywordIntent) {
-                const result = { intent: keywordIntent, language: await this.detectLanguage(message, history) };
+                const language = patternLanguage !== 'en'
+                    ? patternLanguage
+                    : (await this._languageFromHistory(history)) || patternLanguage;
+                const result = { intent: keywordIntent, language };
                 this._cacheIntent(normalizedMessage, result);
                 return result;
             }
 
-            // Use LLM for intent classification, but always use detectLanguage for language
-            // (which checks history first so synthetic/English messages don't override the user's actual language)
+            // 4. LLM classification — ONE call returns both intent + language (saves a second Gemini call)
             const classification = await this._classifyWithLLM(message, history);
-            classification.language = await this.detectLanguage(message, history);
+            // Override language with pattern result if LLM returned 'en' but patterns say otherwise
+            if (patternLanguage !== 'en') classification.language = patternLanguage;
             this._cacheIntent(normalizedMessage, classification);
 
             return classification;
 
         } catch (error) {
-            logger.warn('Query classification failed, falling back', {
-                error: error.message
-            });
-            return { intent: 'general', language: await this.detectLanguage(message, history) };
+            logger.warn('Query classification failed, falling back', { error: error.message });
+            const language = await this.detectCurrentLanguage(message);
+            return { intent: 'general', language };
         }
+    }
+
+    /**
+     * Get most recent non-null language from history without calling Gemini.
+     * @private
+     */
+    _languageFromHistory(history = []) {
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].role === 'user' && history[i].language) return history[i].language;
+        }
+        return null;
     }
 
     /**
@@ -164,7 +183,7 @@ class RAGService {
     async _classifyWithLLM(message, history = []) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: this.intentConfig.llm.model || "gemini-2.5-flash"
+                model: "gemini-2.0-flash"
             });
 
             const categories = this.intentConfig.categories.join(', ');
@@ -195,14 +214,17 @@ Example: {"intent": "general", "language": "en"}
 
 JSON Output:`;
 
-            const result = await model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0,
-                    maxOutputTokens: 100,
-                    responseMimeType: "application/json"
-                }
-            });
+            const result = await this._geminiWithRetry(
+                () => model.generateContent({
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0,
+                        maxOutputTokens: 100,
+                        responseMimeType: "application/json"
+                    }
+                }),
+                'intent-classification'
+            );
 
             const responseText = result.response.text();
 
@@ -326,7 +348,7 @@ JSON Output:`;
     try {
         // 1. Initialize the model with System Instructions
         const model = embeddingService.genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             systemInstruction: "You are a language detection API. Identify if the message is primarily in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). Output ONLY the two-letter ISO code. For mixed-language messages (e.g., Kinyarwanda with English time formats), identify the DOMINANT non-English language. Only output 'en' if the message is clearly and primarily in English. Do not provide explanations.",
         });
 
@@ -338,10 +360,13 @@ JSON Output:`;
         };
 
         // 3. Send only the message text to the model
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: message }] }],
-            generationConfig,
-        });
+        const result = await this._geminiWithRetry(
+            () => model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: message }] }],
+                generationConfig,
+            }),
+            'language-detection'
+        );
 
         // 4. Safely extract the text
         const response = await result.response;
@@ -374,9 +399,9 @@ JSON Output:`;
      * @param {number} topK - Number of results to retrieve
      * @returns {Promise<object>} - Retrieved context and metadata
      */
-    async retrieveContext(userMessage, conversationHistory = [], topK = null) {
+    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default') {
         try {
-            if (!this.isInitialized) {
+            if (!this.initialized) {
                 await this.initialize();
             }
 
@@ -423,11 +448,12 @@ JSON Output:`;
                 filter
             });
 
-            // Search for similar documents
+            // Search for similar documents — scoped to this client's namespace
             const results = await vectorDBService.searchSimilar(
                 queryEmbedding,
                 retrievalTopK,
-                filter
+                filter,
+                namespace
             );
 
             // Post-process and rank results
@@ -653,10 +679,6 @@ JSON Output:`;
             filter.type = { $in: types };
         }
 
-        // All documents are stored in English — always retrieve English docs regardless of user's language.
-        // Language filtering by user language would exclude all results since no non-English docs exist.
-        filter.language = { $in: ['en'] };
-
         return filter;
     }
 
@@ -744,11 +766,11 @@ JSON Output:`;
      * @param {object} dynamicData - Dynamic data (slots, date, etc.)
      * @returns {string} - Complete augmented prompt
      */
-    buildAugmentedPrompt(retrievedData, userMessage, dynamicData = {}) {
+    buildAugmentedPrompt(retrievedData, userMessage, dynamicData = {}, clientConfig = {}) {
         const parts = [];
 
         // Base instruction
-        parts.push(this.getBaseInstruction(retrievedData.language, retrievedData.intent));
+        parts.push(this.getBaseInstruction(retrievedData.language, retrievedData.intent, clientConfig));
         parts.push('');
 
         // Retrieved context (most important)
@@ -791,7 +813,7 @@ JSON Output:`;
      * @param {string} intent - User intent
      * @returns {string} - Base instruction
      */
-    getBaseInstruction(_language, intent) {
+    getBaseInstruction(_language, intent, clientConfig = {}) {
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
             service_inquiry: 'Provide detailed service information from the knowledge base.',
@@ -801,7 +823,8 @@ JSON Output:`;
             general: 'Be friendly and helpful.'
         }[intent] || 'Be helpful and professional.';
 
-        return `You are a professional AI assistant for Moyo Tech Solutions, a leading IT consultancy in Rwanda.
+        const companyName = clientConfig.companyName || 'our company';
+        return `You are a professional AI assistant for ${companyName}.
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.
@@ -840,16 +863,19 @@ If information is not available, politely say so and offer to help with somethin
     async _translateQueryToEnglish(query, language) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: 'gemini-2.5-flash'
+                model: 'gemini-2.0-flash'
             });
 
-            const result = await model.generateContent({
+            const result = await this._geminiWithRetry(
+              () => model.generateContent({
                 contents: [{
                     role: 'user',
                     parts: [{ text: `Translate the following message to English. Output ONLY the translated text, nothing else.\n\nMessage: ${query}` }]
                 }],
                 generationConfig: { temperature: 0, maxOutputTokens: 200 }
-            });
+              }),
+              'query-translation'
+            );
 
             const translated = result.response.text().trim();
             logger.debug('Query translated for retrieval', { original: query, translated, language });
@@ -913,6 +939,33 @@ If information is not available, politely say so and offer to help with somethin
         }
 
         logger.info('All RAG caches cleared');
+    }
+
+    /**
+     * Call a Gemini model with automatic retry on 503/429 rate-limit errors.
+     * @param {Function} fn - Async function that makes the Gemini call
+     * @param {string} label - Label for logging
+     * @param {number} maxRetries
+     * @private
+     */
+    async _geminiWithRetry(fn, label = 'gemini', maxRetries = 3) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (err) {
+                const isRateLimit = err.status === 503 || err.status === 429
+                    || err.message?.includes('503') || err.message?.includes('429')
+                    || err.message?.includes('overloaded') || err.message?.includes('quota');
+
+                if (isRateLimit && attempt < maxRetries) {
+                    const delay = 5000 * Math.pow(3, attempt); // 5s, 15s, 45s
+                    logger.warn(`${label} rate-limited, retrying (${attempt + 1}/${maxRetries}) after ${delay}ms`);
+                    await new Promise(r => setTimeout(r, delay));
+                } else {
+                    throw err;
+                }
+            }
+        }
     }
 
     /**
