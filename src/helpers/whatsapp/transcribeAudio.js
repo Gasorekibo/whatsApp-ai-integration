@@ -4,17 +4,15 @@ import logger from '../../logger/logger.js';
 
 dotenv.config();
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+export async function transcribeWhatsAppAudio(mediaId, mimeType = 'audio/ogg; codecs=opus', credentials = null) {
+  const waToken    = credentials?.token        || process.env.WHATSAPP_TOKEN;
+  const geminiKey  = credentials?.geminiApiKey || process.env.GEMINI_API_KEY;
+  const genAI      = new GoogleGenerativeAI(geminiKey);
 
-/**
- * Download audio from WhatsApp by media ID, then transcribe with Gemini.
- * Returns the transcribed text string, or null on failure.
- */
-export async function transcribeWhatsAppAudio(mediaId, mimeType = 'audio/ogg; codecs=opus') {
   // Step 1: Resolve media URL from media ID
   const mediaMetaUrl = `https://graph.facebook.com/v22.0/${mediaId}`;
   const metaRes = await fetch(mediaMetaUrl, {
-    headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` }
+    headers: { Authorization: `Bearer ${waToken}` }
   });
 
   if (!metaRes.ok) {
@@ -31,7 +29,7 @@ export async function transcribeWhatsAppAudio(mediaId, mimeType = 'audio/ogg; co
 
   // Step 2: Download audio bytes
   const audioRes = await fetch(audioUrl, {
-    headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` }
+    headers: { Authorization: `Bearer ${waToken}` }
   });
 
   if (!audioRes.ok) {

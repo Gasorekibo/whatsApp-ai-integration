@@ -6,6 +6,7 @@ import { syncServicesMicrosoftHandler } from '../utils/syncServicesMicrosoftHand
 import confluence from '../utils/confluence.js';
 import ragConfig from '../config/rag.config.js';
 import logger from '../logger/logger.js';
+import dbConfig from '../models/index.js';
 
 /**
  * Enhanced Knowledge Base Management Service
@@ -59,11 +60,12 @@ class KnowledgeBaseService {
      * Sync services from Google Sheets
      * @returns {Promise<number>} - Number of services synced
      */
-    async syncServicesFromSheets() {
+    async syncServicesFromSheets(clientId = null, namespace = null) {
         try {
-            logger.info('Syncing services from Google Sheets');
+            namespace = namespace || clientId || 'default';
+            logger.info('Syncing services from Google Sheets', { clientId, namespace });
 
-            const services = await googleSheets.getActiveServices();
+            const services = await googleSheets.getAllServices(clientId);
 
             if (!services || services.length === 0) {
                 logger.warn('No services found in Google Sheets');
@@ -74,7 +76,8 @@ class KnowledgeBaseService {
                 count: services.length
             });
 
-            const result = await this.upsertServices(services, 'google-sheets');
+            await this._saveServicesToContentTable(services, clientId);
+            const result = await this.upsertServices(services, 'google-sheets', namespace);
 
             this.lastSync.googleSheets = new Date().toISOString();
 
@@ -99,11 +102,23 @@ class KnowledgeBaseService {
      * Sync services from Microsoft Excel
      * @returns {Promise<number>} - Number of services synced
      */
-    async syncServicesFromMicrosoft() {
+    async syncServicesFromMicrosoft(clientId = null, namespace = null) {
         try {
-            logger.info('Syncing services from Microsoft Excel');
+            namespace = namespace || clientId || 'default';
+            logger.info('Syncing services from Microsoft Excel', { clientId, namespace });
 
-            const services = await syncServicesMicrosoftHandler();
+            let driveId = null;
+            let itemId  = null;
+            if (clientId) {
+                const client = await dbConfig.db.Client.findOne({
+                    where: { id: clientId },
+                    attributes: ['microsoftDriveId', 'microsoftItemId']
+                });
+                driveId = client?.microsoftDriveId || null;
+                itemId  = client?.microsoftItemId  || null;
+            }
+
+            const services = await syncServicesMicrosoftHandler(driveId, itemId);
 
             if (!services || services.length === 0) {
                 logger.warn('No services found in Microsoft Excel');
@@ -114,7 +129,8 @@ class KnowledgeBaseService {
                 count: services.length
             });
 
-            const result = await this.upsertServices(services, 'microsoft-excel');
+            await this._saveServicesToContentTable(services, clientId);
+            const result = await this.upsertServices(services, 'microsoft-excel', namespace);
 
             this.lastSync.microsoftExcel = new Date().toISOString();
 
@@ -140,20 +156,29 @@ class KnowledgeBaseService {
      * @param {object} options - Sync options
      * @returns {Promise<number>} - Number of chunks synced
      */
-    async syncFromConfluence(options = {}) {
+    async syncFromConfluence(options = {}, clientId = null) {
         try {
-            logger.info('Syncing data from Confluence');
+            logger.info('Syncing data from Confluence', { clientId });
 
-            const confluenceConfig = ragConfig.sync.confluence;
-            
-            // Validate configuration
+            // Prefer per-client Confluence config stored in DB; fall back to env vars
+            let clientConfluenceConfig = null;
+            if (clientId) {
+                const client = await dbConfig.db.Client.findOne({
+                    where: { id: clientId },
+                    attributes: ['confluenceBaseUrl', 'confluenceEmail', 'confluenceApiToken', 'confluenceSpaceKey']
+                });
+                clientConfluenceConfig = client?.getConfluenceConfig?.() || null;
+            }
+
+            const confluenceConfig = clientConfluenceConfig || ragConfig.sync.confluence;
+
             if (!confluenceConfig.baseUrl || !confluenceConfig.apiToken) {
-                throw new Error('Confluence configuration incomplete');
+                throw new Error('Confluence configuration incomplete — set credentials in the client edit form or .env');
             }
 
             const pages = await confluence.fetchPages(
                 options.spaceKey || confluenceConfig.spaceKey,
-                options.maxPages || confluenceConfig.maxPages
+                clientConfluenceConfig
             );
 
             if (!pages || pages.length === 0) {
@@ -218,8 +243,9 @@ class KnowledgeBaseService {
                 }
             }));
 
-            // Upsert to vector DB
-            const result = await vectorDBService.upsertDocuments(documents, 'default');
+            // Upsert to vector DB — scoped to this client's Pinecone namespace
+            const namespace = options.namespace || clientId || 'default';
+            const result = await vectorDBService.upsertDocuments(documents, namespace);
 
             this.lastSync.confluence = new Date().toISOString();
 
@@ -246,7 +272,45 @@ class KnowledgeBaseService {
      * @param {string} source - Data source name
      * @returns {Promise<object>} - Result summary
      */
-    async upsertServices(services, source) {
+    /**
+     * Persist services into the PostgreSQL Content table so the WhatsApp
+     * interactive service list reflects the synced data immediately.
+     */
+    async _saveServicesToContentTable(rawServices, clientId) {
+        try {
+            const getField = (obj, keys) => {
+                for (const key of keys) {
+                    if (obj[key] !== undefined && obj[key] !== '') return obj[key];
+                    const found = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+                    if (found && obj[found] !== undefined && obj[found] !== '') return obj[found];
+                }
+                return null;
+            };
+
+            const services = rawServices.map((s, i) => ({
+                id:      String(getField(s, ['id', 'service_id']) || `svc-${i + 1}`),
+                name:    String(getField(s, ['name', 'service_name', 'title']) || `Service ${i + 1}`),
+                short:   String(getField(s, ['short', 'name', 'service_name', 'title']) || `Service ${i + 1}`),
+                details: String(getField(s, ['details', 'description', 'desc']) || ''),
+                active:  ['true', '1', 'yes', true, 1].includes(getField(s, ['active', 'status']) ?? true)
+            }));
+
+            let content = await dbConfig.db.Content.findOne({ where: { clientId } });
+            if (content) {
+                content.services  = services;
+                content.updatedAt = new Date();
+                await content.save();
+            } else {
+                await dbConfig.db.Content.create({ clientId, services, updatedAt: new Date() });
+            }
+
+            logger.info('Services saved to Content table', { clientId, count: services.length });
+        } catch (err) {
+            logger.error('Failed to save services to Content table', { error: err.message, clientId });
+        }
+    }
+
+    async upsertServices(services, source, namespace = 'default') {
         try {
             if (!this.initialized) {
                 await this.initialize();
@@ -290,8 +354,8 @@ class KnowledgeBaseService {
                 count: documents.length
             });
 
-            // Upsert to vector DB
-            const result = await vectorDBService.upsertDocuments(documents, 'default');
+            // Upsert to vector DB — scoped to this client's Pinecone namespace
+            const result = await vectorDBService.upsertDocuments(documents, namespace);
 
             logger.info('Service upsert complete', {
                 source,
