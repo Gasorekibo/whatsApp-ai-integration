@@ -167,6 +167,7 @@ const handleWebhookAsync = async (req, res) => {
 
         if (!jobId) {
           // Queue not available - process synchronously for local dev
+          console.log('[DEBUG] jobId is null, processing synchronously');
           logger.whatsapp('info', 'Processing message synchronously (no queue)', {
             requestId,
             from: `***${from.slice(-4)}`
@@ -225,6 +226,7 @@ const handleWebhookAsync = async (req, res) => {
           await session.save();
         }
       } catch (queueError) {
+        console.log('[DEBUG] Error in queue section:', queueError.message, queueError.stack);
         logger.error('Failed to queue message', {
           requestId,
           error: queueError.message,
