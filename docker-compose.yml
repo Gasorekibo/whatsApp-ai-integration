@@ -1,5 +1,21 @@
 version: '3.8'
 services:
+  # Redis - Required for queue and caching
+  redis:
+    image: redis:7-alpine
+    container_name: whatsapp-ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    environment:
+      - REDIS_APPENDONLY=yes
+
   app:
     build:
       context: .
@@ -8,10 +24,15 @@ services:
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
       PG_DATABASE_URL: ${PG_DATABASE_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
@@ -49,3 +70,7 @@ services:
 networks:
   whatsapp-network:
     driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

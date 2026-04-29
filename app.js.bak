@@ -21,9 +21,7 @@ import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/consta
 import { verifyWebhook } from './src/helpers/whatsapp/verifyWebHook.js';
 import { syncServicesMicrosoftHandler } from './src/utils/syncServicesMicrosoftHandler.js';
 import logger from './src/logger/logger.js';
-import { initQueues } from './src/queues/bullmq.config.js';
-import { initRedis } from './src/config/redis.config.js';
-
+import { getSystemHealth } from './src/config/async-infrastructure.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -203,21 +201,26 @@ app.get('/api/sync-services/microsoft', (req, res) => {
   res.status(301).json({ message: 'Use POST /api/kb/sync/microsoft with { clientId } in body' });
 });
 
-// Health check endpoint
+// Health check endpoint (Enhanced - includes async infrastructure)
 app.get('/health', async (req, res) => {
   try {
     // Check database
     await dbConfig.db.sequelize.authenticate();
 
+    // Check async infrastructure (Redis, queues, workers)
+    const asyncHealth = await getSystemHealth();
+
     logger.info('Health check passed', {
       requestId: req.requestId,
-      database: 'connected'
+      database: 'connected',
+      asyncStatus: asyncHealth.status
     });
 
     res.json({
-      status: 'healthy',
+      status: asyncHealth.status,
       timestamp: new Date().toISOString(),
-      database: 'connected'
+      database: 'connected',
+      ...asyncHealth
     });
   } catch (error) {
     logger.error('Health check failed', {
@@ -271,17 +274,9 @@ app.use((err, req, res, next) => {
     await dbConfig.syncDatabase({ alter: false });
     logger.info('Database synced successfully');
 
-    logger.info('Initializing Redis connection');
-    await initRedis();
-    logger.info('Redis initialized successfully');
-
-    logger.info('Initializing job queues');
-    await initQueues();
-    logger.info('Job queues initialized successfully');
-
     // Start server
     app.listen(PORT, () => {
-      console.log('Server started successfully')
+      console.log('Server started successfuly')
       logger.info('Server started successfully', {
         port: PORT,
         nodeEnv: process.env.NODE_ENV || 'development',

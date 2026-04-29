@@ -4,7 +4,6 @@ import googleSheets from '../../utils/googlesheets.js';
 import getCalendarData from '../../utils/getCalendarData.js';
 import dbConfig from '../../models/index.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { whatsappSessions } from '../../controllers/whatsappController.js';
 import logger from '../../logger/logger.js';
 import ragService from '../../services/rag.service.js';
 
@@ -102,6 +101,31 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         });
 
       return _freeSlots;
+    };
+
+    // ── Retry helper for transient 503/429 errors ─────────────────────────
+    const sendMessageWithRetry = async (chat, message, maxRetries = 3) => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          return await chat.sendMessage(message);
+        } catch (err) {
+          const isRateLimit = err.status === 503 || err.status === 429
+            || err.message?.includes('503') || err.message?.includes('429')
+            || err.message?.includes('high demand') || err.message?.includes('quota');
+
+          if (isRateLimit && attempt < maxRetries) {
+            const delay = 2000 * Math.pow(2, attempt); // 2s, 4s, 8s
+            logger.warn(`Gemini 503/429, retrying (${attempt + 1}/${maxRetries}) after ${delay}ms`, {
+              phone: sanitizedPhone,
+              attempt,
+              error: err.message?.substring(0, 100)
+            });
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            throw err;
+          }
+        }
+      }
     };
 
     // ── Services (always needed for the menu / AI context) ────────────────
@@ -213,7 +237,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       ? `${message}\n\n[IMPORTANT: This message is in ${msgLangName}. You MUST respond ONLY in ${msgLangName}.]`
       : message;
 
-    let result   = await chat.sendMessage(messageToSend);
+    let result   = await sendMessageWithRetry(chat, messageToSend);
     let response = result.response;
     let text     = response.text();
 
@@ -252,6 +276,22 @@ export async function processWithGemini(phoneNumber, message, history = [], user
           }
 
           try {
+            // Get client-specific Flutterwave credentials
+            let flutterwaveSecretKey = process.env.FLW_SECRET_KEY;
+
+            if (clientId) {
+              const client = await dbConfig.db.Client.findByPk(clientId);
+              if (client?.flutterwaveSecretKey) {
+                flutterwaveSecretKey = client.getDecryptedFlutterwaveSecretKey();
+              }
+            }
+
+            if (!flutterwaveSecretKey) {
+              logger.error('Flutterwave payment: No secret key found for client', { clientId });
+              toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment configuration error' } } });
+              continue;
+            }
+
             const safePrefix = (companyName || 'deposit').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
             const tx_ref     = `${safePrefix}-${phoneNumber.replace(/\+/g, '')}-${Date.now()}`;
 
@@ -271,24 +311,49 @@ export async function processWithGemini(phoneNumber, message, history = [], user
               status:        'pending_payment'
             });
 
+            const paymentBody = {
+              tx_ref,
+              amount:        depositAmount,
+              currency,
+              redirect_url:  paymentRedirectUrl,
+              customer:      { email: data.email || 'customer@example.com', phone_number: phoneNumber.replace('+', ''), name: data.name },
+              customizations:{ title: `${companyName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
+              meta:          { phone: phoneNumber, booking_details: JSON.stringify({ ...data, slotStart: matchingSlot.isoStart, slotEnd: matchingSlot.isoEnd, tx_ref }) }
+            };
+
+            // Validate required fields
+            if (!paymentBody.redirect_url) {
+              logger.error('Flutterwave payment: redirect_url is empty', { clientId });
+              toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment redirect URL not configured' } } });
+              continue;
+            }
+
+            if (!paymentBody.customer?.email) {
+              logger.error('Flutterwave payment: customer email is missing', { clientId, data });
+              toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Email required for payment' } } });
+              continue;
+            }
+
             const paymentRes = await fetch('https://api.flutterwave.com/v3/payments', {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.FLW_SECRET_KEY}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tx_ref,
-                amount:        depositAmount,
-                currency,
-                redirect_url:  paymentRedirectUrl,
-                customer:      { email: data.email || 'customer@example.com', phone_number: phoneNumber.replace('+', ''), name: data.name },
-                customizations:{ title: `${companyName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
-                meta:          { phone: phoneNumber, booking_details: JSON.stringify({ ...data, slotStart: matchingSlot.isoStart, slotEnd: matchingSlot.isoEnd, tx_ref }) }
-              })
+              headers: { 'Authorization': `Bearer ${flutterwaveSecretKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify(paymentBody)
             });
 
             const paymentData = await paymentRes.json();
+
+            if (!paymentRes.ok) {
+              logger.error('Flutterwave API error', {
+                status: paymentRes.status,
+                error: paymentData?.message || paymentData?.error || 'Unknown error',
+                clientId,
+                requestBody: paymentBody  // Log what we sent for debugging
+              });
+            }
+
             toolResults.push(paymentData.status === 'success'
               ? { functionResponse: { name: 'initiate_payment', response: { success: true, paymentLink: paymentData.data.link } } }
-              : { functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment gateway error' } } }
+              : { functionResponse: { name: 'initiate_payment', response: { success: false, error: paymentData?.message || 'Payment gateway error' } } }
             );
           } catch (e) {
             logger.error('Error in initiate_payment tool', { error: e.message });
@@ -306,7 +371,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         }
       }
 
-      result   = await chat.sendMessage(toolResults);
+      result   = await sendMessageWithRetry(chat, toolResults);
       response = result.response;
       text     = response.text();
     }
@@ -331,6 +396,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   } catch (err) {
     logger.error('Gemini processing error', { phone: sanitizedPhone, error: err.message, stack: err.stack, status: err.status });
 
+    if (err.status === 404) return { reply: "⚠️ AI model not available. Please check your Gemini API configuration.", showServices: false, showSlots: false, freeSlots: [] };
     if (err.status === 429) return { reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.", showServices: false, showSlots: false, freeSlots: [] };
     if (err.status === 503) return { reply: "⚠️ Our AI is currently busy. Please try again in a few seconds.", showServices: false, showSlots: false, freeSlots: [] };
     return { reply: "I'm having trouble connecting right now. Please try again in a moment!", showServices: false, showSlots: false, freeSlots: [] };
