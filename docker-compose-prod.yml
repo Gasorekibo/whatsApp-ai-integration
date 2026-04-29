@@ -47,7 +47,7 @@ services:
       # Gemini Rate Limiting
       GEMINI_MAX_RPS: 3
       GEMINI_MAX_BURST: 5
-      GEMINI_BASE_DELAY: 60000
+      GEMINI_BASE_DELAY: 1000
       GEMINI_MAX_DELAY: 30000
       GEMINI_MAX_RETRIES: 5
 
@@ -68,7 +68,7 @@ services:
       - /app/node_modules
     networks:
       - whatsapp-network
-    command: npm start
+    command: sh -c "npx sequelize-cli db:migrate && npm start"
 
   # Worker Process 1
   worker-1:

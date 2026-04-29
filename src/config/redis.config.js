@@ -16,7 +16,7 @@ export async function initRedis() {
       url: process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`,
       socket: {
         reconnectStrategy: (retries) => Math.min(retries * 50, 500),
-        connectTimeout: 5000 // 5 second timeout
+        connectTimeout: 10000 // 10 second timeout for cloud stability
       }
     });
 
@@ -32,7 +32,7 @@ export async function initRedis() {
     // Add timeout for connection
     const connectionPromise = redisClient.connect();
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Redis connection timeout')), 3000)
+      setTimeout(() => reject(new Error('Redis connection timeout')), 10000)
     );
 
     await Promise.race([connectionPromise, timeoutPromise]);

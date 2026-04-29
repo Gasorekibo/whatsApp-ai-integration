@@ -22,8 +22,9 @@ export async function sendWhatsAppMessage(to, body, credentials = null) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
+    logger.info('WhatsApp message sent successfully', { to, messageId: data.messages?.[0]?.id });
     return data;
   } catch (err) {
-    logger.error('Send message failed', { error: err.message });
+    logger.error('Send message failed', { error: err.message, to });
   }
 }
