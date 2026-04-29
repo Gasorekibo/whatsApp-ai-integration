@@ -119,7 +119,7 @@ export function getIntentConfig(ragConfig) {
     }
 
     const llm = getConfigValue(ragConfig, 'intent.llm', {
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         temperature: 0.1,
         maxTokens: 100
     });

@@ -300,6 +300,10 @@ export default (sequelize) => {
     return decrypt(this.confluenceApiToken);
   };
 
+  Client.prototype.getDecryptedFlutterwaveSecretKey = function () {
+    return decrypt(this.flutterwaveSecretKey);
+  };
+
   Client.prototype.getConfluenceConfig = function () {
     if (!this.confluenceBaseUrl || !this.confluenceEmail || !this.confluenceApiToken) return null;
     return {

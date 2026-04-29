@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "node app.js",
-    "start": "node app.js"
+    "start": "node app.js",
+    "worker": "node src/workers/worker-process.js",
+    "worker:1": "node src/workers/worker-process.js --worker-id=1",
+    "worker:2": "node src/workers/worker-process.js --worker-id=2",
+    "worker:3": "node src/workers/worker-process.js --worker-id=3",
+    "health": "curl http://localhost:3000/health | jq"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +24,7 @@
     "@pinecone-database/pinecone": "^2.0.0",
     "@zohocrm/nodejs-sdk-5.0": "^3.0.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.76.2",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
     "dotenv": "^17.2.3",
@@ -35,6 +41,7 @@
     "node-cache": "^5.1.2",
     "pg": "^8.17.2",
     "pg-hstore": "^2.3.4",
+    "redis": "^5.12.1",
     "sequelize": "^6.37.7",
     "uuid": "^13.0.0",
     "winston": "^3.19.0",
