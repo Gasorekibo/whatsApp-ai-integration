@@ -63,9 +63,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    volumes:
-      - .:/app
-      - /app/node_modules
     networks:
       - whatsapp-network
     command: npm start
@@ -89,7 +86,7 @@ services:
       REDIS_DB: 0
       GEMINI_MAX_RPS: 3
       GEMINI_MAX_BURST: 5
-      GEMINI_BASE_DELAY: 60000
+      GEMINI_BASE_DELAY: 1000
       GEMINI_MAX_DELAY: 30000
       GEMINI_MAX_RETRIES: 5
       CHAT_WORKER_CONCURRENCY: 5
@@ -99,9 +96,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    volumes:
-      - .:/app
-      - /app/node_modules
     networks:
       - whatsapp-network
     command: node src/workers/worker-process.js --worker-id=1
@@ -125,7 +119,7 @@ services:
       REDIS_DB: 0
       GEMINI_MAX_RPS: 3
       GEMINI_MAX_BURST: 5
-      GEMINI_BASE_DELAY: 60000
+      GEMINI_BASE_DELAY: 1000
       GEMINI_MAX_DELAY: 30000
       GEMINI_MAX_RETRIES: 5
       CHAT_WORKER_CONCURRENCY: 5
@@ -135,9 +129,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    volumes:
-      - .:/app
-      - /app/node_modules
     networks:
       - whatsapp-network
     command: node src/workers/worker-process.js --worker-id=2
