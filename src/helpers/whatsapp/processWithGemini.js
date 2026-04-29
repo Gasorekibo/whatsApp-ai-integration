@@ -223,7 +223,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', tools });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
       history: history.map(h => ({
@@ -397,6 +397,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   } catch (err) {
     logger.error('Gemini processing error', { phone: sanitizedPhone, error: err.message, stack: err.stack, status: err.status });
 
+    if (err.status === 404) return { reply: "⚠️ AI model not available. Please check your Gemini API configuration.", showServices: false, showSlots: false, freeSlots: [] };
     if (err.status === 429) return { reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.", showServices: false, showSlots: false, freeSlots: [] };
     if (err.status === 503) return { reply: "⚠️ Our AI is currently busy. Please try again in a few seconds.", showServices: false, showSlots: false, freeSlots: [] };
     return { reply: "I'm having trouble connecting right now. Please try again in a moment!", showServices: false, showSlots: false, freeSlots: [] };

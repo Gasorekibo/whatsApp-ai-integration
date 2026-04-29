@@ -183,7 +183,7 @@ class RAGService {
     async _classifyWithLLM(message, history = []) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: "gemini-2.0-flash"
+                model: "gemini-2.5-flash"
             });
 
             const categories = this.intentConfig.categories.join(', ');
@@ -348,7 +348,7 @@ JSON Output:`;
     try {
         // 1. Initialize the model with System Instructions
         const model = embeddingService.genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             systemInstruction: "You are a language detection API. Identify if the message is primarily in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). Output ONLY the two-letter ISO code. For mixed-language messages (e.g., Kinyarwanda with English time formats), identify the DOMINANT non-English language. Only output 'en' if the message is clearly and primarily in English. Do not provide explanations.",
         });
 
@@ -863,7 +863,7 @@ If information is not available, politely say so and offer to help with somethin
     async _translateQueryToEnglish(query, language) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: 'gemini-2.0-flash'
+                model: 'gemini-2.5-flash'
             });
 
             const result = await this._geminiWithRetry(
