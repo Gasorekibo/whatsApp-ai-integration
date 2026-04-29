@@ -95,6 +95,7 @@ const handleWebhookAsync = async (req, res) => {
       });
 
       // 3. Find or create session
+      console.log('[DEBUG] Creating session for phone:', from, 'clientId:', clientId);
       let [session, isNewUser] = await dbConfig.db.UserSession.findOrCreate({
         where: { phone: from, clientId },
         defaults: {
@@ -106,6 +107,7 @@ const handleWebhookAsync = async (req, res) => {
           lastAccess: new Date()
         }
       });
+      console.log('[DEBUG] Session created/found:', { isNewUser, sessionId: session?.id });
 
       // 4. Handle special cases SYNCHRONOUSLY (don't queue these)
       if (isNewUser && (!session.history || session.history.length === 0)) {
@@ -147,6 +149,7 @@ const handleWebhookAsync = async (req, res) => {
       const userEmail = session.state.email || null;
       const userLanguage = await ragService.detectCurrentLanguage(originalText);
 
+      console.log('[DEBUG] About to queue job for phone:', from);
       try {
         const jobId = await addChatProcessingJob({
           phoneNumber: from,
@@ -159,6 +162,8 @@ const handleWebhookAsync = async (req, res) => {
           timestamp: Date.now(),
           requestId
         });
+
+        console.log('[DEBUG] Job added, jobId:', jobId);
 
         if (!jobId) {
           // Queue not available - process synchronously for local dev
