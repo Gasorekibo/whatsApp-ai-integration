@@ -4,7 +4,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import bookMeetingHandler from './src/controllers/bookMeeting.js';
 import oauth2Client from './src/utils/auth.js';
-import { handleWebhook } from './src/controllers/whatsappController.js';
+import whatsappControllerAsync from './src/controllers/whatsappControllerAsync.js';
 import adminRoutes from './src/routes/admin.js';
 import paymentWebhookHandler from './src/helpers/paymentWebhookHandler.js';
 import syncServicesHandler from './src/helpers/syncServicesHandler.js';
@@ -21,6 +21,7 @@ import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/consta
 import { verifyWebhook } from './src/helpers/whatsapp/verifyWebHook.js';
 import { syncServicesMicrosoftHandler } from './src/utils/syncServicesMicrosoftHandler.js';
 import logger from './src/logger/logger.js';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,9 +44,9 @@ app.post('/api/chat/book', bookMeetingHandler);
 app.use('/api/outreach', adminRoutes);
 app.use('/api', knowledgeBaseRoutes); // RAG knowledge base routes
 
-// WhatsApp Webhook
+// WhatsApp Webhook (ASYNC VERSION - Non-blocking)
 app.get('/webhook', verifyWebhook);
-app.post('/webhook', handleWebhook);
+app.post('/webhook', whatsappControllerAsync.handleWebhookAsync);
 
 // Google OAuth Routes
 app.get('/auth', (req, res) => {
@@ -199,28 +200,31 @@ app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler);
 app.get('/api/sync-services/microsoft', (req, res) => {
   res.status(301).json({ message: 'Use POST /api/kb/sync/microsoft with { clientId } in body' });
 });
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
+    // Check database
     await dbConfig.db.sequelize.authenticate();
+
     logger.info('Health check passed', {
       requestId: req.requestId,
       database: 'connected'
     });
+
     res.json({
       status: 'healthy',
-      database: 'connected',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      database: 'connected'
     });
   } catch (error) {
     logger.error('Health check failed', {
       requestId: req.requestId,
-      database: 'disconnected',
       error: error.message
     });
     res.status(503).json({
       status: 'unhealthy',
-      database: 'disconnected',
+      database: 'connected',
       error: error.message,
       timestamp: new Date().toISOString()
     });
@@ -267,7 +271,7 @@ app.use((err, req, res, next) => {
 
     // Start server
     app.listen(PORT, () => {
-      console.log('Server started successfuly')
+      console.log('Server started successfully')
       logger.info('Server started successfully', {
         port: PORT,
         nodeEnv: process.env.NODE_ENV || 'development',
