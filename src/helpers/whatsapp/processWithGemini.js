@@ -4,7 +4,6 @@ import googleSheets from '../../utils/googlesheets.js';
 import getCalendarData from '../../utils/getCalendarData.js';
 import dbConfig from '../../models/index.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { whatsappSessions } from '../../controllers/whatsappController.js';
 import logger from '../../logger/logger.js';
 import ragService from '../../services/rag.service.js';
 
@@ -223,7 +222,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', tools });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
       history: history.map(h => ({
