@@ -20,26 +20,6 @@ services:
     networks:
       - whatsapp-network
 
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: whatsapp-ai-postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: whatsapp_ai
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - whatsapp-network
-
   # Main Application Server
   app:
     build:
@@ -51,17 +31,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+    env_file:
+      - .env
     environment:
       # Server
       PORT: 3000
-      NODE_ENV: development
-
-      # Database
-      DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/whatsapp_ai
-      PG_DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/whatsapp_ai
-      PGSSLMODE: disable
+      NODE_ENV: production
 
       # Redis
       REDIS_HOST: redis
@@ -69,11 +44,10 @@ services:
       REDIS_PASSWORD:
       REDIS_DB: 0
 
-      # Gemini
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MAX_RPS: 2
-      GEMINI_MAX_BURST: 3
-      GEMINI_BASE_DELAY: 1000
+      # Gemini Rate Limiting
+      GEMINI_MAX_RPS: 3
+      GEMINI_MAX_BURST: 5
+      GEMINI_BASE_DELAY: 60000
       GEMINI_MAX_DELAY: 30000
       GEMINI_MAX_RETRIES: 5
 
@@ -83,16 +57,6 @@ services:
 
       # Monitoring
       QUEUE_MONITOR_INTERVAL: 30000
-
-      # Other required vars
-      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
-      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
-      WHATSAPP_BUSINESS_ACCOUNT_ID: ${WHATSAPP_BUSINESS_ACCOUNT_ID}
-      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_REDIRECT_URI: http://localhost:3000/oauth/callback
 
     volumes:
       - .:/app
@@ -110,37 +74,21 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+    env_file:
+      - .env
     environment:
-      # Database
-      DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/whatsapp_ai
-      PG_DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/whatsapp_ai
-      PGSSLMODE: disable
-
-      # Redis
+      NODE_ENV: production
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD:
       REDIS_DB: 0
-
-      # Gemini
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MAX_RPS: 2
-      GEMINI_MAX_BURST: 3
-      GEMINI_BASE_DELAY: 1000
+      GEMINI_MAX_RPS: 3
+      GEMINI_MAX_BURST: 5
+      GEMINI_BASE_DELAY: 60000
       GEMINI_MAX_DELAY: 30000
       GEMINI_MAX_RETRIES: 5
-
-      # Workers
       CHAT_WORKER_CONCURRENCY: 5
       WHATSAPP_WORKER_CONCURRENCY: 10
-
-      # Other required vars
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-
     volumes:
       - .:/app
       - /app/node_modules
@@ -157,22 +105,21 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/whatsapp_ai
-      PG_DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/whatsapp_ai
-      PGSSLMODE: disable
+      NODE_ENV: production
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MAX_RPS: 2
-      GEMINI_MAX_BURST: 3
+      REDIS_PASSWORD:
+      REDIS_DB: 0
+      GEMINI_MAX_RPS: 3
+      GEMINI_MAX_BURST: 5
+      GEMINI_BASE_DELAY: 60000
+      GEMINI_MAX_DELAY: 30000
+      GEMINI_MAX_RETRIES: 5
       CHAT_WORKER_CONCURRENCY: 5
       WHATSAPP_WORKER_CONCURRENCY: 10
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
     volumes:
       - .:/app
       - /app/node_modules
@@ -195,8 +142,6 @@ services:
 
 volumes:
   redis-data:
-    driver: local
-  postgres-data:
     driver: local
 
 networks:
