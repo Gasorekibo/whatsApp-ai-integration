@@ -68,7 +68,7 @@ services:
       - /app/node_modules
     networks:
       - whatsapp-network
-    command: sh -c "npx sequelize-cli db:migrate && npm start"
+    command: npm start
 
   # Worker Process 1
   worker-1:
