@@ -28,22 +28,17 @@ let queues = {};
  */
 export async function initQueues() {
   try {
-    let redisClient;
-    try {
-      redisClient = getRedisClient();
-    } catch (e) {
-      logger.warn('Redis not available, queues disabled for local development');
-      return {};
-    }
-
-    if (!redisClient) {
-      logger.warn('Redis not available, queues disabled for local development');
-      return {};
-    }
+    const redisOptions = {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD || undefined,
+      db: parseInt(process.env.REDIS_DB || '0'),
+      maxRetriesPerRequest: null // Required by BullMQ
+    };
 
     // Main chat processing queue
     queues[QUEUE_NAMES.CHAT_PROCESSING] = new Queue(QUEUE_NAMES.CHAT_PROCESSING, {
-      connection: redisClient,
+      connection: redisOptions,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -61,7 +56,7 @@ export async function initQueues() {
 
     // WhatsApp sender queue (must be reliable, no early removal)
     queues[QUEUE_NAMES.WHATSAPP_SENDER] = new Queue(QUEUE_NAMES.WHATSAPP_SENDER, {
-      connection: redisClient,
+      connection: redisOptions,
       defaultJobOptions: {
         attempts: 5,
         backoff: {
@@ -76,7 +71,7 @@ export async function initQueues() {
 
     // Data sync queue
     queues[QUEUE_NAMES.DATA_SYNC] = new Queue(QUEUE_NAMES.DATA_SYNC, {
-      connection: redisClient,
+      connection: redisOptions,
       defaultJobOptions: {
         attempts: 2,
         backoff: {
