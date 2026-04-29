@@ -42,13 +42,13 @@ app.use(morgan('dev'));
 app.use(express.static('src/public'));
 
 // API Routes
-app.post('/api/chat/book', bookMeetingHandler);
-app.use('/api/outreach', adminRoutes);
-app.use('/api', knowledgeBaseRoutes); // RAG knowledge base routes
+app.post('/ai/api/chat/book', bookMeetingHandler);
+app.use('/ai/api/outreach', adminRoutes);
+app.use('/ai/api', knowledgeBaseRoutes); // RAG knowledge base routes
 
 // WhatsApp Webhook (ASYNC VERSION - Non-blocking)
-app.get('/webhook', verifyWebhook);
-app.post('/webhook', whatsappControllerAsync.handleWebhookAsync);
+app.get('/ai/webhook', verifyWebhook);
+app.post('/ai/webhook', whatsappControllerAsync.handleWebhookAsync);
 
 // Google OAuth Routes
 app.get('/auth', (req, res) => {
@@ -155,11 +155,11 @@ app.get('/oauth/callback', async (req, res) => {
 });
 
 // Zoho OAuth Routes
-app.get('/auth/zoho', zohoAuthenticationRedirect);
-app.get('/zoho/oauth/callback', zohoAuthCallbackHandler);
-app.get('/api/zoho/contacts', zohoGetAllContactsHandler);
+app.get('/ai/auth/zoho', zohoAuthenticationRedirect);
+app.get('/ai/zoho/oauth/callback', zohoAuthCallbackHandler);
+app.get('/ai/api/zoho/contacts', zohoGetAllContactsHandler);
 // Employee Routes
-app.get('/employees', async (req, res) => {
+app.get('/ai/employees', async (req, res) => {
   logger.info('Fetching all employees', {
     requestId: req.requestId
   });
@@ -191,16 +191,16 @@ app.get('/employees', async (req, res) => {
   }
 });
 
-app.post('/webhook/flutterwave', express.json(), paymentWebhookHandler);
-app.get('/payment-success', successfulPaymentPageHandler);
-app.post('/calendar-data', calendarDataHandler);
+app.post('/ai/webhook/flutterwave', express.json(), paymentWebhookHandler);
+app.get('/ai/payment-success', successfulPaymentPageHandler);
+app.post('/ai/calendar-data', calendarDataHandler);
 
 // Google Sheets Sync
-app.post('/api/sync-services', syncServicesHandler);
-app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler);
-// Legacy GET kept for backward-compat; real sync now goes through POST /api/kb/sync/microsoft
-app.get('/api/sync-services/microsoft', (req, res) => {
-  res.status(301).json({ message: 'Use POST /api/kb/sync/microsoft with { clientId } in body' });
+app.post('/ai/api/sync-services', syncServicesHandler);
+app.post('/ai/api/webhook/sheets-sync', googleSheetsWebhookHandler);
+// Legacy GET kept for backward-compat; real sync now goes through POST /ai/api/kb/sync/microsoft
+app.get('/ai/api/sync-services/microsoft', (req, res) => {
+  res.status(301).json({ message: 'Use POST /ai/api/kb/sync/microsoft with { clientId } in body' });
 });
 
 // Health check endpoint
