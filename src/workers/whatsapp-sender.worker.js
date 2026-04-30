@@ -8,6 +8,7 @@ import { Worker } from 'bullmq';
 import { getRedisClient } from '../config/redis.config.js';
 import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
 import logger from '../logger/logger.js';
+import { redisOptions } from '../queues/bullmq.config.js';
 
 export class WhatsAppSenderWorker {
   constructor(queueName, options = {}) {
@@ -24,10 +25,8 @@ export class WhatsAppSenderWorker {
    */
   async start() {
     try {
-      const redisClient = getRedisClient();
-
       this.worker = new Worker(this.queueName, this.sendMessage.bind(this), {
-        connection: redisClient,
+        connection: redisOptions,
         concurrency: this.concurrency,
         lockDuration: this.lockDuration,
         maxStalledCount: 3,

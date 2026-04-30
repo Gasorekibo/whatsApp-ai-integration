@@ -12,9 +12,9 @@ import ragService from '../services/rag.service.js';
 import embeddingService from '../services/embedding.service.js';
 import { processWithGemini } from '../helpers/whatsapp/processWithGemini.js';
 import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
-import { addWhatsAppSenderJob } from '../queues/bullmq.config.js';
 import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
+import { redisOptions } from '../queues/bullmq.config.js';
 
 // Fallback response when system is busy
 const FALLBACK_RESPONSE = {
@@ -37,10 +37,8 @@ export class ChatMessageWorker {
    */
   async start() {
     try {
-      const redisClient = getRedisClient();
-
       this.worker = new Worker(this.queueName, this.processJob.bind(this), {
-        connection: redisClient,
+        connection: redisOptions,
         concurrency: this.concurrency,
         lockDuration: this.lockDuration,
         maxStalledCount: 2, // Re-run if stalled more than twice

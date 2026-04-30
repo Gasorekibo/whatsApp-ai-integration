@@ -23,18 +23,19 @@ export const QUEUE_NAMES = {
 
 let queues = {};
 
-/**
- * Initialize all required queues
- */
-export async function initQueues() {
-  try {
-    const redisOptions = {
+    export const redisOptions = {
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379'),
       password: process.env.REDIS_PASSWORD || undefined,
       db: parseInt(process.env.REDIS_DB || '0'),
       maxRetriesPerRequest: null // Required by BullMQ
     };
+
+/**
+ * Initialize all required queues
+ */
+export async function initQueues() {
+  try {
 
     // Main chat processing queue
     queues[QUEUE_NAMES.CHAT_PROCESSING] = new Queue(QUEUE_NAMES.CHAT_PROCESSING, {
