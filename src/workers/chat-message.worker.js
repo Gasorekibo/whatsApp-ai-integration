@@ -11,10 +11,9 @@ import { getRetryHandler } from '../utils/gemini-retry-handler.js';
 import ragService from '../services/rag.service.js';
 import embeddingService from '../services/embedding.service.js';
 import { processWithGemini } from '../helpers/whatsapp/processWithGemini.js';
-import { sendWhatsAppMessage } from '../helpers/whatsapp/sendWhatsappMessage.js';
+import { addWhatsAppSenderJob, redisOptions } from '../queues/bullmq.config.js';
 import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
-import { redisOptions } from '../queues/bullmq.config.js';
 
 // Fallback response when system is busy
 const FALLBACK_RESPONSE = {
@@ -196,15 +195,7 @@ export class ChatMessageWorker {
    */
   async getStats() {
     if (!this.worker) return null;
-
-    const counts = await this.worker.getCountsPerState();
-    return {
-      active: counts.active,
-      completed: counts.completed,
-      failed: counts.failed,
-      delayed: counts.delayed,
-      waiting: counts.waiting
-    };
+    return { status: 'running' };
   }
 }
 

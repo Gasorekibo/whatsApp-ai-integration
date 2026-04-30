@@ -182,15 +182,7 @@ export class WhatsAppSenderWorker {
    */
   async getStats() {
     if (!this.worker) return null;
-
-    const counts = await this.worker.getCountsPerState();
-    return {
-      active: counts.active,
-      completed: counts.completed,
-      failed: counts.failed,
-      delayed: counts.delayed,
-      waiting: counts.waiting
-    };
+    return { status: 'running' };
   }
 }
 
