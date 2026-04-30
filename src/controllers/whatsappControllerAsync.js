@@ -158,6 +158,7 @@ const handleWebhookAsync = async (req, res) => {
           userEmail,
           language: userLanguage,
           clientId,
+          phoneNumberId, // Dynamic reply number
           contactName: contact?.profile?.name,
           timestamp: Date.now(),
           requestId

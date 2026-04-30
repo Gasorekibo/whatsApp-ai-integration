@@ -16,12 +16,12 @@ export async function resolveClient(phoneNumberId) {
   });
 
   if (!client) {
-    logger.debug('No client record for phoneNumberId', { phoneNumberId });
+    logger.info('Client resolution failed: No record found for ID', { phoneNumberId });
     return null;
   }
 
   clientCache.set(phoneNumberId, client);
-  logger.debug('Client cached after DB lookup', { clientId: client.id, phoneNumberId });
+  logger.info('Client resolved and cached', { clientId: client.id, name: client.name, phoneNumberId });
   return client;
 }
 

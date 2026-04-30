@@ -63,7 +63,7 @@ export class WhatsAppSenderWorker {
    * Send message with idempotency guarantee
    */
   async sendMessage(job) {
-    const { phoneNumber, message, language, jobId, clientId, isFallback } = job.data;
+    const { phoneNumber, message, language, jobId, clientId, isFallback, phoneNumberId } = job.data;
     const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
     const idempotencyKey = `${this.idempotencyKeyPrefix}${jobId}:${phoneNumber}`;
 
@@ -93,7 +93,7 @@ export class WhatsAppSenderWorker {
       }
 
       // Send message via WhatsApp
-      const result = await sendWhatsAppMessage(phoneNumber, message);
+      const result = await sendWhatsAppMessage(phoneNumber, message, { phoneNumberId });
 
       // Mark as sent
       const sentTimestamp = new Date().toISOString();

@@ -81,7 +81,7 @@ export class ChatMessageWorker {
    * This is where the actual chat processing happens
    */
   async processJob(job) {
-    const { phoneNumber, message, history, userEmail, clientId, timestamp } = job.data;
+    const { phoneNumber, message, history, userEmail, clientId, timestamp, phoneNumberId } = job.data;
     const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
 
     logger.info('Processing chat job', {
@@ -145,7 +145,8 @@ export class ChatMessageWorker {
         message: response?.reply || FALLBACK_RESPONSE.reply,
         language: response?.language || 'en',
         jobId: job.id,
-        clientId
+        clientId,
+        phoneNumberId // Pass it along
       });
 
       return {
