@@ -9,8 +9,12 @@ const __dirname = path.dirname(__filename);
 
 const logsDir = path.join(__dirname, '..', 'logs');
 
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+try {
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+} catch (error) {
+  console.error('[ERROR] Could not create logs directory:', error.message);
 }
 
 // Custom format to sanitize sensitive data
@@ -193,14 +197,12 @@ const logger = winston.createLogger({
   ],
 });
 
-// Console logging in non-production
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(
-    new winston.transports.Console({
-      format: consoleFormat,
-    })
-  );
-}
+// Always add console transport – essential for Docker/Cloud logs
+logger.add(
+  new winston.transports.Console({
+    format: consoleFormat,
+  })
+);
 
 // Helper methods with category tagging
 logger.whatsapp = (level, message, data = {}) => {
