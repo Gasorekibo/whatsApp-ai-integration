@@ -149,7 +149,7 @@ const handleWebhookAsync = async (req, res) => {
       const userEmail = session.state.email || null;
       const userLanguage = await ragService.detectCurrentLanguage(originalText);
 
-      console.log('[DEBUG] About to queue job for phone:', from);
+      logger.info('About to queue job for phone', { phoneNumber: from });
       try {
         const jobId = await addChatProcessingJob({
           phoneNumber: from,

@@ -45,6 +45,10 @@ export class QueueMonitor {
       const whatsappQueue = getQueue('whatsapp-sender-queue');
       const redisClient = getRedisClient();
 
+      if (!chatQueue || !whatsappQueue || !redisClient) {
+        return;
+      }
+
       // Get queue stats
       const chatStats = await chatQueue.getCountsPerState();
       const whatsappStats = await whatsappQueue.getCountsPerState();

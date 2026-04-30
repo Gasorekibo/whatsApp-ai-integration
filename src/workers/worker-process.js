@@ -9,27 +9,15 @@
  */
 
 import dotenv from 'dotenv';
-dotenv.config();
-
-// Immediate log to confirm process started
-console.log('[BOOT] Worker process entry point reached');
-
 import logger from '../logger/logger.js';
-console.log('[BOOT] Logger imported');
-
 import { initRedis, closeRedis } from '../config/redis.config.js';
-console.log('[BOOT] Redis config imported');
-
 import { initQueues, closeQueues } from '../queues/bullmq.config.js';
-console.log('[BOOT] Queues config imported');
-
 import { initWorkerManager, getWorkerManager } from './manager.js';
-console.log('[BOOT] Worker manager imported');
-
 import { initRateLimiter } from '../utils/global-rate-limiter.js';
 import { initRetryHandler } from '../utils/gemini-retry-handler.js';
 import { initQueueMonitor } from '../services/queue-monitor.service.js';
-console.log('[BOOT] All imports completed');
+
+dotenv.config();
 
 // Parse command line arguments
 const args = process.argv.slice(2);
