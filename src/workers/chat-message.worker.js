@@ -148,16 +148,17 @@ export class ChatMessageWorker {
       );
 
       // Step 5: Queue WhatsApp message sending (asynchronous, reliable retry)
-      const fallbackText = FALLBACK_MESSAGES[language] || FALLBACK_MESSAGES.en;
+      const jobLanguage = job.data.language || 'en';
+      const fallbackText = FALLBACK_MESSAGES[jobLanguage] || FALLBACK_MESSAGES.en;
 
       await addWhatsAppSenderJob({
         phoneNumber,
         message: response?.reply || fallbackText,
-        language: response?.language || language || 'en',
+        language: response?.language || jobLanguage,
         jobId: job.id,
         clientId,
-        phoneNumberId, // Pass it along
-        token: clientConfig.whatsappToken // Client-specific token
+        phoneNumberId,
+        token: clientConfig.whatsappToken // Crucial for correct number routing
       });
 
       return {
