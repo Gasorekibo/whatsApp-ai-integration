@@ -120,11 +120,6 @@ export async function addChatProcessingJob(data) {
       jobId: `${data.phoneNumber}-${Date.now()}` // Ensure unique job IDs
     });
 
-    logger.info('Chat processing job queued', {
-      jobId: job.id,
-      phoneNumber: data.phoneNumber
-    });
-
     return job.id;
   } catch (error) {
     logger.error('Failed to add chat processing job', { error: error.message });

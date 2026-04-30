@@ -95,7 +95,6 @@ const handleWebhookAsync = async (req, res) => {
       });
 
       // 3. Find or create session
-      console.log('[DEBUG] Creating session for phone:', from, 'clientId:', clientId);
       let [session, isNewUser] = await dbConfig.db.UserSession.findOrCreate({
         where: { phone: from, clientId },
         defaults: {

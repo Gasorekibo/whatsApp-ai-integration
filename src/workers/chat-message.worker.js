@@ -16,8 +16,15 @@ import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
 
 // Fallback response when system is busy
+// Friendly fallback messages based on language
+const FALLBACK_MESSAGES = {
+  en: "I'm sorry, my AI brain is a bit overwhelmed right now! 🧠 I'm working hard to fix it. Please give me a moment and try again soon.",
+  rw: "Mwihangane, ubwonko bwanjye bw'ubuhanga (AI) burimo gukora cyane ubu! 🧠 Ndimo kugerageza kubikosora. Mwongere mugerageze mu kanya gato.",
+  fr: "Désolé, mon cerveau IA est un peu débordé pour le moment ! 🧠 Je travaille dur pour corriger cela. Merci de patienter un instant et de réessayer bientôt."
+};
+
 const FALLBACK_RESPONSE = {
-  reply: "Sorry, our system is currently busy. Please try again in a few moments.",
+  reply: FALLBACK_MESSAGES.en,
   language: 'en',
   showServices: false,
   showSlots: false
@@ -105,6 +112,7 @@ export class ChatMessageWorker {
             companyName: c?.name,
             timezone: c?.timezone || 'Africa/Kigali',
             geminiApiKey: c?.getDecryptedGeminiKey?.(),
+            whatsappToken: c?.getDecryptedWhatsappToken?.(),
             paymentRedirectUrl: process.env.PAYMENT_REDIRECT_URL,
             depositAmount: process.env.DEPOSIT_AMOUNT || 5000,
             currency: process.env.CURRENCY || 'RWF'
@@ -140,13 +148,16 @@ export class ChatMessageWorker {
       );
 
       // Step 5: Queue WhatsApp message sending (asynchronous, reliable retry)
+      const fallbackText = FALLBACK_MESSAGES[language] || FALLBACK_MESSAGES.en;
+
       await addWhatsAppSenderJob({
         phoneNumber,
-        message: response?.reply || FALLBACK_RESPONSE.reply,
-        language: response?.language || 'en',
+        message: response?.reply || fallbackText,
+        language: response?.language || language || 'en',
         jobId: job.id,
         clientId,
-        phoneNumberId // Pass it along
+        phoneNumberId, // Pass it along
+        token: clientConfig.whatsappToken // Client-specific token
       });
 
       return {

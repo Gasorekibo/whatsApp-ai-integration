@@ -50,8 +50,8 @@ export class QueueMonitor {
       }
 
       // Get queue stats
-      const chatStats = await chatQueue.getCountsPerState();
-      const whatsappStats = await whatsappQueue.getCountsPerState();
+      const chatStats = await chatQueue.getJobCounts();
+      const whatsappStats = await whatsappQueue.getJobCounts();
 
       const metrics = {
         timestamp: new Date().toISOString(),
