@@ -7,6 +7,13 @@ export async function sendWhatsAppMessage(to, body, credentials = null) {
   const token         = credentials?.token         || process.env.WHATSAPP_TOKEN;
   const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
   try {
+    const tokenSuffix = token ? `***${token.slice(-4)}` : 'MISSING';
+    logger.info('Attempting to send WhatsApp message', { 
+      to, 
+      phoneNumberId, 
+      tokenSuffix 
+    });
+
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -22,7 +29,7 @@ export async function sendWhatsAppMessage(to, body, credentials = null) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
-    logger.info('WhatsApp message sent successfully', { to, messageId: data.messages?.[0]?.id });
+    logger.info('WhatsApp message sent successfully', { to, messageId: data.messages?.[0]?.id, phoneNumberId });
     return data;
   } catch (err) {
     logger.error('Send message failed', { error: err.message, to });

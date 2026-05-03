@@ -64,7 +64,7 @@ class RAGService {
      * @param {Array} history - Conversation history for context
      * @returns {Promise<object>} - { intent, language }
      */
-    async classifyQuery(message, history = []) {
+    async classifyQuery(message, history = [], knownLanguage = null) {
         try {
             const normalizedMessage = message.trim().toLowerCase();
 
@@ -74,8 +74,8 @@ class RAGService {
                 return this.intentCache.get(normalizedMessage);
             }
 
-            // 1. Detect language cheaply via patterns (no Gemini call needed for common languages)
-            const patternLanguage = await this.detectCurrentLanguage(message);
+            // 1. Use pre-detected language if available, otherwise detect via patterns
+            const patternLanguage = knownLanguage || await this.detectCurrentLanguage(message);
 
             // 2. Quick pattern-based intent check
             const quickIntent = this._quickIntentCheck(normalizedMessage);
@@ -102,8 +102,9 @@ class RAGService {
 
             // 4. LLM classification — ONE call returns both intent + language (saves a second Gemini call)
             const classification = await this._classifyWithLLM(message, history);
-            // Override language with pattern result if LLM returned 'en' but patterns say otherwise
-            if (patternLanguage !== 'en') classification.language = patternLanguage;
+            // knownLanguage always wins; otherwise prefer pattern if it found a non-English match
+            if (knownLanguage) classification.language = knownLanguage;
+            else if (patternLanguage !== 'en') classification.language = patternLanguage;
             this._cacheIntent(normalizedMessage, classification);
 
             return classification;
@@ -399,7 +400,7 @@ JSON Output:`;
      * @param {number} topK - Number of results to retrieve
      * @returns {Promise<object>} - Retrieved context and metadata
      */
-    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default') {
+    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default', knownLanguage = null) {
         try {
             if (!this.initialized) {
                 await this.initialize();
@@ -412,8 +413,8 @@ JSON Output:`;
 
             const startTime = Date.now();
 
-            // Classify intent and detect language (Unified LLM call)
-            const classification = await this.classifyQuery(userMessage, conversationHistory);
+            // Classify intent and detect language — pass knownLanguage to skip a Gemini call if already detected
+            const classification = await this.classifyQuery(userMessage, conversationHistory, knownLanguage);
             const { intent, language } = classification;
 
             logger.debug('Query classified', {

@@ -122,7 +122,7 @@ export class ChatMessageWorker {
       // Step 3: Process message with full RAG pipeline
       const retryHandler = getRetryHandler();
       const response = await retryHandler.executeWithTimeout(
-        () => processWithGemini(phoneNumber, message, history || [], userEmail, null, clientConfig),
+        () => processWithGemini(phoneNumber, message, history || [], userEmail, job.data.language || null, clientConfig),
         'chat-processing'
       );
 

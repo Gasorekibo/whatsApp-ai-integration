@@ -182,7 +182,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
     if (USE_RAG) {
       try {
-        const retrievedData = await ragService.retrieveContext(message, history, null, namespace);
+        const retrievedData = await ragService.retrieveContext(message, history, null, namespace, currentLanguage || null);
         detectedLanguage    = currentLanguage || retrievedData.language || 'en';
         ragIntent           = retrievedData.intent || 'general';
 
@@ -222,7 +222,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', tools });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
       history: history.map(h => ({
