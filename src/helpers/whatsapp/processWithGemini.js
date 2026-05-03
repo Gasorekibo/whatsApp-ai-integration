@@ -222,7 +222,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', tools });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
       history: history.map(h => ({
