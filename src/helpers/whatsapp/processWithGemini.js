@@ -32,7 +32,6 @@ function needsCalendar(intent, message) {
 const USE_RAG = process.env.USE_RAG !== 'false';
 
 export async function processWithGemini(phoneNumber, message, history = [], userEmail = null, currentLanguage = null, clientConfig = {}) {
-  console.log('Processing with Gemini', {  client: clientConfig});
   const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
   // ── Per-client configuration ──────────────────────────────────────────────
   const geminiKey = clientConfig.geminiApiKey;
@@ -200,7 +199,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', tools });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
       history: history.map(h => ({

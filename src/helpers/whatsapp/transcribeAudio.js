@@ -52,7 +52,7 @@ export async function transcribeWhatsAppAudio(mediaId, mimeType = 'audio/ogg; co
   });
 
   // Step 3: Transcribe with Gemini
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
   const result = await model.generateContent([
     {

@@ -553,12 +553,7 @@
     .health-status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-    .mem-bar-wrap { background: #e2e8f0; border-radius: 6px; height: 8px; overflow: hidden; margin-top: 4px; }
-    .mem-bar      { height: 100%; border-radius: 6px; transition: width 0.6s ease; background: #48bb78; }
-    .mem-bar.warn  { background: #ed8936; }
-    .mem-bar.crit  { background: #f56565; }
-
-    .mon-refresh-bar {
+.mon-refresh-bar {
       display: flex; align-items: center; gap: 10px;
       font-size: 12px; color: #718096; margin-bottom: 16px;
     }
@@ -862,12 +857,6 @@
       <div class="health-grid" id="healthGrid">
         <div class="health-card"><div class="hc-icon">⏱️</div><div class="hc-label">Uptime</div><div class="hc-value" id="hc-uptime">—</div></div>
         <div class="health-card" id="hc-db-card"><div class="hc-icon">🗄️</div><div class="hc-label">Database</div><div class="hc-value" id="hc-db">—</div><div class="hc-sub" id="hc-db-rt"></div></div>
-        <div class="health-card" id="hc-mem-card">
-          <div class="hc-icon">💾</div><div class="hc-label">Heap Memory</div>
-          <div class="hc-value" id="hc-mem">—</div>
-          <div class="mem-bar-wrap"><div class="mem-bar" id="hc-mem-bar" style="width:0%"></div></div>
-          <div class="hc-sub" id="hc-mem-sub"></div>
-        </div>
         <div class="health-card" id="hc-err-card"><div class="hc-icon">🚨</div><div class="hc-label">Errors Today</div><div class="hc-value" id="hc-errors">—</div></div>
       </div>
 
@@ -2417,17 +2406,6 @@
         document.getElementById('hc-db-rt').textContent =
           data.database.responseTime ? `Response: ${data.database.responseTime}` : (data.database.error || '');
         dbCard.className = `health-card ${data.database.status === 'connected' ? 'ok' : 'error'}`;
-
-        // Memory
-        const pct    = data.memory.usagePercent;
-        const memBar = document.getElementById('hc-mem-bar');
-        const memCard = document.getElementById('hc-mem-card');
-        document.getElementById('hc-mem').textContent = `${pct}%`;
-        document.getElementById('hc-mem-sub').textContent =
-          `${data.memory.heapUsed} / ${data.memory.heapTotal}`;
-        memBar.style.width = `${pct}%`;
-        memBar.className = `mem-bar ${pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : ''}`;
-        memCard.className = `health-card ${pct >= 90 ? 'error' : pct >= 70 ? 'warn' : 'ok'}`;
 
         // Errors today
         const errCount = data.logs.errorsToday;
