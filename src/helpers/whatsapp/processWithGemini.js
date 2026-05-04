@@ -32,15 +32,20 @@ function needsCalendar(intent, message) {
 const USE_RAG = process.env.USE_RAG !== 'false';
 
 export async function processWithGemini(phoneNumber, message, history = [], userEmail = null, currentLanguage = null, clientConfig = {}) {
+  console.log('Processing with Gemini', {  client: clientConfig});
   const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
 
+  console.log('Client config for Gemini processing', { clientConfig });
+
   // ── Per-client configuration ──────────────────────────────────────────────
-  const genAI              = new GoogleGenerativeAI(clientConfig.geminiApiKey || process.env.GEMINI_API_KEY);
+  const geminiKey = clientConfig.geminiApiKey;
+  if (!geminiKey) throw new Error('processWithGemini: client is missing a Gemini API key');
+  const genAI              = new GoogleGenerativeAI(geminiKey);
   const timezone           = clientConfig.timezone           || 'Africa/Kigali';
-  const companyName        = clientConfig.companyName        || process.env.COMPANY_NAME || 'Our Company';
-  const paymentRedirectUrl = clientConfig.paymentRedirectUrl || process.env.PAYMENT_REDIRECT_URL || '';
-  const depositAmount      = clientConfig.depositAmount      || parseInt(process.env.DEPOSIT_AMOUNT || 5000);
-  const currency           = clientConfig.currency           || process.env.CURRENCY || 'RWF';
+  const companyName        = clientConfig.companyName        || clientConfig.name || 'Our Company';
+  const paymentRedirectUrl = clientConfig.paymentRedirectUrl || '';
+  const depositAmount      = clientConfig.depositAmount      || 5000;
+  const currency           = clientConfig.currency           || 'RWF';
   const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
 
@@ -57,8 +62,8 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
     const loadEmployee = async () => {
       if (_employee !== null) return _employee;
-      const where = clientId ? { clientId } : { email: process.env.EMPLOYEE_EMAIL };
-      _employee = await dbConfig.db.Employee.findOne({ where });
+      if (!clientId) throw new Error('Calendar not connected: no client ID');
+      _employee = await dbConfig.db.Employee.findOne({ where: { clientId } });
       if (!_employee) throw new Error('Calendar not connected');
       return _employee;
     };

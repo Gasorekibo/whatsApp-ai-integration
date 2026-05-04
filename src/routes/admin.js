@@ -6,6 +6,14 @@ import logger from '../logger/logger.js';
 import { invalidateClient } from '../services/clientService.js';
 
 router.post('/template', async (req, res) => {
+  const { templateName, clientId } = req.body;
+
+  if (!clientId) return res.status(400).json({ error: "Missing 'clientId'" });
+  if (!templateName) return res.status(400).json({ error: "Missing 'templateName'" });
+
+  const client = await dbConfig.db.Client?.findByPk(clientId);
+  if (!client) return res.status(404).json({ error: 'Client not found' });
+
   const contacts = await fetch('http://localhost:3000/api/zoho/contacts')
     .then(response => response.json())
     .then(data => data.contacts)
@@ -15,16 +23,12 @@ router.post('/template', async (req, res) => {
     });
 
   const to = contacts.map(contact => contact.phone);
-  const templateName = req.body.templateName
-  if (!to?.length || !templateName) {
-    return res.status(400).json({ error: "Missing 'to' or 'templateName'" });
-  }
-  try {
+  if (!to?.length) return res.status(400).json({ error: 'No contacts found' });
 
+  try {
     await to.forEach(async (phoneNumber) => {
       const username = [contacts.find(contact => contact.phone === phoneNumber)?.fullName] || ['Customer'];
-      const params = username;
-      await initiateWhatsappMessage(phoneNumber, templateName, params);
+      await initiateWhatsappMessage(phoneNumber, templateName, username, client);
     });
     res.json({ success: true, sent_to: to, template: templateName });
   } catch (err) {
@@ -139,7 +143,15 @@ router.put('/clients/:id', async (req, res) => {
     const updates = {};
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
 
-    await client.update(updates);
+    client.set(updates);
+
+    // Force-mark encrypted fields as changed so the beforeUpdate hook always re-encrypts them,
+    // even when the incoming plaintext value matches what's already stored (e.g. a key that was
+    // previously saved without going through the encryption hook).
+    const encryptedFields = ['whatsappToken', 'geminiApiKey', 'pineconeApiKey', 'flutterwaveSecretKey', 'flutterwaveWebhookSecret', 'microsoftClientSecret', 'confluenceApiToken'];
+    encryptedFields.forEach(f => { if (updates[f] !== undefined) client.changed(f, true); });
+
+    await client.save();
 
     // Invalidate cache so next request gets fresh credentials
     if (client.whatsappBusinessId) invalidateClient(client.whatsappBusinessId);

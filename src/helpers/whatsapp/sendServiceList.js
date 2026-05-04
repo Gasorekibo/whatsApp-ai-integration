@@ -8,9 +8,14 @@ import translationService from '../../services/translation.service.js';
 
 export async function sendServiceList(to, locale = 'en', client = null) {
   const clientId      = client?.id || null;
-  const companyName   = client?.companyName || client?.name || process.env.COMPANY_NAME || 'Our Services';
-  const phoneNumberId = client?.whatsappBusinessId            || process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const token         = client?.getDecryptedWhatsappToken?.() || process.env.WHATSAPP_TOKEN;
+  const companyName   = client?.companyName || client?.name || 'Our Services';
+  const phoneNumberId = client?.whatsappBusinessId;
+  const token         = client?.getDecryptedWhatsappToken?.();
+
+  if (!phoneNumberId || !token) {
+    logger.error('sendServiceList: missing client credentials', { clientId });
+    throw new Error('Client WhatsApp credentials are not configured');
+  }
 
   let services = await googleSheet.getActiveServices(clientId);
   services = await translationService.translateServices(services, locale);

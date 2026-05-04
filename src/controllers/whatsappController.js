@@ -26,6 +26,7 @@ const handleWebhook = async (req, res) => {
     bodyKeys: req.body ? Object.keys(req.body) : []
   });
 
+  let client = null;
   try {
     const { phoneNumberId, message: msg, contact, statuses, value } = extractWebhookPayload(req.body);
 
@@ -52,7 +53,7 @@ const handleWebhook = async (req, res) => {
     });
 
     // ── Resolve client BEFORE the transaction (uses in-memory cache) ──
-    const client = await resolveClient(phoneNumberId);
+    client = await resolveClient(phoneNumberId);
 
     if (client) {
       logger.whatsapp('debug', 'Client resolved', {
@@ -158,7 +159,7 @@ const handleWebhook = async (req, res) => {
 
         if (response.showServices) {
           const serviceListLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || userInputLang;
-          await sendServiceList(from, serviceListLocale);
+          await sendServiceList(from, serviceListLocale, client);
           session.history.push({ role: 'user',  content: msg.text.body, language: userInputLang, timestamp: new Date() });
           session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
           session.changed('history', true);
@@ -266,7 +267,7 @@ const handleWebhook = async (req, res) => {
     logger.error('WhatsApp webhook error', { requestId, error: err.message, stack: err.stack, errorType: err.constructor.name });
     try {
       const from = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
-      if (from) await sendMessage({ client: null, to: from, message: 'Sorry, something went wrong while processing your message. Please try again later.' });
+      if (from) await sendMessage({ client, to: from, message: "We're sorry, something unexpected happened on our end while handling your message. Please try again in a moment, or type 'menu' to start over." });
     } catch (sendErr) {
       logger.error('Error sending failure response', { error: sendErr.message });
     }
