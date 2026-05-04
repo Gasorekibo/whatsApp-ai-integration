@@ -5,9 +5,14 @@ import logger from '../../logger/logger.js';
 dotenv.config();
 
 export async function transcribeWhatsAppAudio(mediaId, mimeType = 'audio/ogg; codecs=opus', credentials = null) {
-  const waToken    = credentials?.token        || process.env.WHATSAPP_TOKEN;
-  const geminiKey  = credentials?.geminiApiKey || process.env.GEMINI_API_KEY;
-  const genAI      = new GoogleGenerativeAI(geminiKey);
+  const waToken   = credentials?.token;
+  const geminiKey = credentials?.geminiApiKey;
+
+  if (!waToken || !geminiKey) {
+    throw new Error('transcribeWhatsAppAudio: missing client credentials (token or geminiApiKey)');
+  }
+
+  const genAI = new GoogleGenerativeAI(geminiKey);
 
   // Step 1: Resolve media URL from media ID
   const mediaMetaUrl = `https://graph.facebook.com/v22.0/${mediaId}`;

@@ -1,14 +1,21 @@
-import dotenv from 'dotenv';
 import logger from '../logger/logger.js';
-dotenv.config();
-async function initiateWhatsappMessage(to, templateName, params = []) {
-  const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+async function initiateWhatsappMessage(to, templateName, params = [], client = null) {
+  const phoneNumberId = client?.whatsappBusinessId;
+  const token         = client?.getDecryptedWhatsappToken?.();
+
+  if (!phoneNumberId || !token) {
+    logger.error('initiateWhatsappMessage: missing client credentials', { to: `***${String(to).slice(-4)}` });
+    throw new Error('Client WhatsApp credentials are not configured');
+  }
+
+  const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({

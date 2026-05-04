@@ -3,8 +3,14 @@ import dotenv from 'dotenv';
 import logger from '../../logger/logger.js';
 dotenv.config();
 export async function sendWhatsAppMessage(to, body, credentials = null) {
-  const phoneNumberId = credentials?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const token         = credentials?.token         || process.env.WHATSAPP_TOKEN;
+  const phoneNumberId = credentials?.phoneNumberId;
+  const token         = credentials?.token;
+
+  if (!phoneNumberId || !token) {
+    logger.error('sendWhatsAppMessage: missing client credentials', { to: `***${String(to).slice(-4)}` });
+    throw new Error('Client WhatsApp credentials are not configured');
+  }
+
   const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
   try {
     const res = await fetch(url, {
