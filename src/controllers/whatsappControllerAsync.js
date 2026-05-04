@@ -237,7 +237,51 @@ const handleWebhookAsync = async (req, res) => {
         // The message was already deduplicated, so don't retry
       }
     }
-    // Add support for audio messages, media, etc. here if needed
+    // Handle voice/audio messages
+    if (msg.type === 'audio') {
+      const mediaId  = msg.audio?.id;
+      const mimeType = msg.audio?.mime_type || 'audio/ogg; codecs=opus';
+
+      if (!mediaId) {
+        logger.whatsapp('warn', 'Audio message missing mediaId', { requestId });
+        return;
+      }
+
+      const [session] = await dbConfig.db.UserSession.findOrCreate({
+        where: { phone: from, clientId },
+        defaults: {
+          name:       contact?.profile?.name || 'Client',
+          phone:      from,
+          clientId,
+          history:    [],
+          state:      { selectedService: null },
+          lastAccess: new Date()
+        }
+      });
+
+      // Infer language from recent history rather than making a Gemini call
+      const recentLang = session.history?.slice().reverse().find(h => h.language)?.language || 'en';
+
+      const jobId = await addChatProcessingJob({
+        phoneNumber:  from,
+        audioData:    { mediaId, mimeType },
+        history:      session.history || [],
+        userEmail:    session.state?.email || null,
+        language:     recentLang,
+        clientId,
+        phoneNumberId,
+        contactName:  contact?.profile?.name,
+        timestamp:    Date.now(),
+        requestId
+      });
+
+      logger.whatsapp('info', 'Audio message queued', {
+        requestId, from: `***${from.slice(-4)}`, jobId, mediaId
+      });
+
+      session.lastAccess = new Date();
+      await session.save();
+    }
   } catch (error) {
     logger.error('Webhook processing error', {
       requestId,

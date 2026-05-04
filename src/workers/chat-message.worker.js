@@ -11,6 +11,8 @@ import { getRetryHandler } from '../utils/gemini-retry-handler.js';
 import ragService from '../services/rag.service.js';
 import embeddingService from '../services/embedding.service.js';
 import { processWithGemini } from '../helpers/whatsapp/processWithGemini.js';
+import { sendServiceList } from '../helpers/whatsapp/sendServiceList.js';
+import { transcribeWhatsAppAudio } from '../helpers/whatsapp/transcribeAudio.js';
 import { addWhatsAppSenderJob, redisOptions } from '../queues/bullmq.config.js';
 import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
@@ -88,14 +90,15 @@ export class ChatMessageWorker {
    * This is where the actual chat processing happens
    */
   async processJob(job) {
-    const { phoneNumber, message, history, userEmail, clientId, timestamp, phoneNumberId } = job.data;
+    const { phoneNumber, message, history, userEmail, clientId, timestamp, phoneNumberId, audioData } = job.data;
     const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
 
     logger.info('Processing chat job', {
       jobId: job.id,
       phoneNumber: sanitizedPhone,
       clientId,
-      messageLength: message.length,
+      isAudio: !!audioData,
+      messageLength: message?.length ?? 0,
       queueWaitTime: `${Date.now() - timestamp}ms`
     });
 
@@ -106,23 +109,43 @@ export class ChatMessageWorker {
       await rateLimiter.waitForToken('gemini-main', 30000);
 
       // Step 2: Fetch client configuration
-      const clientConfig = clientId
-        ? await dbConfig.db.Client.findByPk(clientId).then(c => ({
-            clientId: c?.id,
-            companyName: c?.name,
-            timezone: c?.timezone || 'Africa/Kigali',
-            geminiApiKey: c?.getDecryptedGeminiKey?.(),
-            whatsappToken: c?.getDecryptedWhatsappToken?.(),
+      const clientRow = clientId ? await dbConfig.db.Client.findByPk(clientId) : null;
+      const clientConfig = clientRow
+        ? {
+            clientId:          clientRow.id,
+            companyName:       clientRow.name,
+            timezone:          clientRow.timezone || 'Africa/Kigali',
+            geminiApiKey:      clientRow.getDecryptedGeminiKey?.(),
+            whatsappToken:     clientRow.getDecryptedWhatsappToken?.(),
             paymentRedirectUrl: process.env.PAYMENT_REDIRECT_URL,
-            depositAmount: process.env.DEPOSIT_AMOUNT || 5000,
-            currency: process.env.CURRENCY || 'RWF'
-          }))
+            depositAmount:     process.env.DEPOSIT_AMOUNT || 5000,
+            currency:          process.env.CURRENCY || 'RWF'
+          }
         : {};
+
+      // Step 2b: Transcribe audio if this is a voice message
+      let textMessage = message;
+      if (audioData?.mediaId) {
+        logger.info('Transcribing voice message', { jobId: job.id, phoneNumber: sanitizedPhone });
+        textMessage = await transcribeWhatsAppAudio(
+          audioData.mediaId,
+          audioData.mimeType || 'audio/ogg; codecs=opus',
+          {
+            token:        clientRow?.getDecryptedWhatsappToken?.() || null,
+            geminiApiKey: clientRow?.getDecryptedGeminiKey?.()    || null
+          }
+        );
+        logger.info('Voice message transcribed', {
+          jobId: job.id,
+          phoneNumber: sanitizedPhone,
+          transcriptionLength: textMessage?.length
+        });
+      }
 
       // Step 3: Process message with full RAG pipeline
       const retryHandler = getRetryHandler();
       const response = await retryHandler.executeWithTimeout(
-        () => processWithGemini(phoneNumber, message, history || [], userEmail, job.data.language || null, clientConfig),
+        () => processWithGemini(phoneNumber, textMessage, history || [], userEmail, job.data.language || null, clientConfig),
         'chat-processing'
       );
 
@@ -130,6 +153,7 @@ export class ChatMessageWorker {
         jobId: job.id,
         phoneNumber: sanitizedPhone,
         hasResponse: !!response?.reply,
+        showServices: !!response?.showServices,
         language: response?.language
       });
 
@@ -138,16 +162,18 @@ export class ChatMessageWorker {
       const redisClient = getRedisClient();
       await redisClient.setEx(
         resultKey,
-        86400, // 24 hour TTL
-        JSON.stringify({
-          jobId: job.id,
-          phoneNumber,
-          response,
-          timestamp: new Date().toISOString()
-        })
+        86400,
+        JSON.stringify({ jobId: job.id, phoneNumber, response, timestamp: new Date().toISOString() })
       );
 
-      // Step 5: Queue WhatsApp message sending (asynchronous, reliable retry)
+      // Step 5: Handle show_services — Gemini called the tool, send the interactive list directly
+      if (response?.showServices) {
+        logger.info('Sending service list (Gemini tool call)', { jobId: job.id, phoneNumber: sanitizedPhone });
+        await sendServiceList(phoneNumber, response.language || job.data.language || 'en', clientRow);
+        return { success: true, jobId: job.id, message: 'Service list sent' };
+      }
+
+      // Step 6: Queue WhatsApp message sending (asynchronous, reliable retry)
       const jobLanguage = job.data.language || 'en';
       const fallbackText = FALLBACK_MESSAGES[jobLanguage] || FALLBACK_MESSAGES.en;
 
@@ -158,7 +184,7 @@ export class ChatMessageWorker {
         jobId: job.id,
         clientId,
         phoneNumberId,
-        token: clientConfig.whatsappToken // Crucial for correct number routing
+        token: clientConfig.whatsappToken
       });
 
       return {
@@ -183,6 +209,8 @@ export class ChatMessageWorker {
           language: 'en',
           jobId: job.id,
           clientId,
+          phoneNumberId,
+          token: clientConfig?.whatsappToken,
           isFallback: true
         });
       } catch (fallbackError) {
