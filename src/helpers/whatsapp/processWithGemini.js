@@ -34,9 +34,6 @@ const USE_RAG = process.env.USE_RAG !== 'false';
 export async function processWithGemini(phoneNumber, message, history = [], userEmail = null, currentLanguage = null, clientConfig = {}) {
   console.log('Processing with Gemini', {  client: clientConfig});
   const sanitizedPhone = `***${phoneNumber.slice(-4)}`;
-
-  console.log('Client config for Gemini processing', { clientConfig });
-
   // ── Per-client configuration ──────────────────────────────────────────────
   const geminiKey = clientConfig.geminiApiKey;
   if (!geminiKey) throw new Error('processWithGemini: client is missing a Gemini API key');
@@ -335,7 +332,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
   } catch (err) {
     logger.error('Gemini processing error', { phone: sanitizedPhone, error: err.message, stack: err.stack, status: err.status });
-
+    console.log(err)
     if (err.status === 429) return { reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.", showServices: false, showSlots: false, freeSlots: [] };
     if (err.status === 503) return { reply: "⚠️ Our AI is currently busy. Please try again in a few seconds.", showServices: false, showSlots: false, freeSlots: [] };
     return { reply: "I'm having trouble connecting right now. Please try again in a moment!", showServices: false, showSlots: false, freeSlots: [] };

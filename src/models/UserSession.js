@@ -18,9 +18,7 @@ export default (sequelize) => {
     },
     phone: {
       type: DataTypes.STRING,
-      allowNull: false
-      // unique removed — enforced as composite (clientId, phone) in indexes below
-    },
+      allowNull: false    },
     history: {
       type: DataTypes.JSONB,
       allowNull: true,

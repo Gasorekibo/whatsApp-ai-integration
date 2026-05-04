@@ -7,6 +7,13 @@ import { bookingService } from '../services/booking.service.js';
 
 dotenv.config();
 
+function clientCredentials(client) {
+  return {
+    phoneNumberId: client?.whatsappBusinessId,
+    token:         client?.getDecryptedWhatsappToken?.()
+  };
+}
+
 async function paymentWebhookHandler(req, res) {
   const secretHash = process.env.FLW_WEBHOOK_SECRET;
   const signature = req.headers['verif-hash'];
@@ -50,6 +57,7 @@ async function paymentWebhookHandler(req, res) {
       let message;
       let success = false;
       let bookingError = null;
+      let client = null;
 
       try {
         await dbConfig.db.sequelize.transaction(async (t) => {
@@ -63,13 +71,20 @@ async function paymentWebhookHandler(req, res) {
             serviceRequest.paymentStatus = 'paid';
             serviceRequest.status = 'confirmed';
             await serviceRequest.save({ transaction: t });
+
+            // Resolve the client so we can use its calendar and WhatsApp credentials
+            if (serviceRequest.clientId) {
+              client = await dbConfig.db.Client.findByPk(serviceRequest.clientId, { transaction: t });
+            }
           }
-          // 2. Create calendar booking directly via service
+
+          // 2. Create calendar booking on the client's dedicated calendar
           const bookingResult = await bookingService.bookMeeting({
             title: booking.title || `Consultation - ${booking.name}`,
             start: booking.slotStart || booking.start,
             end: booking.slotEnd || booking.end,
             attendeeEmail: booking.email,
+            clientId: serviceRequest?.clientId || null,
             description: `Service: ${booking.service}\n` +
               `Phone: ${phone}\n` +
               `Company: ${booking.company || 'N/A'}\n` +
@@ -149,17 +164,23 @@ async function paymentWebhookHandler(req, res) {
           `We apologize for the inconvenience!`;
       }
 
-      await sendWhatsAppMessage(phone, message);
+      await sendWhatsAppMessage(phone, message, clientCredentials(client));
 
     } else {
-      // Payment not successful
+      // Payment not successful — look up client via tx_ref so we can send from the right number
+      const meta = req.body.meta || req.body.meta_data;
+      let failedClient = null;
+      try {
+        const sr = await dbConfig.db.ServiceRequest.findOne({ where: { txRef: req.body.data?.tx_ref } });
+        if (sr?.clientId) failedClient = await dbConfig.db.Client.findByPk(sr.clientId);
+      } catch (_) {}
+
       const failedPaymentMessage = `⚠️ *Payment Not Successful*\n\n` +
         `We noticed that your recent payment did not go through successfully.\n\n` +
         `Please try again or contact support if the issue persists.\n\n` +
         `Thank you!`;
 
-      const meta = req.body.meta || req.body.meta_data;
-      await sendWhatsAppMessage(meta?.phone || 'Client', failedPaymentMessage);
+      await sendWhatsAppMessage(meta?.phone, failedPaymentMessage, clientCredentials(failedClient));
     }
 
     res.status(200).json({ success: true });

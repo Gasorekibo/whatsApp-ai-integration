@@ -18,23 +18,27 @@ class BookingService {
         start,
         end,
         description,
-        attendeeEmail
+        attendeeEmail,
+        clientId
     } = bookingDetails;
-
-    const employeeEmail = process.env.EMPLOYEE_EMAIL;
 
     logger.info('BookingService: Initiating bookMeeting', {
         title,
         start,
         attendeeEmail,
-        employeeEmail
+        clientId
     });
 
     try {
-        const employee = await dbConfig.db.Employee.findOne({ where: { email: employeeEmail } });
-        if (!employee) {
-            return { success: false, error: 'Employee not found - run /auth first' };
+        if (!clientId) {
+            return { success: false, error: 'No clientId provided — cannot find calendar' };
         }
+        const employee = await dbConfig.db.Employee.findOne({ where: { clientId } });
+        if (!employee) {
+            return { success: false, error: 'No calendar connected for this client — run /auth first' };
+        }
+
+        const employeeEmail = employee.email;
 
         const refreshToken = employee.getDecryptedToken();
         if (!refreshToken) {
