@@ -15,7 +15,6 @@ export default (sequelize) => {
     messageId: {
       type: DataTypes.STRING,
       allowNull: false
-      // unique removed — enforced as composite (clientId, messageId) in indexes below
     },
     processedAt: {
       type: DataTypes.DATE,

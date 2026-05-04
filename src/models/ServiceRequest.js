@@ -81,7 +81,7 @@ export default (sequelize) => {
     paymentStatus: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: 'pending' // pending, paid, refunded
+      defaultValue: 'pending'
     },
     status: {
       type: DataTypes.STRING,
