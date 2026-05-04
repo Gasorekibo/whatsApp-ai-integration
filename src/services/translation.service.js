@@ -48,7 +48,7 @@ class TranslationService {
             logger.info('Translating services via Gemini', { locale, count: services.length });
             
             const model = this.genAI.getGenerativeModel({ 
-                model: "gemini-2.5-flash",
+                model: "gemini-2.5-flash-lite",
                 generationConfig: { responseMimeType: "application/json" }
             });
             
