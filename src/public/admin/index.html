@@ -519,6 +519,129 @@
       .stats-grid { grid-template-columns: 1fr 1fr; }
       .overview-grid { grid-template-columns: 1fr 1fr; }
     }
+
+    /* ── Monitoring ── */
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .health-card {
+      background: white;
+      border-radius: 12px;
+      padding: 18px 20px;
+      border: 2px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color 0.2s;
+    }
+    .health-card.ok     { border-color: #48bb78; }
+    .health-card.warn   { border-color: #ed8936; }
+    .health-card.error  { border-color: #f56565; }
+    .health-card .hc-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #a0aec0; }
+    .health-card .hc-value { font-size: 26px; font-weight: 700; color: #2d3748; line-height: 1.1; }
+    .health-card .hc-sub   { font-size: 11px; color: #718096; }
+    .health-card .hc-icon  { font-size: 22px; margin-bottom: 2px; }
+    .health-status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 700;
+    }
+    .health-status-pill.healthy  { background: #c6f6d5; color: #22543d; }
+    .health-status-pill.degraded { background: #fed7d7; color: #742a2a; }
+    .health-status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .mem-bar-wrap { background: #e2e8f0; border-radius: 6px; height: 8px; overflow: hidden; margin-top: 4px; }
+    .mem-bar      { height: 100%; border-radius: 6px; transition: width 0.6s ease; background: #48bb78; }
+    .mem-bar.warn  { background: #ed8936; }
+    .mem-bar.crit  { background: #f56565; }
+
+    .mon-refresh-bar {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 12px; color: #718096; margin-bottom: 16px;
+    }
+    .mon-refresh-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: #48bb78; animation: pulse 2s infinite; }
+
+    /* Log viewer */
+    .log-toolbar {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px;
+    }
+    .log-cat-tabs {
+      display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 2px solid #e2e8f0;
+    }
+    .log-cat-tab {
+      padding: 7px 14px; border: none; background: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; color: #718096;
+      border-radius: 6px 6px 0 0; border-bottom: 2px solid transparent;
+      margin-bottom: -2px; transition: all .15s;
+    }
+    .log-cat-tab:hover  { color: #667eea; background: #f0f4ff; }
+    .log-cat-tab.active { color: #667eea; border-bottom-color: #667eea; background: #f0f4ff; }
+
+    .log-summary {
+      display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .log-count-chip {
+      padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;
+    }
+    .log-count-chip.error { background: #fed7d7; color: #c53030; }
+    .log-count-chip.warn  { background: #fef3c7; color: #92400e; }
+    .log-count-chip.info  { background: #bee3f8; color: #2c5282; }
+    .log-count-chip.debug { background: #e2e8f0; color: #4a5568; }
+    .log-count-chip.total { background: #e9d8fd; color: #553c9a; }
+
+    .log-list {
+      font-family: 'Fira Code', 'Cascadia Code', 'Courier New', monospace;
+      font-size: 12px;
+      background: #1a202c;
+      border-radius: 10px;
+      overflow: hidden;
+      max-height: 560px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      display: grid;
+      grid-template-columns: 140px 52px 1fr;
+      gap: 0;
+      padding: 6px 14px;
+      border-bottom: 1px solid #2d3748;
+      cursor: pointer;
+      transition: background 0.1s;
+      align-items: start;
+    }
+    .log-entry:hover { background: #2d3748; }
+    .log-entry.expanded { background: #2d3748; }
+    .log-ts    { color: #718096; white-space: nowrap; padding-right: 10px; padding-top: 1px; }
+    .log-lvl   { font-weight: 700; text-transform: uppercase; font-size: 10px; padding-top: 2px; white-space: nowrap; }
+    .log-lvl.error { color: #fc8181; }
+    .log-lvl.warn  { color: #f6ad55; }
+    .log-lvl.info  { color: #68d391; }
+    .log-lvl.debug { color: #76e4f7; }
+    .log-msg   { color: #e2e8f0; word-break: break-all; }
+    .log-meta  {
+      grid-column: 1 / -1;
+      background: #171923;
+      color: #a0aec0;
+      padding: 10px 14px;
+      margin: 4px -14px -6px;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+      border-top: 1px solid #2d3748;
+    }
+    .log-entry.expanded .log-meta { display: block; }
+    .log-empty { color: #718096; text-align: center; padding: 40px; }
+
+    .date-chip-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .date-chip {
+      padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
+      background: #edf2f7; color: #4a5568; border: none; cursor: pointer; transition: all .15s;
+    }
+    .date-chip:hover  { background: #667eea; color: white; }
+    .date-chip.active { background: #667eea; color: white; }
   </style>
 </head>
 <body>
@@ -558,6 +681,11 @@
       <div class="menu-section">Team</div>
       <div class="menu-item" onclick="showSection('employees')">
         <span class="icon">👥</span> Employees
+      </div>
+
+      <div class="menu-section">System</div>
+      <div class="menu-item" onclick="showSection('monitoring')">
+        <span class="icon">🖥️</span> Monitoring
       </div>
     </div>
   </div>
@@ -711,6 +839,88 @@
       </div>
       <div id="employeesContent">
         <div class="loading"><div class="spinner"></div>Loading employees…</div>
+      </div>
+    </div>
+
+    <!-- ── Monitoring ── -->
+    <div class="content-section" id="monitoring">
+      <div class="section-header">
+        <h2>🖥️ System Monitoring</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="healthStatusPill"></span>
+          <button class="btn btn-secondary btn-sm" onclick="refreshHealth()">↺ Refresh</button>
+        </div>
+      </div>
+
+      <div class="mon-refresh-bar">
+        <span class="dot"></span>
+        <span id="monLastRefresh">Loading…</span>
+        <span style="margin-left:auto;color:#a0aec0;">Auto-refreshes every 30s while this tab is open</span>
+      </div>
+
+      <!-- Health cards -->
+      <div class="health-grid" id="healthGrid">
+        <div class="health-card"><div class="hc-icon">⏱️</div><div class="hc-label">Uptime</div><div class="hc-value" id="hc-uptime">—</div></div>
+        <div class="health-card" id="hc-db-card"><div class="hc-icon">🗄️</div><div class="hc-label">Database</div><div class="hc-value" id="hc-db">—</div><div class="hc-sub" id="hc-db-rt"></div></div>
+        <div class="health-card" id="hc-mem-card">
+          <div class="hc-icon">💾</div><div class="hc-label">Heap Memory</div>
+          <div class="hc-value" id="hc-mem">—</div>
+          <div class="mem-bar-wrap"><div class="mem-bar" id="hc-mem-bar" style="width:0%"></div></div>
+          <div class="hc-sub" id="hc-mem-sub"></div>
+        </div>
+        <div class="health-card" id="hc-err-card"><div class="hc-icon">🚨</div><div class="hc-label">Errors Today</div><div class="hc-value" id="hc-errors">—</div></div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="overview-section-title">Last 24 Hours</div>
+      <div class="overview-grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:22px;">
+        <div class="overview-card"><h4>Clients</h4><div class="val" id="hs-clients">—</div></div>
+        <div class="overview-card"><h4>Active Sessions</h4><div class="val purple" id="hs-sessions">—</div></div>
+        <div class="overview-card"><h4>Messages</h4><div class="val green" id="hs-messages">—</div></div>
+        <div class="overview-card"><h4>Pending Bookings</h4><div class="val orange" id="hs-pending">—</div></div>
+        <div class="overview-card"><h4>Confirmed Today</h4><div class="val green" id="hs-confirmed">—</div></div>
+        <div class="overview-card"><h4>Node.js</h4><div class="val" id="hs-node" style="font-size:16px;padding-top:6px;">—</div></div>
+      </div>
+
+      <!-- Log viewer -->
+      <div class="overview-section-title">Log Viewer</div>
+
+      <div class="log-cat-tabs" id="logCatTabs">
+        <button class="log-cat-tab active" onclick="setLogCategory('combined',this)">📋 All</button>
+        <button class="log-cat-tab" onclick="setLogCategory('whatsapp',this)">💬 WhatsApp</button>
+        <button class="log-cat-tab" onclick="setLogCategory('payment',this)">💳 Payments</button>
+        <button class="log-cat-tab" onclick="setLogCategory('error',this)">🚨 Errors</button>
+        <button class="log-cat-tab" onclick="setLogCategory('api-calls',this)">🤖 AI Calls</button>
+      </div>
+
+      <div class="log-toolbar">
+        <select class="filter-select" id="logLevel" onchange="loadLogs()">
+          <option value="">All Levels</option>
+          <option value="error">Error</option>
+          <option value="warn">Warn</option>
+          <option value="info">Info</option>
+          <option value="debug">Debug</option>
+        </select>
+        <input class="search-input" id="logSearch" type="text" placeholder="Search logs…" style="max-width:240px" oninput="debounceLogSearch()">
+        <select class="filter-select" id="logLimit" onchange="loadLogs()">
+          <option value="100">Last 100</option>
+          <option value="200" selected>Last 200</option>
+          <option value="500">Last 500</option>
+          <option value="1000">Last 1000</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadLogs()">↺ Reload</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearLogSearch()">✕ Clear</button>
+      </div>
+
+      <!-- Date chips -->
+      <div class="date-chip-bar" id="logDateChips"></div>
+
+      <!-- Summary chips -->
+      <div class="log-summary" id="logSummary"></div>
+
+      <!-- Log list -->
+      <div class="log-list" id="logList">
+        <div class="log-empty">Select a category and click Reload to view logs.</div>
       </div>
     </div>
 
@@ -2175,6 +2385,204 @@
         }
       });
     });
+
+    // ──────────────────────── Monitoring ────────────────────────
+
+    let monitoringInterval = null;
+    let logCategory        = 'combined';
+    let logSearchTimer     = null;
+    let logDates           = [];
+    let activeLogDate      = '';
+
+    async function refreshHealth() {
+      try {
+        const data = await fetch('/api/outreach/monitoring/health').then(r => r.json());
+
+        // Status pill
+        const pill = document.getElementById('healthStatusPill');
+        pill.className = `health-status-pill ${data.status}`;
+        pill.innerHTML = `<span class="health-status-dot"></span>${data.status === 'healthy' ? '✅ Healthy' : '⚠️ Degraded'}`;
+
+        // Last refresh
+        document.getElementById('monLastRefresh').textContent =
+          `Last refreshed at ${new Date().toLocaleTimeString()} · response ${data.responseTime}`;
+
+        // Uptime
+        document.getElementById('hc-uptime').textContent = data.uptime;
+
+        // Database
+        const dbCard = document.getElementById('hc-db-card');
+        document.getElementById('hc-db').textContent =
+          data.database.status === 'connected' ? '✅ Connected' : '❌ Down';
+        document.getElementById('hc-db-rt').textContent =
+          data.database.responseTime ? `Response: ${data.database.responseTime}` : (data.database.error || '');
+        dbCard.className = `health-card ${data.database.status === 'connected' ? 'ok' : 'error'}`;
+
+        // Memory
+        const pct    = data.memory.usagePercent;
+        const memBar = document.getElementById('hc-mem-bar');
+        const memCard = document.getElementById('hc-mem-card');
+        document.getElementById('hc-mem').textContent = `${pct}%`;
+        document.getElementById('hc-mem-sub').textContent =
+          `${data.memory.heapUsed} / ${data.memory.heapTotal}`;
+        memBar.style.width = `${pct}%`;
+        memBar.className = `mem-bar ${pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : ''}`;
+        memCard.className = `health-card ${pct >= 90 ? 'error' : pct >= 70 ? 'warn' : 'ok'}`;
+
+        // Errors today
+        const errCount = data.logs.errorsToday;
+        const errCard  = document.getElementById('hc-err-card');
+        document.getElementById('hc-errors').textContent = errCount;
+        errCard.className = `health-card ${errCount > 0 ? 'warn' : 'ok'}`;
+
+        // Stats
+        const s = data.stats;
+        document.getElementById('hs-clients').textContent   = s.totalClients          ?? '—';
+        document.getElementById('hs-sessions').textContent  = s.activeSessionsLast24h ?? '—';
+        document.getElementById('hs-messages').textContent  = s.messagesProcessedLast24h ?? '—';
+        document.getElementById('hs-pending').textContent   = s.pendingBookings        ?? '—';
+        document.getElementById('hs-confirmed').textContent = s.confirmedBookingsToday ?? '—';
+        document.getElementById('hs-node').textContent      = data.process.nodeVersion ?? '—';
+
+      } catch (e) {
+        document.getElementById('monLastRefresh').textContent = `⚠️ Failed to load health data: ${e.message}`;
+      }
+    }
+
+    async function loadLogFiles() {
+      try {
+        const data = await fetch('/api/outreach/monitoring/logs/files').then(r => r.json());
+        const prefix = logCategory === 'payment' ? 'payments'
+                     : logCategory === 'api-calls' ? 'api-calls'
+                     : logCategory;
+        logDates = [...new Set(
+          data.files
+            .filter(f => f.category === prefix)
+            .map(f => f.date)
+            .filter(Boolean)
+        )].sort().reverse().slice(0, 14);
+
+        if (!activeLogDate || !logDates.includes(activeLogDate)) {
+          activeLogDate = logDates[0] || new Date().toISOString().slice(0,10);
+        }
+
+        const bar = document.getElementById('logDateChips');
+        bar.innerHTML = logDates.map(d =>
+          `<button class="date-chip${d === activeLogDate ? ' active' : ''}" onclick="selectLogDate('${d}')">${d}</button>`
+        ).join('');
+      } catch (e) { /* non-fatal */ }
+    }
+
+    function selectLogDate(date) {
+      activeLogDate = date;
+      document.querySelectorAll('.date-chip').forEach(c => {
+        c.classList.toggle('active', c.textContent === date);
+      });
+      loadLogs();
+    }
+
+    async function loadLogs() {
+      const level  = document.getElementById('logLevel').value;
+      const search = document.getElementById('logSearch').value.trim();
+      const limit  = document.getElementById('logLimit').value;
+      const date   = activeLogDate || new Date().toISOString().slice(0,10);
+
+      const params = new URLSearchParams({ category: logCategory, limit, date });
+      if (level)  params.set('level',  level);
+      if (search) params.set('search', search);
+
+      document.getElementById('logList').innerHTML =
+        '<div class="log-empty" style="color:#667eea">⏳ Loading logs…</div>';
+
+      try {
+        const data = await fetch(`/api/outreach/monitoring/logs?${params}`).then(r => r.json());
+
+        // Summary chips
+        const lc = data.levelCounts || {};
+        document.getElementById('logSummary').innerHTML = `
+          <span class="log-count-chip total">${data.total} entries</span>
+          ${lc.error  ? `<span class="log-count-chip error">🔴 ${lc.error} error${lc.error!==1?'s':''}</span>` : ''}
+          ${lc.warn   ? `<span class="log-count-chip warn">🟡 ${lc.warn} warn${lc.warn!==1?'s':''}</span>`   : ''}
+          ${lc.info   ? `<span class="log-count-chip info">🟢 ${lc.info} info</span>`                       : ''}
+          ${lc.debug  ? `<span class="log-count-chip debug">⚪ ${lc.debug} debug</span>`                    : ''}
+          <span style="font-size:11px;color:#718096;margin-left:4px;">📄 ${data.fileSize || ''}</span>
+        `;
+
+        if (!data.logs || data.logs.length === 0) {
+          document.getElementById('logList').innerHTML =
+            `<div class="log-empty">No logs found for ${date}${level ? ` at level "${level}"` : ''}${search ? ` matching "${search}"` : ''}.</div>`;
+          return;
+        }
+
+        document.getElementById('logList').innerHTML = data.logs.map((e, i) => {
+          const ts    = (e.timestamp || '').replace('T', ' ').slice(0, 19);
+          const lvl   = (e.level || 'info').toLowerCase();
+          const msg   = escHtml(e.message || '');
+
+          // Build readable meta (exclude noisy fields)
+          const skip  = new Set(['timestamp','level','message','service','environment','category']);
+          const meta  = Object.entries(e).filter(([k]) => !skip.has(k));
+          const metaStr = meta.length
+            ? meta.map(([k,v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}`).join('\n')
+            : '';
+
+          return `
+            <div class="log-entry" onclick="toggleLogMeta(this)">
+              <span class="log-ts">${ts}</span>
+              <span class="log-lvl ${lvl}">${lvl}</span>
+              <span class="log-msg">${msg}${e.category ? ` <span style="color:#805ad5;font-size:10px;">[${e.category}]</span>` : ''}</span>
+              ${metaStr ? `<pre class="log-meta">${escHtml(metaStr)}</pre>` : ''}
+            </div>`;
+        }).join('');
+
+      } catch (err) {
+        document.getElementById('logList').innerHTML =
+          `<div class="log-empty" style="color:#fc8181">❌ Failed to load logs: ${escHtml(err.message)}</div>`;
+      }
+    }
+
+    function toggleLogMeta(el) {
+      el.classList.toggle('expanded');
+    }
+
+    function setLogCategory(cat, btn) {
+      logCategory   = cat;
+      activeLogDate = '';
+      document.querySelectorAll('.log-cat-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadLogFiles().then(() => loadLogs());
+    }
+
+    function debounceLogSearch() {
+      clearTimeout(logSearchTimer);
+      logSearchTimer = setTimeout(loadLogs, 400);
+    }
+
+    function clearLogSearch() {
+      document.getElementById('logSearch').value = '';
+      document.getElementById('logLevel').value  = '';
+      loadLogs();
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;');
+    }
+
+    // Hook into showSection to start/stop auto-refresh
+    const _origShowSection = showSection;
+    showSection = function(section) {
+      _origShowSection(section);
+      if (section === 'monitoring') {
+        refreshHealth();
+        loadLogFiles().then(() => loadLogs());
+        monitoringInterval = setInterval(refreshHealth, 30000);
+      } else {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+      }
+    };
 
     // ──────────────────────── Init ────────────────────────
 

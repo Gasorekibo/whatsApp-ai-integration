@@ -6,6 +6,7 @@ import bookMeetingHandler from './src/controllers/bookMeeting.js';
 import oauth2Client from './src/utils/auth.js';
 import { handleWebhook } from './src/controllers/whatsappController.js';
 import adminRoutes from './src/routes/admin.js';
+import monitoringRoutes from './src/routes/monitoring.js';
 import paymentWebhookHandler from './src/helpers/paymentWebhookHandler.js';
 import syncServicesHandler from './src/helpers/syncServicesHandler.js';
 import googleSheetsWebhookHandler from './src/helpers/googleSheetsWebhookHandler.js';
@@ -41,6 +42,7 @@ app.use(express.static('src/public'));
 // API Routes
 app.post('/api/chat/book', bookMeetingHandler);
 app.use('/api/outreach', adminRoutes);
+app.use('/api/outreach/monitoring', monitoringRoutes);
 app.use('/api', knowledgeBaseRoutes); // RAG knowledge base routes
 
 // WhatsApp Webhook
