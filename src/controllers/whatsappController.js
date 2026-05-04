@@ -262,6 +262,7 @@ const handleWebhook = async (req, res) => {
     }); // end transaction
 
   } catch (err) {
+    console.error('WhatsApp webhook error', err);
     logger.error('WhatsApp webhook error', { requestId, error: err.message, stack: err.stack, errorType: err.constructor.name });
     try {
       const from = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
