@@ -267,7 +267,7 @@ app.use((err, req, res, next) => {
 
     // Start server
     app.listen(PORT, () => {
-      console.log('Server started successfuly')
+      console.log('Server started successfuly'+ PORT)
       logger.info('Server started successfully', {
         port: PORT,
         nodeEnv: process.env.NODE_ENV || 'development',

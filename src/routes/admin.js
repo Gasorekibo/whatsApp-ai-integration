@@ -64,7 +64,6 @@ router.get('/services', async (req, res) => {
 router.get('/clients', async (req, res) => {
   try {
     const clients = await dbConfig.db.Client?.findAll({ order: [['createdAt', 'DESC']] });
-    console.log('Fetched clients:', clients);
     res.json({ clients: clients || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
