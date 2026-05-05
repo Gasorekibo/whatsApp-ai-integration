@@ -2385,7 +2385,7 @@
 
     async function refreshHealth() {
       try {
-        const data = await fetch('/api/outreach/monitoring/health').then(r => r.json());
+        const data = await fetch('/ai/api/outreach/monitoring/health').then(r => r.json());
 
         // Status pill
         const pill = document.getElementById('healthStatusPill');
