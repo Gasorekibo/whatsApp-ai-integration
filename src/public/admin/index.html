@@ -2429,7 +2429,7 @@
 
     async function loadLogFiles() {
       try {
-        const data = await fetch('/api/outreach/monitoring/logs/files').then(r => r.json());
+        const data = await fetch('/ai/api/outreach/monitoring/logs/files').then(r => r.json());
         const prefix = logCategory === 'payment' ? 'payments'
                      : logCategory === 'api-calls' ? 'api-calls'
                      : logCategory;
