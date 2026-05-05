@@ -1,18 +1,5 @@
 import dotenv from 'dotenv';
 dotenv.config();
-
-/**
- * RAG Configuration for WhatsApp Chatbot
- * Defines settings for vector database, embeddings, and retrieval
- * 
- * CHANGELOG:
- * - Fixed embedding dimensions (3072 -> 768)
- * - Added retry configuration
- * - Added hybrid search support
- * - Added reranking configuration
- * - Improved error handling settings
- */
-
 export default {
     // Vector Database Configuration
     vectorDB: {
@@ -23,44 +10,38 @@ export default {
             apiKey: process.env.PINECON_API_KEY || process.env.PINECONE_API_KEY,
             environment: process.env.PINECONE_ENVIRONMENT || 'us-east-1',
             indexName: process.env.PINECON_INDEX_NAME || process.env.PINECONE_INDEX_NAME || 'moyo-tech-chatbot',
-            dimensions: 768, // FIXED: gemini-embedding-001 produces 768-dimensional vectors, NOT 3072
+            dimensions: 768, 
             metric: 'cosine',
             cloud: 'aws',
             region: 'us-east-1',
-            
-            // Connection pool settings
             maxRetries: 3,
-            retryDelay: 1000, // Base delay in ms
-            timeout: 30000, // 30 seconds
-            
-            // Batch settings
+            retryDelay: 1000, 
+            timeout: 30000, 
             maxBatchSize: 100,
             upsertBatchSize: 100
         }
     },
-
-    // Embedding Configuration
     embedding: {
         provider: 'gemini',
-        model: process.env.EMBEDDING_MODEL || 'gemini-embedding-001', // Updated to newer model
-        dimensions: 768, // FIXED: Correct dimension for Gemini embeddings
-        batchSize: 50, // Reduced from 100 to be safer with API limits
-        maxConcurrentBatches: 3, // Process max 3 batches concurrently
+        model: process.env.EMBEDDING_MODEL || 'gemini-embedding-001', 
+        dimensions: 768,
+        batchSize: 50, 
+        maxConcurrentBatches: 3,
         
         // Retry configuration
         maxRetries: 3,
         retryDelay: 1000,
-        retryBackoffMultiplier: 2, // Exponential backoff
+        retryBackoffMultiplier: 2, 
         
         // Rate limiting
-        rateLimitPerMinute: 1500, // Gemini API limit
-        requestsPerSecond: 15, // Conservative rate limiting
+        rateLimitPerMinute: 1500, 
+        requestsPerSecond: 15, 
         
         cache: {
             enabled: true,
-            ttl: 86400, // 24 hours
-            maxKeys: 5000, // Increased from 1000
-            useHashForLongKeys: true, // Hash keys longer than 200 chars
+            ttl: 86400, 
+            maxKeys: 5000, 
+            useHashForLongKeys: true, 
             hashKeyThreshold: 200
         },
         taskType: 'RETRIEVAL_DOCUMENT',
@@ -69,7 +50,7 @@ export default {
 
     // Retrieval Configuration
     retrieval: {
-        topK: 8, // Increased from 5 for better recall
+        topK: 8, 
         minScore: 0.30, // Similarity threshold (0-1)
 	maxContextChunks: 5,
         includeMetadata: true,
