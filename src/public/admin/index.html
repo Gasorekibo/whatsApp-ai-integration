@@ -2207,7 +2207,7 @@
       container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
 
       try {
-        const url = clientId ? `/api/outreach/services?clientId=${clientId}` : '/api/outreach/services';
+        const url = clientId ? `/ai/api/outreach/services?clientId=${clientId}` : '/ai/api/outreach/services';
         const res  = await fetch(url);
         const data = await res.json();
         displayServices(data, clientId);
@@ -2473,7 +2473,7 @@
         '<div class="log-empty" style="color:#F97316">⏳ Loading logs…</div>';
 
       try {
-        const data = await fetch(`/api/outreach/monitoring/logs?${params}`).then(r => r.json());
+        const data = await fetch(`/ai/api/outreach/monitoring/logs?${params}`).then(r => r.json());
 
         // Summary chips
         const lc = data.levelCounts || {};
