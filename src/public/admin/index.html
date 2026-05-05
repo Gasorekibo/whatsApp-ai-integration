@@ -1670,11 +1670,11 @@
     async function fetchData() {
       try {
         const [usersRes, servicesRes, appointmentsRes, clientsRes, employeesRes] = await Promise.all([
-          fetch(`/api/outreach/users`),
-          fetch(`/api/outreach/services`),
-          fetch(`/api/outreach/appointments`),
-          fetch(`/api/outreach/clients`),
-          fetch(`/api/outreach/employees`)
+          fetch(`/ai/api/outreach/users`),
+          fetch(`/ai/api/outreach/services`),
+          fetch(`/ai/api/outreach/appointments`),
+          fetch(`/ai/api/outreach/clients`),
+          fetch(`/ai/api/outreach/employees`)
         ]);
 
         cachedData.users        = await usersRes.json();
