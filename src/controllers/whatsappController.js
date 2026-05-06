@@ -1,11 +1,12 @@
 import i18next from '../config/i18n.js';
-import googlesheets from '../utils/googlesheets.js';
 import dbConfig from '../models/index.js';
 import { Op } from 'sequelize';
 import dotenv from 'dotenv';
 import logger from '../logger/logger.js';
 import ragService from '../services/rag.service.js';
-import { redisSetNx } from '../utils/redis.js';
+import { redisSetNx, redisGet, redisSet } from '../utils/redis.js';
+
+const SERVICES_CACHE_TTL = 60 * 60;
 
 import { extractWebhookPayload } from '../utils/extractors.js';
 import { resolveClient } from '../services/clientService.js';
@@ -139,11 +140,28 @@ const handleWebhook = async (req, res) => {
         const trulyNewUser = isNewUser && (!session.history || session.history.length === 0);
 
         if (trulyNewUser) {
-          logger.whatsapp('info', 'Sending welcome message to new user', { requestId, from: `***${from.slice(-4)}` });
+          logger.whatsapp('info', 'New user — generating personalised welcome', { requestId, from: `***${from.slice(-4)}` });
           locale = await ragService.detectLanguage(originalText, []);
-          await sendServiceList(from, locale, client);
+          const userName = contact?.profile?.name || null;
+
+          const welcomeResponse = await processAI({
+            client, from,
+            message: msg.text.body,
+            history: [],
+            userEmail: null,
+            language: locale,
+            isNewUser: true,
+            userName,
+          });
+
+          if (welcomeResponse.showServices) {
+            await sendServiceList(from, locale, client);
+          } else if (welcomeResponse.reply) {
+            await send(from, welcomeResponse.reply);
+          }
+
           session.history.push({ role: 'user',  content: msg.text.body, language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: welcomeResponse.reply || 'Welcome sent', language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
           return;
@@ -196,8 +214,14 @@ const handleWebhook = async (req, res) => {
 
         logger.whatsapp('info', 'Interactive list selection received', { requestId, from: `***${from.slice(-4)}`, selectedId, selectedTitle });
 
-        const services = await googlesheets.getActiveServices(clientId);
-        const service  = services.find(s => s.id === selectedId);
+        const svcKey   = `services:${clientId}`;
+        let   services = await redisGet(svcKey);
+        if (!services?.length) {
+          const namespace = client?.pineconeIndex || clientId || 'default';
+          services = await ragService.getServicesFromIndex(namespace);
+          if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
+        }
+        const service  = services?.find(s => s.id === selectedId);
 
         if (service) {
           const historyLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
