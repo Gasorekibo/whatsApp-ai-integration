@@ -1670,11 +1670,11 @@
     async function fetchData() {
       try {
         const [usersRes, servicesRes, appointmentsRes, clientsRes, employeesRes] = await Promise.all([
-          fetch(`/ai/api/outreach/users`),
-          fetch(`/ai/api/outreach/services`),
-          fetch(`/ai/api/outreach/appointments`),
-          fetch(`/ai/api/outreach/clients`),
-          fetch(`/ai/api/outreach/employees`)
+          fetch(`/api/outreach/users`),
+          fetch(`/api/outreach/services`),
+          fetch(`/api/outreach/appointments`),
+          fetch(`/api/outreach/clients`),
+          fetch(`/api/outreach/employees`)
         ]);
 
         cachedData.users        = await usersRes.json();
@@ -2207,7 +2207,7 @@
       container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
 
       try {
-        const url = clientId ? `/ai/api/outreach/services?clientId=${clientId}` : '/ai/api/outreach/services';
+        const url = clientId ? `/api/outreach/services?clientId=${clientId}` : '/api/outreach/services';
         const res  = await fetch(url);
         const data = await res.json();
         displayServices(data, clientId);
@@ -2385,7 +2385,7 @@
 
     async function refreshHealth() {
       try {
-        const data = await fetch('/ai/api/outreach/monitoring/health').then(r => r.json());
+        const data = await fetch('/api/outreach/monitoring/health').then(r => r.json());
 
         // Status pill
         const pill = document.getElementById('healthStatusPill');
@@ -2429,7 +2429,7 @@
 
     async function loadLogFiles() {
       try {
-        const data = await fetch('/ai/api/outreach/monitoring/logs/files').then(r => r.json());
+        const data = await fetch('/api/outreach/monitoring/logs/files').then(r => r.json());
         const prefix = logCategory === 'payment' ? 'payments'
                      : logCategory === 'api-calls' ? 'api-calls'
                      : logCategory;
@@ -2473,7 +2473,7 @@
         '<div class="log-empty" style="color:#F97316">⏳ Loading logs…</div>';
 
       try {
-        const data = await fetch(`/ai/api/outreach/monitoring/logs?${params}`).then(r => r.json());
+        const data = await fetch(`/api/outreach/monitoring/logs?${params}`).then(r => r.json());
 
         // Summary chips
         const lc = data.levelCounts || {};
