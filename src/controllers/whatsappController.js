@@ -5,6 +5,7 @@ import { Op } from 'sequelize';
 import dotenv from 'dotenv';
 import logger from '../logger/logger.js';
 import ragService from '../services/rag.service.js';
+import { redisSetNx } from '../utils/redis.js';
 
 import { extractWebhookPayload } from '../utils/extractors.js';
 import { resolveClient } from '../services/clientService.js';
@@ -64,14 +65,22 @@ const handleWebhook = async (req, res) => {
       });
     }
 
+    // ── Redis fast-path dedup — avoids opening a DB transaction for duplicates ──
+    const clientId = client?.id || null;
+    const dedupKey = `msgdedup:${messageId}:${clientId ?? 'null'}`;
+    const redisDedup = await redisSetNx(dedupKey, '1', 300); // 5-min TTL
+    if (redisDedup === false) {
+      logger.whatsapp('info', 'Deduplication: message already processed (Redis)', { requestId, messageId });
+      return;
+    }
+    // null → Redis unavailable, fall through to DB dedup below
+
     // Helper bound to this request's client so call sites stay clean
     const send = (to, message) => sendMessage({ client, to, message });
 
     await dbConfig.db.sequelize.transaction(async (t) => {
 
-      const clientId = client?.id || null;
-
-      // 1. Strict message deduplication — scoped per client
+      // 1. DB deduplication — backup for when Redis is unavailable
       try {
         const [, created] = await dbConfig.db.ProcessedMessage.findOrCreate({
           where:    { messageId, clientId },
@@ -274,13 +283,21 @@ const handleWebhook = async (req, res) => {
   }
 };
 
-// Cleanup old sessions hourly
+// Cleanup old sessions hourly — distributed lock prevents duplicate work across instances
 setInterval(async () => {
+  const lockAcquired = await redisSetNx('lock:session-cleanup', '1', 120); // 2-min lock
+  if (lockAcquired === false) {
+    logger.info('Session cleanup skipped: another instance is running it');
+    return;
+  }
+  // null → Redis unavailable, proceed anyway (safe for single-instance deployments)
+
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   try {
     await dbConfig.db.UserSession.destroy({ where: { lastAccess:   { [Op.lt]: cutoff } } });
     await dbConfig.db.ProcessedMessage.destroy({ where: { processedAt: { [Op.lt]: cutoff } } });
     whatsappSessions.clear();
+    logger.info('Session cleanup completed');
   } catch (err) {
     logger.error('Session cleanup error', { error: err.message });
   }

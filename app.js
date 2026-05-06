@@ -22,6 +22,7 @@ import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/consta
 import { verifyWebhook } from './src/helpers/whatsapp/verifyWebHook.js';
 import { syncServicesMicrosoftHandler } from './src/utils/syncServicesMicrosoftHandler.js';
 import logger from './src/logger/logger.js';
+import { connectRedis, disconnectRedis } from './src/utils/redis.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -267,6 +268,8 @@ app.use((err, req, res, next) => {
     await dbConfig.syncDatabase({ alter: false });
     logger.info('Database synced successfully');
 
+    await connectRedis();
+
     // Start server
     app.listen(PORT, () => {
       console.log('Server started successfuly'+ PORT)
@@ -287,37 +290,23 @@ app.use((err, req, res, next) => {
 })();
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, initiating graceful shutdown');
-
+async function gracefulShutdown(signal) {
+  logger.info(`${signal} received, initiating graceful shutdown`);
   try {
-    await dbConfig.db.sequelize.close();
-    logger.info('Database connections closed successfully');
+    await Promise.all([
+      dbConfig.db.sequelize.close(),
+      disconnectRedis(),
+    ]);
+    logger.info('Database and Redis connections closed successfully');
     process.exit(0);
   } catch (error) {
-    logger.error('Error during shutdown', {
-      error: error.message,
-      stack: error.stack
-    });
+    logger.error('Error during shutdown', { error: error.message, stack: error.stack });
     process.exit(1);
   }
-});
+}
 
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, initiating graceful shutdown');
-
-  try {
-    await dbConfig.db.sequelize.close();
-    logger.info('Database connections closed successfully');
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during shutdown', {
-      error: error.message,
-      stack: error.stack
-    });
-    process.exit(1);
-  }
-});
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 export default app;
 

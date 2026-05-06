@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import dbConfig from '../models/index.js';
 import googleSheet from '../utils/googlesheets.js';
 import logger from '../logger/logger.js';
+import { redisDel } from '../utils/redis.js';
 dotenv.config();
 
 async function googleSheetsWebhookHandler(req, res) {
@@ -29,6 +30,11 @@ async function googleSheetsWebhookHandler(req, res) {
 
     const token  = employee.getDecryptedToken();
     const result = await googleSheet.syncServicesFromSheet(sheetId, token, clientId);
+
+    // Invalidate the services cache so processWithGemini picks up the new data
+    const cacheClientId = clientId || employee.clientId;
+    if (cacheClientId) await redisDel(`services:${cacheClientId}`);
+
     res.json(result);
 
   } catch (error) {

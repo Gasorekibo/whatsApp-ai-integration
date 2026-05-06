@@ -7,6 +7,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { whatsappSessions } from '../../controllers/whatsappController.js';
 import logger from '../../logger/logger.js';
 import ragService from '../../services/rag.service.js';
+import { redisGet, redisSet } from '../../utils/redis.js';
+
+const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
 
 dotenv.config();
 
@@ -106,7 +109,15 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     };
 
     // ── Services (always needed for the menu / AI context) ────────────────
-    const services     = await googleSheets.getActiveServices(clientId);
+    const servicesKey = `services:${clientId}`;
+    let services = await redisGet(servicesKey);
+    if (!services) {
+      services = await googleSheets.getActiveServices(clientId);
+      await redisSet(servicesKey, services, SERVICES_CACHE_TTL);
+      logger.debug('Services list cached in Redis', { clientId });
+    } else {
+      logger.debug('Services list served from Redis cache', { clientId });
+    }
     const servicesList = services.map(s => `• ${s.name}${s.details ? ' - ' + s.details : ''}`).join('\n');
 
     // ── Tool definitions ──────────────────────────────────────────────────
