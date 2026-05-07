@@ -183,7 +183,7 @@ class RAGService {
     async _classifyWithLLM(message, history = []) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: "gemini-2.0-flash"
+                model: "gemini-2.5-flash"
             });
 
             const categories = this.intentConfig.categories.join(', ');
@@ -348,7 +348,7 @@ JSON Output:`;
     try {
         // 1. Initialize the model with System Instructions
         const model = embeddingService.genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             systemInstruction: "You are a language detection API. Identify if the message is primarily in English (en), French (fr), Kinyarwanda (rw), Swahili (sw), or German (de). Output ONLY the two-letter ISO code. For mixed-language messages (e.g., Kinyarwanda with English time formats), identify the DOMINANT non-English language. Only output 'en' if the message is clearly and primarily in English. Do not provide explanations.",
         });
 
@@ -760,6 +760,42 @@ JSON Output:`;
     }
 
     /**
+     * Query Pinecone for service documents and return structured service list.
+     * Used as single source of truth for services — no Content table needed.
+     * @param {string} namespace - Pinecone namespace (clientId or pineconeIndex)
+     * @returns {Promise<Array<{id,name,short,details}>>}
+     */
+    async getServicesFromIndex(namespace = 'default') {
+        try {
+            await this.initialize();
+            const queryEmbedding = await embeddingService.generateEmbedding(
+                'list all available services offered',
+                'RETRIEVAL_QUERY'
+            );
+            const results = await vectorDBService.searchSimilar(
+                queryEmbedding, 30, { type: 'service' }, namespace
+            );
+            const seen = new Set();
+            return results
+                .filter(r => r.metadata?.service_name)
+                .filter(r => {
+                    if (seen.has(r.metadata.service_name)) return false;
+                    seen.add(r.metadata.service_name);
+                    return true;
+                })
+                .map(r => ({
+                    id:      r.metadata.service_id || r.id,
+                    name:    r.metadata.service_name,
+                    short:   r.metadata.service_name,
+                    details: r.metadata.category || ''
+                }));
+        } catch (error) {
+            logger.warn('getServicesFromIndex failed', { namespace, error: error.message });
+            return [];
+        }
+    }
+
+    /**
      * Build augmented prompt with retrieved context
      * @param {object} retrievedData - Data from retrieveContext
      * @param {string} userMessage - Current user message
@@ -795,6 +831,13 @@ JSON Output:`;
         if (dynamicData.depositInfo) {
             parts.push('=== DEPOSIT REQUIREMENT ===');
             parts.push(dynamicData.depositInfo);
+            parts.push('');
+        }
+
+        // First-time user welcome instructions (must come after context so AI has company info)
+        if (dynamicData.welcomeContext) {
+            parts.push('=== FIRST-TIME USER WELCOME ===');
+            parts.push(dynamicData.welcomeContext);
             parts.push('');
         }
 
@@ -841,6 +884,9 @@ CORE RULES:
 - Keep responses concise (2-4 sentences) unless more detail is needed
 - Be warm, professional, and customer-focused
 - ${intentGuidance}
+- You are mid-conversation: always read the full conversation history before replying
+- If the user's message is a follow-up (e.g. "okay", "yes", "tell me more"), respond in the context of what was just discussed — do NOT start a fresh greeting
+- ONLY answer topics related to ${companyName} and its services. If the user asks something unrelated (e.g. personal questions, weather, politics), politely redirect: "I'm here to help with ${companyName} services. How can I assist you?"
 
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:
@@ -863,7 +909,7 @@ If information is not available, politely say so and offer to help with somethin
     async _translateQueryToEnglish(query, language) {
         try {
             const model = embeddingService.genAI.getGenerativeModel({
-                model: 'gemini-2.0-flash'
+                model: 'gemini-2.5-flash'
             });
 
             const result = await this._geminiWithRetry(

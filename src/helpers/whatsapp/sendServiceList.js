@@ -1,10 +1,13 @@
-import googleSheet from '../../utils/googlesheets.js';
 import { sendWhatsAppMessage } from './sendWhatsappMessage.js';
 import dotenv from 'dotenv';
 import logger from '../../logger/logger.js';
 dotenv.config();
 import i18next from '../../config/i18n.js';
 import translationService from '../../services/translation.service.js';
+import { redisGet, redisSet } from '../../utils/redis.js';
+import ragService from '../../services/rag.service.js';
+
+const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
 
 export async function sendServiceList(to, locale = 'en', client = null) {
   const clientId      = client?.id || null;
@@ -17,8 +20,16 @@ export async function sendServiceList(to, locale = 'en', client = null) {
     throw new Error('Client WhatsApp credentials are not configured');
   }
 
-  let services = await googleSheet.getActiveServices(clientId);
-  services = await translationService.translateServices(services, locale);
+  // RAG (Pinecone) is the single source of truth — no Content table dependency
+  const namespace  = client?.pineconeIndex || clientId || 'default';
+  const servicesKey = `services:${clientId}`;
+
+  let services = await redisGet(servicesKey);
+  if (!services?.length) {
+    services = await ragService.getServicesFromIndex(namespace);
+    if (services?.length) await redisSet(servicesKey, services, SERVICES_CACHE_TTL);
+  }
+  services = await translationService.translateServices(services || [], locale);
 
   const t = i18next.getFixedT(locale);
 
