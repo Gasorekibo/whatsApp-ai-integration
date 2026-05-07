@@ -1,5 +1,6 @@
 import { DataTypes } from 'sequelize';
 import CryptoJS from 'crypto-js';
+import bcrypt from 'bcryptjs';
 
 export const SUBSCRIPTION_PLANS = {
   MESSAGE_ONLY:       'message_only',
@@ -249,6 +250,11 @@ export default (sequelize) => {
       allowNull: false,
       defaultValue: true
     },
+    password: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'bcrypt-hashed portal login password; null = portal access disabled'
+    },
     metadata: {
       type: DataTypes.JSONB,
       allowNull: true,
@@ -266,6 +272,7 @@ export default (sequelize) => {
         if (client.flutterwaveWebhookSecret) client.flutterwaveWebhookSecret = encrypt(client.flutterwaveWebhookSecret);
         if (client.microsoftClientSecret) client.microsoftClientSecret = encrypt(client.microsoftClientSecret);
         if (client.confluenceApiToken)    client.confluenceApiToken    = encrypt(client.confluenceApiToken);
+        if (client.password)              client.password              = bcrypt.hashSync(client.password, 10);
 
         if (!client.trialEndDate) {
           const trialEnd = new Date();
@@ -277,6 +284,7 @@ export default (sequelize) => {
       beforeUpdate: (client) => {
         const encrypted = ['whatsappToken','geminiApiKey','pineconeApiKey','flutterwaveSecretKey','flutterwaveWebhookSecret','microsoftClientSecret','confluenceApiToken'];
         encrypted.forEach(f => { if (client.changed(f) && client[f]) client[f] = encrypt(client[f]); });
+        if (client.changed('password') && client.password) client.password = bcrypt.hashSync(client.password, 10);
         if (client.changed('subscriptionPlan') || client.changed('subscriptionStatus')) {
           if (client.subscriptionStatus === SUBSCRIPTION_STATUS.ACTIVE && !client.subscriptionStartDate) {
             client.subscriptionStartDate = new Date();
@@ -343,6 +351,12 @@ export default (sequelize) => {
   Client.prototype.incrementMessageCount = async function () {
     this.messageCount += 1;
     await this.save();
+  };
+
+  Client.prototype.toJSON = function () {
+    const values = Object.assign({}, this.get());
+    delete values.password;
+    return values;
   };
 
   return Client;

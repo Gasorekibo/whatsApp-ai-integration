@@ -637,9 +637,63 @@
     }
     .date-chip:hover  { background: #F97316; color: white; }
     .date-chip.active { background: #F97316; color: white; }
+
+    /* ── Auth ── */
+    body.client-mode .admin-only { display: none !important; }
+
+    #loginScreen {
+      display: none; position: fixed; inset: 0;
+      background: #f1f5f9; z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    #loginScreen.active { display: flex; }
+
+    .login-box {
+      background: white; border-radius: 16px;
+      padding: 40px 36px; width: 100%; max-width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+      text-align: center;
+    }
+    .login-box h2 { color: #F97316; font-size: 26px; margin-bottom: 4px; }
+    .login-box p  { color: #718096; font-size: 13px; margin-bottom: 28px; }
+    .login-box .form-group { text-align: left; margin-bottom: 16px; }
+    .login-box .form-group label { font-size: 13px; font-weight: 600; color: #4a5568; display: block; margin-bottom: 6px; }
+    .login-box .form-group input {
+      width: 100%; padding: 10px 14px; border: 1.5px solid #e2e8f0;
+      border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;
+    }
+    .login-box .form-group input:focus { border-color: #F97316; }
+    .login-box .btn-login {
+      width: 100%; padding: 12px; background: #F97316; color: white;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+      cursor: pointer; margin-top: 8px; transition: background 0.2s;
+    }
+    .login-box .btn-login:hover { background: #EA6C10; }
+    .login-box .btn-login:disabled { background: #fbd38d; cursor: not-allowed; }
+    #loginError { color: #e53e3e; font-size: 13px; margin-top: 10px; min-height: 18px; }
   </style>
 </head>
 <body>
+
+  <!-- ── Login Screen ── -->
+  <div id="loginScreen">
+    <div class="login-box">
+      <h2>MOYOTECH</h2>
+      <p>Sign in to access the admin portal</p>
+      <div class="form-group">
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" placeholder="admin@company.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter') doLogin()">
+      </div>
+      <button class="btn-login" id="loginBtn" onclick="doLogin()">Sign In</button>
+      <div id="loginError"></div>
+    </div>
+  </div>
+
 
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
@@ -658,28 +712,28 @@
       <div class="menu-item active" onclick="showSection('overview')">
         <span class="icon">📊</span> Overview
       </div>
-      <div class="menu-item" onclick="showSection('clients')">
+      <div class="menu-item admin-only" onclick="showSection('clients')">
         <span class="icon">🏢</span> Clients
       </div>
 
       <div class="menu-section">Management</div>
-      <div class="menu-item" onclick="showSection('users')">
+      <div class="menu-item admin-only" onclick="showSection('users')">
         <span class="icon">💬</span> Users
       </div>
       <div class="menu-item" onclick="showSection('services')">
         <span class="icon">⚙️</span> Services
       </div>
-      <div class="menu-item" onclick="showSection('appointments')">
+      <div class="menu-item admin-only" onclick="showSection('appointments')">
         <span class="icon">📅</span> Appointments
       </div>
 
-      <div class="menu-section">Team</div>
-      <div class="menu-item" onclick="showSection('employees')">
+      <div class="menu-section admin-only">Team</div>
+      <div class="menu-item admin-only" onclick="showSection('employees')">
         <span class="icon">👥</span> Employees
       </div>
 
-      <div class="menu-section">System</div>
-      <div class="menu-item" onclick="showSection('monitoring')">
+      <div class="menu-section admin-only">System</div>
+      <div class="menu-item admin-only" onclick="showSection('monitoring')">
         <span class="icon">🖥️</span> Monitoring
       </div>
     </div>
@@ -689,11 +743,12 @@
   <div class="main-content">
 
     <div class="header">
-      <h1>Admin Dashboard</h1>
+      <h1 id="dashboardTitle">Admin Dashboard</h1>
       <div class="header-actions">
-        <button class="btn btn-primary"  onclick="openCreateClientModal()">+ Register Client</button>
-        <button class="btn btn-primary"  onclick="openReminderModal()">📣 Broadcast</button>
-        <button class="btn btn-success"  onclick="openSyncModal()">🔄 Sync Services</button>
+        <span id="loggedInUser" style="font-size:13px;color:#718096;align-self:center;"></span>
+        <button class="btn btn-primary admin-only" onclick="openCreateClientModal()">+ Register Client</button>
+        <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
+        <button class="btn btn-secondary" onclick="doLogout()">Logout</button>
       </div>
     </div>
 
@@ -1227,6 +1282,20 @@
           </div>
         </details>
 
+        <!-- ── Portal Access ── -->
+        <div class="form-section">
+          <div class="form-section-title">Portal Access</div>
+          <div class="form-section-body">
+            <div class="form-group">
+              <label>Portal Password <span style="color:#718096;font-weight:400">(optional — set to allow client login)</span></label>
+              <div class="input-reveal">
+                <input id="newClientPassword" type="password" placeholder="Leave blank to disable portal access">
+                <button type="button" class="btn-reveal" onclick="toggleReveal('newClientPassword',this)">Show</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </form>
 
       <div class="modal-actions">
@@ -1266,6 +1335,20 @@
             <div class="form-group">
               <label>Phone</label>
               <input id="editPhone" type="text" placeholder="+250780000000">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Portal Access ── -->
+      <div class="form-section">
+        <div class="form-section-title">Portal Access</div>
+        <div class="form-section-body">
+          <div class="form-group">
+            <label>New Portal Password <span style="color:#718096;font-weight:400">(blank = keep existing / leave blank to keep unchanged)</span></label>
+            <div class="input-reveal">
+              <input id="editClientPassword" type="password" placeholder="Paste new password to change…">
+              <button type="button" class="btn-reveal" onclick="toggleReveal('editClientPassword',this)">Show</button>
             </div>
           </div>
         </div>
@@ -1640,21 +1723,6 @@
     </div>
   </div>
 
-  <!-- ── Broadcast Modal ── -->
-  <div class="modal" id="reminderModal">
-    <div class="modal-content">
-      <h3>📣 Broadcast Message</h3>
-      <p class="modal-subtitle">Send the <strong>General Message</strong> template to all Zoho CRM contacts.</p>
-      <p style="color:#718096; font-size:13px; margin-top:6px; line-height:1.5">
-        This will notify contacts with basic information about MOYOTECH Solutions.
-      </p>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeReminderModal()">Cancel</button>
-        <button class="btn btn-primary"   onclick="sendReminderBroadcast()">Send Broadcast</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Toast -->
   <div class="toast" id="toast"><span id="toastMessage"></span></div>
 
@@ -1664,18 +1732,110 @@
     let cachedData      = { users: null, services: null, appointments: null, clients: null, employees: null };
     let clientsMap      = {};
     let editingClientId = null;
+    let currentUser     = null;
+
+    // ──────────────────────── Auth ────────────────────────
+
+    function getAuthHeaders() {
+      const token = localStorage.getItem('authToken');
+      return { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+    }
+
+    function getAuthHeadersOnly() {
+      const token = localStorage.getItem('authToken');
+      return token ? { 'Authorization': `Bearer ${token}` } : {};
+    }
+
+    async function authFetch(url, options = {}) {
+      const res = await fetch(url, { ...options, headers: { ...getAuthHeaders(), ...(options.headers || {}) } });
+      if (res.status === 401) { doLogout(); return null; }
+      return res;
+    }
+
+    async function doLogin() {
+      const email    = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const errEl    = document.getElementById('loginError');
+      const btn      = document.getElementById('loginBtn');
+      errEl.textContent = '';
+      if (!email || !password) { errEl.textContent = 'Email and password are required'; return; }
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('authToken', data.token);
+          currentUser = data;
+          document.getElementById('loginScreen').classList.remove('active');
+          setupDashboard();
+          fetchData();
+        } else {
+          errEl.textContent = data.error || 'Login failed';
+        }
+      } catch { errEl.textContent = 'Network error — could not connect'; }
+      finally { btn.disabled = false; btn.textContent = 'Sign In'; }
+    }
+
+    function doLogout() {
+      localStorage.removeItem('authToken');
+      currentUser = null;
+      document.body.classList.remove('client-mode');
+      document.getElementById('loginScreen').classList.add('active');
+      document.getElementById('loginEmail').value    = '';
+      document.getElementById('loginPassword').value = '';
+      document.getElementById('loginError').textContent = '';
+    }
+
+    function setupDashboard() {
+      if (!currentUser) return;
+      document.getElementById('loggedInUser').textContent = currentUser.name || currentUser.email || '';
+      if (currentUser.role === 'client') {
+        document.body.classList.add('client-mode');
+        document.getElementById('dashboardTitle').textContent = `Welcome, ${currentUser.name}`;
+        // Navigate client straight to Services
+        const firstMenuItem = document.querySelector('.menu-item:not(.admin-only)');
+        if (firstMenuItem) firstMenuItem.click();
+      }
+    }
+
+    function checkAuthOnLoad() {
+      const token = localStorage.getItem('authToken');
+      if (!token) { document.getElementById('loginScreen').classList.add('active'); return; }
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp < Date.now() / 1000) { doLogout(); return; }
+        currentUser = { token, role: payload.role, clientId: payload.clientId, name: payload.name, email: payload.email };
+        setupDashboard();
+        fetchData();
+      } catch { doLogout(); }
+    }
 
     // ──────────────────────── Data Fetching ────────────────────────
 
     async function fetchData() {
       try {
+        if (currentUser?.role === 'client') {
+          const servicesRes = await authFetch(`/api/outreach/services?clientId=${currentUser.clientId}`);
+          if (!servicesRes) return;
+          cachedData.services = await servicesRes.json();
+          populateServicesClientFilter();
+          loadServicesForClient();
+          return;
+        }
+
+        // Admin fetches everything
         const [usersRes, servicesRes, appointmentsRes, clientsRes, employeesRes] = await Promise.all([
-          fetch(`/api/outreach/users`),
-          fetch(`/api/outreach/services`),
-          fetch(`/api/outreach/appointments`),
-          fetch(`/api/outreach/clients`),
-          fetch(`/api/outreach/employees`)
+          authFetch(`/api/outreach/users`),
+          authFetch(`/api/outreach/services`),
+          authFetch(`/api/outreach/appointments`),
+          authFetch(`/api/outreach/clients`),
+          authFetch(`/api/outreach/employees`)
         ]);
+        if (!usersRes) return; // 401 → logged out
 
         cachedData.users        = await usersRes.json();
         cachedData.services     = await servicesRes.json();
@@ -1886,17 +2046,18 @@
         microsoftDriveId: _gv('newMicrosoftDriveId'), microsoftItemId: _gv('newMicrosoftItemId'),
         confluenceBaseUrl: _gv('newConfluenceBaseUrl'), confluenceEmail: _gv('newConfluenceEmail'),
         confluenceApiToken: _gv('newConfluenceApiToken'), confluenceSpaceKey: _gv('newConfluenceSpaceKey'),
+        password: _gv('newClientPassword'),
       };
       Object.entries(optional).forEach(([k, v]) => { if (v) payload[k] = v; });
       if (depositRaw) payload.depositAmount      = parseInt(depositRaw, 10);
       if (maxMsgRaw)  payload.maxMonthlyMessages = parseInt(maxMsgRaw, 10);
 
       try {
-        const res = await fetch(`/api/outreach/clients`, {
+        const res = await authFetch(`/api/outreach/clients`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (!res) return;
         const result = await res.json();
         if (res.ok) {
           closeCreateClientModal();
@@ -1943,6 +2104,8 @@
       document.getElementById('editMaxMessages').value        = c.maxMonthlyMessages ?? '';
       document.getElementById('editSubEnd').value             = c.subscriptionEndDate
         ? new Date(c.subscriptionEndDate).toISOString().split('T')[0] : '';
+      // Portal
+      document.getElementById('editClientPassword').value     = '';
       // AI
       document.getElementById('editGeminiKey').value          = '';
       // Payments
@@ -2021,7 +2184,7 @@
         confluenceEmail:    _gv('editConfluenceEmail')    || null,
         confluenceSpaceKey: _gv('editConfluenceSpaceKey') || null,
       };
-      // Encrypted fields — only send if the user typed a new value
+      // Encrypted / sensitive fields — only send if the user typed a new value
       const secrets = {
         whatsappToken:          'editWaToken',
         geminiApiKey:           'editGeminiKey',
@@ -2030,17 +2193,18 @@
         pineconeApiKey:         'editPineconeApiKey',
         microsoftClientSecret:  'editMicrosoftClientSecret',
         confluenceApiToken:     'editConfluenceApiToken',
+        password:               'editClientPassword',
       };
       Object.entries(secrets).forEach(([field, id]) => {
         const v = _gv(id); if (v) updates[field] = v;
       });
 
       try {
-        const res = await fetch(`/api/outreach/clients/${editingClientId}`, {
+        const res = await authFetch(`/api/outreach/clients/${editingClientId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates)
         });
+        if (!res) return;
         const result = await res.json();
         if (res.ok) {
           closeEditClientModal();
@@ -2058,12 +2222,11 @@
     async function resetClientMessages() {
       if (!editingClientId) return;
       try {
-        const res = await fetch(`/api/outreach/clients/${editingClientId}`, {
+        const res = await authFetch(`/api/outreach/clients/${editingClientId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messageCount: 0 })
         });
-        if (res.ok) showToast('Message count reset to 0', 'success');
+        if (res?.ok) showToast('Message count reset to 0', 'success');
         else showToast('Failed to reset message count', 'error');
         await fetchData();
       } catch { showToast('Network error', 'error'); }
@@ -2109,6 +2272,18 @@
 
     function populateSyncClientSelect(preselectedId = '') {
       const sel = document.getElementById('syncClientId');
+      if (currentUser?.role === 'client') {
+        // Client can only sync their own data — lock the select
+        sel.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = currentUser.clientId;
+        opt.textContent = currentUser.name;
+        opt.selected = true;
+        sel.appendChild(opt);
+        sel.disabled = true;
+        return;
+      }
+      sel.disabled = false;
       sel.innerHTML = '<option value="">— Select a client —</option>';
       (cachedData.clients?.clients || []).forEach(c => {
         const opt = document.createElement('option');
@@ -2138,12 +2313,12 @@
       const card = document.getElementById(cardId);
       card.classList.add('syncing');
       try {
-        const res = await fetch(endpoint, {
+        const res = await authFetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clientId }),
           signal: AbortSignal.timeout(120000)
         });
+        if (!res) return; // 401 → logged out
         const result = await res.json().catch(() => ({}));
         if (res.ok) {
           const count = result.count != null ? ` (${result.count} chunks)` : '';
@@ -2321,26 +2496,6 @@
       document.getElementById('sidebarOverlay').classList.toggle('active');
     }
 
-    // ──────────────────────── Broadcast ────────────────────────
-
-    function openReminderModal()  { document.getElementById('reminderModal').classList.add('active'); }
-    function closeReminderModal() { document.getElementById('reminderModal').classList.remove('active'); }
-
-    async function sendReminderBroadcast() {
-      closeReminderModal();
-      try {
-        const res = await fetch(`/api/outreach/template`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateName: 'mconsultation_reminder' })
-        });
-        const result = await res.json();
-        if (res.ok) showToast(`Message sent to ${result.sent || result.count || 'all'} contacts`, 'success');
-        else showToast(result.error || 'Failed to send broadcast', 'error');
-        fetchData();
-      } catch { showToast('Network error – could not send broadcast', 'error'); }
-    }
-
     // ──────────────────────── Helpers ────────────────────────
 
     function showDsTab(prefix, tab, btn) {
@@ -2366,7 +2521,7 @@
     }
 
     // Click-outside to close modals
-    ['syncModal', 'reminderModal', 'createClientModal', 'editClientModal', 'calendarConnectModal'].forEach(id => {
+    ['syncModal', 'createClientModal', 'editClientModal', 'calendarConnectModal'].forEach(id => {
       document.getElementById(id).addEventListener('click', e => {
         if (e.target === e.currentTarget) {
           e.currentTarget.classList.remove('active');
@@ -2385,7 +2540,7 @@
 
     async function refreshHealth() {
       try {
-        const data = await fetch('/api/outreach/monitoring/health').then(r => r.json());
+        const data = await fetch('/api/outreach/monitoring/health', { headers: getAuthHeadersOnly() }).then(r => r.json());
 
         // Status pill
         const pill = document.getElementById('healthStatusPill');
@@ -2429,7 +2584,7 @@
 
     async function loadLogFiles() {
       try {
-        const data = await fetch('/api/outreach/monitoring/logs/files').then(r => r.json());
+        const data = await fetch('/api/outreach/monitoring/logs/files', { headers: getAuthHeadersOnly() }).then(r => r.json());
         const prefix = logCategory === 'payment' ? 'payments'
                      : logCategory === 'api-calls' ? 'api-calls'
                      : logCategory;
@@ -2473,7 +2628,7 @@
         '<div class="log-empty" style="color:#F97316">⏳ Loading logs…</div>';
 
       try {
-        const data = await fetch(`/api/outreach/monitoring/logs?${params}`).then(r => r.json());
+        const data = await fetch(`/api/outreach/monitoring/logs?${params}`, { headers: getAuthHeadersOnly() }).then(r => r.json());
 
         // Summary chips
         const lc = data.levelCounts || {};
@@ -2564,7 +2719,7 @@
 
     // ──────────────────────── Init ────────────────────────
 
-    fetchData();
+    checkAuthOnLoad();
   </script>
 </body>
 </html>
