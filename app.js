@@ -7,6 +7,8 @@ import oauth2Client from './src/utils/auth.js';
 import { handleWebhook } from './src/controllers/whatsappController.js';
 import adminRoutes from './src/routes/admin.js';
 import monitoringRoutes from './src/routes/monitoring.js';
+import authRoutes from './src/routes/auth.js';
+import { authenticate, requireAdmin } from './src/middlewares/auth.js';
 import paymentWebhookHandler from './src/helpers/paymentWebhookHandler.js';
 import syncServicesHandler from './src/helpers/syncServicesHandler.js';
 import googleSheetsWebhookHandler from './src/helpers/googleSheetsWebhookHandler.js';
@@ -40,11 +42,16 @@ app.use(morgan('dev'));
 // Static files
 app.use(express.static('src/public'));
 
-// API Routes
+// Public API routes
 app.post('/api/chat/book', bookMeetingHandler);
-app.use('/api/outreach', adminRoutes);
-app.use('/api/outreach/monitoring', monitoringRoutes);
-app.use('/api', knowledgeBaseRoutes); // RAG knowledge base routes
+app.use('/api/auth', authRoutes);
+app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler); // Google Sheets push (no auth)
+
+// Auth-protected routes
+// Monitoring first (more specific prefix) to avoid double authenticate on /api/outreach
+app.use('/api/outreach/monitoring', authenticate, requireAdmin, monitoringRoutes);
+app.use('/api/outreach', authenticate, adminRoutes);  // services: admin+client; rest: admin only
+app.use('/api', authenticate, knowledgeBaseRoutes);   // KB sync: admin+client (scope enforced in router)
 
 // WhatsApp Webhook
 app.get('/webhook', verifyWebhook);
@@ -195,10 +202,9 @@ app.post('/webhook/flutterwave', express.json(), paymentWebhookHandler);
 app.get('/payment-success', successfulPaymentPageHandler);
 app.post('/calendar-data', calendarDataHandler);
 
-// Google Sheets Sync
-app.post('/api/sync-services', syncServicesHandler);
-app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler);
-// Legacy GET kept for backward-compat; real sync now goes through POST /api/kb/sync/microsoft
+// Google Sheets legacy sync (protected — admin or authenticated client)
+app.post('/api/sync-services', authenticate, syncServicesHandler);
+// Legacy redirect for Microsoft sync
 app.get('/api/sync-services/microsoft', (req, res) => {
   res.status(301).json({ message: 'Use POST /api/kb/sync/microsoft with { clientId } in body' });
 });
@@ -266,13 +272,18 @@ app.use((err, req, res, next) => {
   try {
     logger.info('Initializing database connection');
     await dbConfig.syncDatabase({ alter: false });
+
+    // Add new columns that don't exist yet without touching existing schema
+    await dbConfig.db.sequelize.query(`
+      ALTER TABLE clients ADD COLUMN IF NOT EXISTS password TEXT;
+    `);
+
     logger.info('Database synced successfully');
 
     await connectRedis();
 
     // Start server
     app.listen(PORT, () => {
-      console.log('Server started successfuly'+ PORT)
       logger.info('Server started successfully', {
         port: PORT,
         nodeEnv: process.env.NODE_ENV || 'development',

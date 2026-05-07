@@ -13,26 +13,22 @@ async function resolveNamespace(clientId) {
     return client?.pineconeIndex || clientId;
 }
 
-/**
- * Knowledge Base Admin API Routes
- * Provides endpoints for managing the RAG knowledge base
- */
-
-// Middleware for authentication (add your own auth logic)
-const authenticateAdmin = (req, res, next) => {
-    // TODO: Implement proper authentication
-    // For now, using a simple token check
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (token === process.env.ADMIN_API_TOKEN || process.env.NODE_ENV === 'development') {
-        next();
-    } else {
-        res.status(401).json({
-            success: false,
-            message: 'Unauthorized'
-        });
+// Enforce that clients can only sync their own data
+const enforceClientScope = (req, res, next) => {
+    if (req.user?.role === 'client') {
+        const bodyClientId = req.body?.clientId;
+        if (bodyClientId && bodyClientId !== req.user.clientId) {
+            return res.status(403).json({ success: false, message: 'Forbidden: cannot access other client data' });
+        }
+        if (!req.body?.clientId) {
+            req.body = req.body || {};
+            req.body.clientId = req.user.clientId;
+        }
     }
+    next();
 };
+
+router.use(enforceClientScope);
 
 // Sync services from Google Sheets
 router.post('/kb/sync/sheets', async (req, res) => {
@@ -156,7 +152,6 @@ router.post('/kb/sync/confluence', async (req, res) => {
             count
         });
     } catch (error) {
-        console.log(error)
         logger.error('Confluence sync error', { error: error.message });
         res.status(500).json({
             success: false,
@@ -167,7 +162,7 @@ router.post('/kb/sync/confluence', async (req, res) => {
 });
 
 // Add company information documents
-router.post('/kb/company-info', authenticateAdmin, async (req, res) => {
+router.post('/kb/company-info', async (req, res) => {
     try {
         const { documents } = req.body;
 
