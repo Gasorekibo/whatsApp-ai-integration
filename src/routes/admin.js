@@ -154,7 +154,7 @@ router.put('/clients/:id', async (req, res) => {
     await client.save();
 
     // Invalidate cache so next request gets fresh credentials
-    if (client.whatsappBusinessId) invalidateClient(client.whatsappBusinessId);
+    if (client.whatsappBusinessId) await invalidateClient(client.whatsappBusinessId);
 
     res.json({ client });
   } catch (error) {

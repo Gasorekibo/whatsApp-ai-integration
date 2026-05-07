@@ -1,6 +1,4 @@
 import dotenv from 'dotenv';
-import { systemInstruction } from '../../constants/constantMessages.js';
-import googleSheets from '../../utils/googlesheets.js';
 import getCalendarData from '../../utils/getCalendarData.js';
 import dbConfig from '../../models/index.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -23,10 +21,13 @@ function toDisplay(date, timezone) {
 
 // Intents and keywords that require live calendar data
 const BOOKING_INTENTS  = new Set(['booking', 'payment']);
-const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session)\b/i;
+const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm))\b/i;
 
-function needsCalendar(intent, message) {
-  return BOOKING_INTENTS.has(intent) || BOOKING_KEYWORDS.test(message);
+function needsCalendar(intent, message, history = []) {
+  if (BOOKING_INTENTS.has(intent)) return true;
+  if (BOOKING_KEYWORDS.test(message)) return true;
+  // If the recent conversation was about booking, keep loading calendar so context isn't lost
+  return history.slice(-6).some(h => BOOKING_KEYWORDS.test(h.content));
 }
 
 const USE_RAG = process.env.USE_RAG !== 'false';
@@ -44,6 +45,8 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   const currency           = clientConfig.currency           || 'RWF';
   const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
+  const isNewUser          = clientConfig.isNewUser          || false;
+  const userName           = clientConfig.userName           || null;
 
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
     phone: sanitizedPhone, messageLength: message.length,
@@ -105,10 +108,6 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       return _freeSlots;
     };
 
-    // ── Services (always needed for the menu / AI context) ────────────────
-    const services     = await googleSheets.getActiveServices(clientId);
-    const servicesList = services.map(s => `• ${s.name}${s.details ? ' - ' + s.details : ''}`).join('\n');
-
     // ── Tool definitions ──────────────────────────────────────────────────
     const tools = [
       {
@@ -163,8 +162,8 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         detectedLanguage    = currentLanguage || retrievedData.language || 'en';
         ragIntent           = retrievedData.intent || 'general';
 
-        // Only fetch calendar if this looks like a booking conversation
-        const calendarNeeded = needsCalendar(ragIntent, message);
+        // Only fetch calendar if this looks like a booking conversation (also checks recent history)
+        const calendarNeeded = needsCalendar(ragIntent, message, history);
         logger.debug('Calendar needed check', { sanitizedPhone, ragIntent, calendarNeeded });
 
         const slots = calendarNeeded ? await loadSlots() : [];
@@ -176,7 +175,10 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         const dynamicData = {
           availableSlots: slotDetails,
           currentDate:    now,
-          depositInfo: `All consultations require a commitment deposit of ${depositAmount} ${currency} to confirm booking.`
+          depositInfo: `All consultations require a commitment deposit of ${depositAmount} ${currency} to confirm booking.`,
+          ...(isNewUser && {
+            welcomeContext: buildWelcomeContext(userName, companyName)
+          })
         };
 
         prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { companyName });
@@ -184,19 +186,19 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
         detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-        const calendarNeeded = needsCalendar('general', message);
+        const calendarNeeded = needsCalendar('general', message, history);
         const slots = calendarNeeded ? await loadSlots() : [];
         const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
         const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
-        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
+        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency, isNewUser, userName);
       }
     } else {
       detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-      const calendarNeeded = needsCalendar('general', message);
+      const calendarNeeded = needsCalendar('general', message, history);
       const slots = calendarNeeded ? await loadSlots() : [];
       const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
       const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
-      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency);
+      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency, isNewUser, userName);
     }
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', tools });
@@ -338,7 +340,19 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   }
 }
 
-function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', companyName = 'Our Company', depositAmount = 5000, currency = 'RWF') {
+function buildWelcomeContext(userName, companyName) {
+  const greeting = userName ? `Hello ${userName}` : 'Hello';
+  return `FIRST-TIME USER — This is the user's very first message.
+Your response MUST follow this structure:
+1. Start with a warm personal greeting: "${greeting}, Welcome to ${companyName}!"
+2. In 1-2 sentences, briefly describe what ${companyName} offers (draw from the RELEVANT INFORMATION section).
+3. If the user asked a specific question in their message, answer it directly.
+4. Close by inviting them to share how you can help: "How can I assist you today?"
+Keep the entire reply friendly and concise.`;
+}
+
+function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', companyName = 'Our Company', depositAmount = 5000, currency = 'RWF', isNewUser = false, userName = null) {
+  const welcomeSection = isNewUser ? `\n${buildWelcomeContext(userName, companyName)}\n` : '';
   return `
 You are a warm, professional AI assistant for ${companyName}.
 
@@ -346,7 +360,7 @@ CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.
 - Supported: English (en), French (fr), Kinyarwanda (rw), Swahili (sw), German (de).
 - NEVER default to English if the user's current message is in another language.
-
+${welcomeSection}
 CORE BEHAVIOR:
 - Be friendly but brief and to-the-point
 - Keep responses under 3 sentences unless asking follow-up questions

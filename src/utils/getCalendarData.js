@@ -2,8 +2,18 @@ import { google } from 'googleapis';
 import { DateTime } from 'luxon';
 import oauth2Client from './auth.js';
 import logger from '../logger/logger.js';
+import { redisGet, redisSet } from './redis.js';
+
+const CALENDAR_CACHE_TTL = 10 * 60; // 10 minutes
 
 export default async function getCalendarData(email, refreshToken, days = 7) {
+  const cacheKey = `calendar:${email}:${days}`;
+  const cached = await redisGet(cacheKey);
+  if (cached) {
+    logger.debug('Calendar data served from Redis cache', { email, days });
+    return cached;
+  }
+
   try {
     const localAuth = new oauth2Client.constructor(
       process.env.GOOGLE_CLIENT_ID,
@@ -112,7 +122,7 @@ export default async function getCalendarData(email, refreshToken, days = 7) {
       };
     });
 
-    return {
+    const result = {
       employee: { email, timezone: 'Africa/Kigali' },
       period: { start: timeMin, end: timeMax, days, currentTime: now.toFormat('EEEE, MMMM d, yyyy – h:mm a') },
       busySlots: busyFormatted,
@@ -120,6 +130,9 @@ export default async function getCalendarData(email, refreshToken, days = 7) {
       freeSlots: free,
       workingHours: { start: '9:00 AM', end: '5:00 PM', timezone: 'Africa/Kigali (CAT)' },
     };
+
+    await redisSet(cacheKey, result, CALENDAR_CACHE_TTL);
+    return result;
   } catch (error) {
     logger.error('getCalendarData error', { error: error.message });
     throw new Error(`Calendar fetch failed: ${error.message}`);

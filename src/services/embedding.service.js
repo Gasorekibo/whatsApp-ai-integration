@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import ragConfig from '../config/rag.config.js';
 import logger from '../logger/logger.js';
 import { getCacheConfig, getRateLimitConfig, getRetryConfig } from '../utils/config-compatibility.helper.js';
+import { redisGet, redisSet } from '../utils/redis.js';
 
 /**
  * Enhanced Embedding Service
@@ -83,12 +84,20 @@ class EmbeddingService {
             // Generate cache key using hash for long texts
             const cacheKey = this._generateCacheKey(truncatedText, taskType);
 
-            // Check cache first
+            // L1: Redis (shared across instances, survives restarts)
+            const redisCached = await redisGet(`embedding:${cacheKey}`);
+            if (redisCached) {
+                this.stats.cacheHits++;
+                logger.debug('Embedding cache hit (Redis)', { taskType });
+                return redisCached;
+            }
+
+            // L2: node-cache (in-process, zero-latency)
             if (this.embeddingCache) {
                 const cached = this.embeddingCache.get(cacheKey);
                 if (cached) {
                     this.stats.cacheHits++;
-                    logger.debug('Embedding cache hit', { taskType });
+                    logger.debug('Embedding cache hit (node-cache)', { taskType });
                     return cached;
                 }
                 this.stats.cacheMisses++;
@@ -109,7 +118,9 @@ class EmbeddingService {
             // Validate embedding
             this._validateEmbedding(embedding);
 
-            // Cache the result
+            // Cache the result in Redis (L1) and node-cache (L2)
+            const embeddingTtl = this.embeddingCache?.options?.stdTTL || 3600;
+            await redisSet(`embedding:${cacheKey}`, embedding, embeddingTtl);
             if (this.embeddingCache) {
                 this.embeddingCache.set(cacheKey, embedding);
             }
