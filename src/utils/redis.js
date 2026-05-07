@@ -57,7 +57,6 @@ function isReady() {
 // ── Helpers (all swallow Redis errors — never crash the app) ──────────────────
 
 export async function redisGet(key) {
-  console.log('Redis Used to get', { key });
   if (!isReady()) return null;
   try {
     const raw = await client.get(key);
@@ -69,7 +68,6 @@ export async function redisGet(key) {
 }
 
 export async function redisSet(key, value, ttlSeconds) {
-  console.log('Redis Used to set', { key, value });
   if (!isReady()) return;
   try {
     const serialized = JSON.stringify(value);

@@ -114,7 +114,6 @@ router.post('/kb/sync/microsoft', async (req, res) => {
         const clientId = req.body?.clientId || null;
         const namespace = await resolveNamespace(clientId);
         const count = await knowledgeBaseService.syncServicesFromMicrosoft(clientId, namespace);
-console.log('clientId:', clientId, 'namespace:', namespace, 'count:', count);
         res.json({
             success: true,
             message: 'Services synced from Microsoft Excel',
