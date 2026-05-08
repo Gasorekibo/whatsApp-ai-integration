@@ -640,6 +640,7 @@
 
     /* ── Auth ── */
     body.client-mode .admin-only { display: none !important; }
+    body.client-mode .client-only { display: inline-flex !important; }
 
     #loginScreen {
       display: none; position: fixed; inset: 0;
@@ -748,6 +749,7 @@
         <span id="loggedInUser" style="font-size:13px;color:#718096;align-self:center;"></span>
         <button class="btn btn-primary admin-only" onclick="openCreateClientModal()">+ Register Client</button>
         <button class="btn btn-success" onclick="openSyncModal()">🔄 Sync Services</button>
+        <button class="btn btn-secondary client-only" onclick="openChangePasswordModal()" style="display:none">🔑 Change Password</button>
         <button class="btn btn-secondary" onclick="doLogout()">Logout</button>
       </div>
     </div>
@@ -1672,6 +1674,34 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════
+       CHANGE PASSWORD MODAL (client only)
+  ══════════════════════════════════════════════════════ -->
+  <div class="modal" id="changePasswordModal">
+    <div class="modal-content" style="max-width:420px">
+      <h3>🔑 Change Password</h3>
+      <p class="modal-subtitle">Enter your current password and choose a new one.</p>
+
+      <div class="form-group">
+        <label for="cpCurrentPassword">Current Password</label>
+        <input id="cpCurrentPassword" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label for="cpNewPassword">New Password</label>
+        <input id="cpNewPassword" type="password" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label for="cpConfirmPassword">Confirm New Password</label>
+        <input id="cpConfirmPassword" type="password" placeholder="••••••••" autocomplete="new-password">
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn btn-primary" onclick="submitChangePassword()" style="flex:1">Save Password</button>
+        <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
        SYNC MODAL
   ══════════════════════════════════════════════════════ -->
   <div class="modal" id="syncModal">
@@ -2306,6 +2336,35 @@
 
     function closeSyncModal() { document.getElementById('syncModal').classList.remove('active'); }
 
+    function openChangePasswordModal() {
+      ['cpCurrentPassword','cpNewPassword','cpConfirmPassword'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('changePasswordModal').classList.add('active');
+    }
+    function closeChangePasswordModal() { document.getElementById('changePasswordModal').classList.remove('active'); }
+
+    async function submitChangePassword() {
+      const currentPassword = document.getElementById('cpCurrentPassword').value;
+      const newPassword     = document.getElementById('cpNewPassword').value;
+      const confirmPassword = document.getElementById('cpConfirmPassword').value;
+
+      if (!currentPassword || !newPassword || !confirmPassword) { showToast('All fields are required', 'error'); return; }
+      if (newPassword !== confirmPassword) { showToast('New passwords do not match', 'error'); return; }
+      if (newPassword.length < 6) { showToast('New password must be at least 6 characters', 'error'); return; }
+
+      const res = await authFetch('/api/auth/change-password', {
+        method: 'PUT',
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      if (!res) return;
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Password changed successfully', 'success');
+        closeChangePasswordModal();
+      } else {
+        showToast(data.error || 'Failed to change password', 'error');
+      }
+    }
+
     async function runSync(cardId, endpoint, label) {
       const clientId = document.getElementById('syncClientId').value;
       if (!clientId) { showToast('Please select a client before syncing', 'error'); return; }
@@ -2347,12 +2406,11 @@
       if (!users?.users?.length) { container.innerHTML = '<div class="no-data">No users found</div>'; return; }
 
       let html = `<div class="table-container"><table>
-        <thead><tr><th>Name</th><th>Phone</th><th>Selected Service</th><th>Conversations</th><th>Last Access</th></tr></thead><tbody>`;
+        <thead><tr><th>Name</th><th>Phone</th><th>Conversations</th><th>Last Access</th></tr></thead><tbody>`;
       users.users.forEach(u => {
         html += `<tr>
           <td><strong>${u.name || 'N/A'}</strong></td>
-          <td>${u.phone || 'N/A'}</td>
-          <td>${u.state?.selectedService || 'None'}</td>
+          <td>${u?.phone?.slice(0, 5)+ "****"+ u?.phone?.slice(-2) || 'N/A'}</td>
           <td><span class="badge badge-user">${u.history?.length || 0} messages</span></td>
           <td>${u.lastAccess ? new Date(u.lastAccess).toLocaleString() : 'N/A'}</td>
         </tr>`;
@@ -2383,7 +2441,8 @@
 
       try {
         const url = clientId ? `/api/outreach/services?clientId=${clientId}` : '/api/outreach/services';
-        const res  = await fetch(url);
+        const res  = await authFetch(url);
+        if (!res) return;
         const data = await res.json();
         displayServices(data, clientId);
       } catch {
@@ -2480,7 +2539,7 @@
       employees.forEach(emp => {
         html += `<tr>
           <td><strong>${emp.name}</strong></td>
-          <td>${emp.email}</td>
+          <td>${emp?.email?.slice(0, 7) + "****" + emp?.email?.slice(-4) || 'N/A'}</td>
           <td><span class="badge badge-active">Connected</span></td>
           <td>${new Date(emp.createdAt).toLocaleDateString()}</td>
         </tr>`;
@@ -2521,7 +2580,7 @@
     }
 
     // Click-outside to close modals
-    ['syncModal', 'createClientModal', 'editClientModal', 'calendarConnectModal'].forEach(id => {
+    ['syncModal', 'createClientModal', 'editClientModal', 'calendarConnectModal', 'changePasswordModal'].forEach(id => {
       document.getElementById(id).addEventListener('click', e => {
         if (e.target === e.currentTarget) {
           e.currentTarget.classList.remove('active');
