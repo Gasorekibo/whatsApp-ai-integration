@@ -1884,7 +1884,7 @@
       if (!email || !password) { errEl.textContent = 'Email and password are required'; return; }
       btn.disabled = true; btn.textContent = 'Signing in…';
       try {
-        const res = await fetch('/api/auth/login', {
+        const res = await fetch('/ai/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
