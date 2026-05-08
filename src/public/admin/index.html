@@ -236,7 +236,7 @@
     }
     .filter-select:focus { border-color: #F97316; }
 
-    /* ── Overview ── */
+    /* ── Overview (admin) ── */
     .overview-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -270,6 +270,80 @@
       margin: 20px 0 8px;
       padding-bottom: 6px;
       border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* ── Client Overview ── */
+    .client-profile-banner {
+      background: linear-gradient(135deg, #F97316 0%, #c2410c 100%);
+      border-radius: 18px;
+      padding: 28px 32px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      margin-bottom: 28px;
+    }
+    .client-profile-avatar {
+      width: 68px; height: 68px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.22);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 30px; font-weight: 700;
+      flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.35);
+    }
+    .client-profile-info { flex: 1; min-width: 0; }
+    .client-profile-info h2 { font-size: 21px; font-weight: 700; margin: 0 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .client-profile-info p  { font-size: 13px; opacity: 0.85; margin: 0; }
+    .client-profile-badge {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 12px; font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .client-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .client-stat-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 20px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      transition: box-shadow 0.15s;
+    }
+    .client-stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .client-stat-icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+    }
+    .client-stat-icon.orange { background: #fff7ed; }
+    .client-stat-icon.green  { background: #f0fff4; }
+    .client-stat-icon.blue   { background: #ebf8ff; }
+    .client-stat-icon.purple { background: #faf5ff; }
+    .client-stat-body { min-width: 0; }
+    .client-stat-body h4 { font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 5px; }
+    .client-stat-body .val { font-size: 20px; font-weight: 700; color: #2d3748; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .client-stat-body .val.green  { color: #38a169; }
+    .client-stat-body .val.orange { color: #dd6b20; }
+    .client-stat-body .val.red    { color: #e53e3e; }
+
+    @media (max-width: 900px) { .client-stat-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) {
+      .client-stat-grid { grid-template-columns: 1fr; }
+      .client-profile-banner { flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px; }
+      .client-profile-badge { align-self: flex-start; }
     }
 
     /* ── Forms ── */
@@ -756,12 +830,12 @@
 
     <!-- Stats -->
     <div class="stats-grid">
-      <div class="stat-card">
+      <div class="stat-card admin-only">
         <h3>Active Users</h3>
         <div class="number" id="totalUsers">—</div>
         <div class="sub-stat">WhatsApp sessions</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card admin-only">
         <h3>Registered Clients</h3>
         <div class="number" id="totalClients">—</div>
         <div class="sub-stat" id="voiceClientsSubstat">— on voice plan</div>
@@ -776,6 +850,16 @@
         <div class="number" id="upcomingAppointments">—</div>
         <div class="sub-stat">total on record</div>
       </div>
+      <div class="stat-card client-only" style="display:none">
+        <h3>Subscription</h3>
+        <div class="number" id="clientPlan" style="font-size:18px">—</div>
+        <div class="sub-stat" id="clientStatus">—</div>
+      </div>
+      <div class="stat-card client-only" style="display:none">
+        <h3>Account</h3>
+        <div class="number" id="clientEmail" style="font-size:14px;word-break:break-all">—</div>
+        <div class="sub-stat">registered email</div>
+      </div>
     </div>
 
     <!-- ── Overview ── -->
@@ -784,28 +868,37 @@
         <h2>📊 Overview</h2>
       </div>
 
-      <div class="overview-section-title">Client Subscription Breakdown</div>
-      <div class="overview-grid">
-        <div class="overview-card">
-          <h4>Message Only</h4>
-          <div class="val" id="ov-message-only">—</div>
+      <!-- Admin-only: subscription breakdown across all clients -->
+      <div class="admin-only">
+        <div class="overview-section-title">Client Subscription Breakdown</div>
+        <div class="overview-grid">
+          <div class="overview-card">
+            <h4>Message Only</h4>
+            <div class="val" id="ov-message-only">—</div>
+          </div>
+          <div class="overview-card">
+            <h4>Voice + Message</h4>
+            <div class="val purple" id="ov-voice">—</div>
+          </div>
+          <div class="overview-card">
+            <h4>Active</h4>
+            <div class="val green" id="ov-active">—</div>
+          </div>
+          <div class="overview-card">
+            <h4>On Trial</h4>
+            <div class="val orange" id="ov-trial">—</div>
+          </div>
+          <div class="overview-card">
+            <h4>Expired / Inactive</h4>
+            <div class="val red" id="ov-expired">—</div>
+          </div>
         </div>
-        <div class="overview-card">
-          <h4>Voice + Message</h4>
-          <div class="val purple" id="ov-voice">—</div>
-        </div>
-        <div class="overview-card">
-          <h4>Active</h4>
-          <div class="val green" id="ov-active">—</div>
-        </div>
-        <div class="overview-card">
-          <h4>On Trial</h4>
-          <div class="val orange" id="ov-trial">—</div>
-        </div>
-        <div class="overview-card">
-          <h4>Expired / Inactive</h4>
-          <div class="val red" id="ov-expired">—</div>
-        </div>
+      </div>
+
+      <!-- Client-only: their own account summary -->
+      <div class="client-only" style="display:none" id="clientOverviewInfo">
+        <div class="client-profile-banner" id="clientProfileBanner"></div>
+        <div class="client-stat-grid" id="clientAccountGrid"></div>
       </div>
 
       <div class="overview-section-title">Recent Appointments</div>
@@ -1849,9 +1942,17 @@
     async function fetchData() {
       try {
         if (currentUser?.role === 'client') {
-          const servicesRes = await authFetch(`/api/outreach/services?clientId=${currentUser.clientId}`);
+          const [servicesRes, appointmentsRes, clientRes] = await Promise.all([
+            authFetch(`/api/outreach/services?clientId=${currentUser.clientId}`),
+            authFetch(`/api/outreach/appointments`),
+            authFetch(`/api/outreach/clients`)
+          ]);
           if (!servicesRes) return;
-          cachedData.services = await servicesRes.json();
+          cachedData.services     = await servicesRes.json();
+          cachedData.appointments = appointmentsRes ? await appointmentsRes.json() : { appointments: [] };
+          cachedData.clients      = clientRes      ? await clientRes.json()      : { clients: [] };
+          displayStats();
+          updateOverview();
           populateServicesClientFilter();
           loadServicesForClient();
           return;
@@ -1888,35 +1989,100 @@
 
     function displayStats() {
       const { users, services, appointments, clients } = cachedData;
-      document.getElementById('totalUsers').textContent           = users?.users?.length ?? '—';
-      document.getElementById('totalClients').textContent         = clients?.clients?.length ?? '—';
-      document.getElementById('upcomingAppointments').textContent = appointments?.appointments?.length ?? '—';
 
-      const voiceCount = (clients?.clients || []).filter(c => c.subscriptionPlan === 'message_and_voice').length;
-      document.getElementById('voiceClientsSubstat').textContent = `${voiceCount} on voice plan`;
-
+      // Active Services (shared — always scoped to what was fetched)
       let activeCount = 0;
       (services || []).forEach(doc => {
         if (doc.services) activeCount += doc.services.filter(s => s.active).length;
       });
       document.getElementById('activeServices').textContent = activeCount;
+      document.getElementById('upcomingAppointments').textContent = appointments?.appointments?.length ?? '—';
+
+      if (currentUser?.role === 'client') {
+        const me = (clients?.clients || [])[0];
+        const planLabel = { message_only: 'Message Only', message_and_voice: 'Voice + Message' }[me?.subscriptionPlan] || me?.subscriptionPlan || '—';
+        const statusLabel = me?.subscriptionStatus || '—';
+        document.getElementById('clientPlan').textContent   = planLabel;
+        document.getElementById('clientStatus').textContent = statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
+        document.getElementById('clientEmail').textContent  = me?.email || currentUser.email || '—';
+        return;
+      }
+
+      // Admin-only stats
+      document.getElementById('totalUsers').textContent   = users?.users?.length ?? '—';
+      document.getElementById('totalClients').textContent = clients?.clients?.length ?? '—';
+      const voiceCount = (clients?.clients || []).filter(c => c.subscriptionPlan === 'message_and_voice').length;
+      document.getElementById('voiceClientsSubstat').textContent = `${voiceCount} on voice plan`;
     }
 
     function updateOverview() {
+      if (currentUser?.role === 'client') {
+        const me          = (cachedData.clients?.clients || [])[0];
+        const planLabel   = { message_only: 'Message Only', message_and_voice: 'Voice + Message' }[me?.subscriptionPlan] || me?.subscriptionPlan || '—';
+        const statusLabel = me?.subscriptionStatus || '—';
+        const statusCap   = statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
+        const statusClass = me?.subscriptionStatus === 'active' ? 'green' : me?.subscriptionStatus === 'trial' ? 'orange' : 'red';
+        const initials    = (me?.name || currentUser.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        const aptCount    = (cachedData.appointments?.appointments || []).length;
+        const svcCount    = (cachedData.services || []).length;
+
+        const banner = document.getElementById('clientProfileBanner');
+        if (banner) {
+          banner.innerHTML = `
+            <div class="client-profile-avatar">${initials}</div>
+            <div class="client-profile-info">
+              <h2>${me?.name || currentUser.name || '—'}</h2>
+              <p>${me?.email || currentUser.email || ''}${me?.company ? ' &nbsp;·&nbsp; ' + me.company : ''}</p>
+            </div>
+            <span class="client-profile-badge">${planLabel}</span>
+          `;
+        }
+
+        const grid = document.getElementById('clientAccountGrid');
+        if (grid) {
+          grid.innerHTML = `
+            <div class="client-stat-card">
+              <div class="client-stat-icon orange">📋</div>
+              <div class="client-stat-body"><h4>Plan</h4><div class="val">${planLabel}</div></div>
+            </div>
+            <div class="client-stat-card">
+              <div class="client-stat-icon ${statusClass === 'green' ? 'green' : statusClass === 'orange' ? 'orange' : 'purple'}">
+                ${me?.subscriptionStatus === 'active' ? '✅' : me?.subscriptionStatus === 'trial' ? '⏳' : '❌'}
+              </div>
+              <div class="client-stat-body"><h4>Status</h4><div class="val ${statusClass}">${statusCap}</div></div>
+            </div>
+            <div class="client-stat-card">
+              <div class="client-stat-icon blue">⚙️</div>
+              <div class="client-stat-body"><h4>Services</h4><div class="val">${svcCount}</div></div>
+            </div>
+            <div class="client-stat-card">
+              <div class="client-stat-icon purple">📅</div>
+              <div class="client-stat-body"><h4>Appointments</h4><div class="val">${aptCount}</div></div>
+            </div>
+          `;
+        }
+
+        renderRecentAppointments(cachedData.appointments?.appointments || []);
+        return;
+      }
+
+      // Admin: subscription breakdown
       const cs = cachedData.clients?.clients || [];
       document.getElementById('ov-message-only').textContent = cs.filter(c => c.subscriptionPlan === 'message_only').length;
       document.getElementById('ov-voice').textContent        = cs.filter(c => c.subscriptionPlan === 'message_and_voice').length;
       document.getElementById('ov-active').textContent       = cs.filter(c => c.subscriptionStatus === 'active').length;
       document.getElementById('ov-trial').textContent        = cs.filter(c => c.subscriptionStatus === 'trial').length;
       document.getElementById('ov-expired').textContent      = cs.filter(c => ['expired', 'inactive'].includes(c.subscriptionStatus)).length;
+      renderRecentAppointments((cachedData.appointments?.appointments || []).slice(-5).reverse());
+    }
 
-      const apts = (cachedData.appointments?.appointments || []).slice(-5).reverse();
+    function renderRecentAppointments(apts) {
       const container = document.getElementById('recentAppointments');
       if (!apts.length) { container.innerHTML = '<div class="no-data">No appointments on record yet</div>'; return; }
 
       let html = `<div class="table-container"><table>
-        <thead><tr><th>Service</th><th>Client</th><th>Payment</th><th>Amount</th><th>Date</th></tr></thead><tbody>`;
-      apts.forEach(a => {
+        <thead><tr><th>Service</th><th>Customer</th><th>Payment</th><th>Amount</th><th>Date</th></tr></thead><tbody>`;
+      apts.slice(0, 5).forEach(a => {
         const payClass = { paid: 'badge-paid', pending: 'badge-pending', refunded: 'badge-refunded' }[a.paymentStatus] || 'badge-new';
         html += `<tr>
           <td><strong>${a.service || '—'}</strong></td>

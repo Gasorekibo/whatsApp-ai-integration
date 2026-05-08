@@ -30,17 +30,22 @@ router.get('/users', requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/appointments', requireAdmin, async (req, res) => {
+router.get('/appointments', async (req, res) => {
   try {
-    const appointments = await dbConfig.db.ServiceRequest?.findAll();
-    res.json({ appointments });
+    const where = req.user.role === 'client' ? { clientId: req.user.clientId } : {};
+    const appointments = await dbConfig.db.ServiceRequest?.findAll({ where, order: [['createdAt', 'DESC']] });
+    res.json({ appointments: appointments || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.get('/clients', requireAdmin, async (req, res) => {
+router.get('/clients', async (req, res) => {
   try {
+    if (req.user.role === 'client') {
+      const client = await dbConfig.db.Client?.findByPk(req.user.clientId);
+      return res.json({ clients: client ? [client] : [] });
+    }
     const clients = await dbConfig.db.Client?.findAll({ order: [['createdAt', 'DESC']] });
     res.json({ clients: clients || [] });
   } catch (error) {
