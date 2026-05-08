@@ -1943,9 +1943,9 @@
       try {
         if (currentUser?.role === 'client') {
           const [servicesRes, appointmentsRes, clientRes] = await Promise.all([
-            authFetch(`/api/outreach/services?clientId=${currentUser.clientId}`),
-            authFetch(`/api/outreach/appointments`),
-            authFetch(`/api/outreach/clients`)
+            authFetch(`/ai/api/outreach/services?clientId=${currentUser.clientId}`),
+            authFetch(`/ai/api/outreach/appointments`),
+            authFetch(`/ai/api/outreach/clients`)
           ]);
           if (!servicesRes) return;
           cachedData.services     = await servicesRes.json();
@@ -1960,11 +1960,11 @@
 
         // Admin fetches everything
         const [usersRes, servicesRes, appointmentsRes, clientsRes, employeesRes] = await Promise.all([
-          authFetch(`/api/outreach/users`),
-          authFetch(`/api/outreach/services`),
-          authFetch(`/api/outreach/appointments`),
-          authFetch(`/api/outreach/clients`),
-          authFetch(`/api/outreach/employees`)
+          authFetch(`/ai/api/outreach/users`),
+          authFetch(`/ai/api/outreach/services`),
+          authFetch(`/ai/api/outreach/appointments`),
+          authFetch(`/ai/api/outreach/clients`),
+          authFetch(`/ai/api/outreach/employees`)
         ]);
         if (!usersRes) return; // 401 → logged out
 
@@ -2249,7 +2249,7 @@
       if (maxMsgRaw)  payload.maxMonthlyMessages = parseInt(maxMsgRaw, 10);
 
       try {
-        const res = await authFetch(`/api/outreach/clients`, {
+        const res = await authFetch(`/ai/api/outreach/clients`, {
           method: 'POST',
           body: JSON.stringify(payload)
         });
@@ -2396,7 +2396,7 @@
       });
 
       try {
-        const res = await authFetch(`/api/outreach/clients/${editingClientId}`, {
+        const res = await authFetch(`/ai/api/outreach/clients/${editingClientId}`, {
           method: 'PUT',
           body: JSON.stringify(updates)
         });
@@ -2418,7 +2418,7 @@
     async function resetClientMessages() {
       if (!editingClientId) return;
       try {
-        const res = await authFetch(`/api/outreach/clients/${editingClientId}`, {
+        const res = await authFetch(`/ai/api/outreach/clients/${editingClientId}`, {
           method: 'PUT',
           body: JSON.stringify({ messageCount: 0 })
         });
@@ -2606,7 +2606,7 @@
       container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
 
       try {
-        const url = clientId ? `/api/outreach/services?clientId=${clientId}` : '/api/outreach/services';
+        const url = clientId ? `/ai/api/outreach/services?clientId=${clientId}` : '/ai/api/outreach/services';
         const res  = await authFetch(url);
         if (!res) return;
         const data = await res.json();
@@ -2765,7 +2765,7 @@
 
     async function refreshHealth() {
       try {
-        const data = await fetch('/api/outreach/monitoring/health', { headers: getAuthHeadersOnly() }).then(r => r.json());
+        const data = await fetch('/ai/api/outreach/monitoring/health', { headers: getAuthHeadersOnly() }).then(r => r.json());
 
         // Status pill
         const pill = document.getElementById('healthStatusPill');
@@ -2809,7 +2809,7 @@
 
     async function loadLogFiles() {
       try {
-        const data = await fetch('/api/outreach/monitoring/logs/files', { headers: getAuthHeadersOnly() }).then(r => r.json());
+        const data = await fetch('/ai/api/outreach/monitoring/logs/files', { headers: getAuthHeadersOnly() }).then(r => r.json());
         const prefix = logCategory === 'payment' ? 'payments'
                      : logCategory === 'api-calls' ? 'api-calls'
                      : logCategory;
@@ -2853,7 +2853,7 @@
         '<div class="log-empty" style="color:#F97316">⏳ Loading logs…</div>';
 
       try {
-        const data = await fetch(`/api/outreach/monitoring/logs?${params}`, { headers: getAuthHeadersOnly() }).then(r => r.json());
+        const data = await fetch(`/ai/api/outreach/monitoring/logs?${params}`, { headers: getAuthHeadersOnly() }).then(r => r.json());
 
         // Summary chips
         const lc = data.levelCounts || {};
