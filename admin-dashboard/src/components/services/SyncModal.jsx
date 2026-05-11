@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { kbApi } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -9,7 +9,9 @@ import FormField, { Select } from '../ui/FormField'
 export default function SyncModal({ open, onClose, clients = [], defaultClientId = '' }) {
   const { user, isClient } = useAuth()
   const [clientId, setClientId] = useState(defaultClientId)
-  const [syncing, setSyncing]   = useState(null) // 'confluence' | 'sheets' | 'microsoft'
+  const [syncing, setSyncing]   = useState(null)
+
+  useEffect(() => { setClientId(defaultClientId) }, [defaultClientId, open]) // 'confluence' | 'sheets' | 'microsoft'
   const [results, setResults]   = useState({})
 
   const resolvedId = isClient ? user.clientId : (clientId || null)

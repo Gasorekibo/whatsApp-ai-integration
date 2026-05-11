@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
 import FormField, { Select } from '../ui/FormField'
 
 export default function CalendarConnectModal({ open, onClose, clients = [], defaultClientId = '' }) {
   const [clientId, setClientId] = useState(defaultClientId)
+
+  useEffect(() => { setClientId(defaultClientId) }, [defaultClientId, open])
 
   const handleConnect = () => {
     if (!clientId) return
