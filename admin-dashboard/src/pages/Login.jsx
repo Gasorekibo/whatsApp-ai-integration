@@ -31,7 +31,7 @@ export default function Login() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-500 text-white text-3xl mb-4 shadow-lg shadow-brand-200">
               🤖
             </div>
-            <h1 className="text-2xl font-bold text-gray-900"><span className='animation-bounce text-brand-500'>Ya</span>yah</h1>
+            <h1 className="text-2xl font-bold text-gray-900"><span className='text-brand-500'>Ya</span>yah</h1>
             <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
           </div>
 

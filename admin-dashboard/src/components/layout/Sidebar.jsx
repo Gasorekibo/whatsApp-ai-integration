@@ -32,7 +32,7 @@ export default function Sidebar({ open, onClose }) {
       `}>
         {/* Logo */}
         <div className="px-5 py-7 border-b border-white/10 flex-shrink-0">
-          <h2 className="text-white font-bold text-lg leading-tight">Yayah</h2>
+          <h2 className="text-white font-bold text-lg leading-tight"><span className=' text-brand-500'>Ya</span>yah</h2>
           <p className="text-white/60 text-xs mt-0.5">Admin Dashboard</p>
         </div>
 
@@ -70,7 +70,7 @@ export default function Sidebar({ open, onClose }) {
         </nav>
 
         <div className="px-5 py-3 border-t border-white/10 text-[11px] text-white/30 flex-shrink-0">
-          Yayah Admin Dashboard v1.0
+          <span className='text-brand-500'>Ya</span>yah Admin Dashboard v1.0
         </div>
       </aside>
     </>
