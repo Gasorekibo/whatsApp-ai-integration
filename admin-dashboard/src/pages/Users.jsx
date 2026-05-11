@@ -8,6 +8,7 @@ import EmptyState from '../components/ui/EmptyState'
 export default function Users() {
   const { data, loading } = useApiData(usersApi.getAll)
   const users = data?.users || []
+  console.log('Fetched users:', users)
 
   return (
     <div>
@@ -43,7 +44,7 @@ export default function Users() {
                         </td>
                         <td className="px-4 py-3">
                           {u.client
-                            ? <Badge variant="orange">{u.client.name}</Badge>
+                            ? <Badge variant="orange">{u.client.company || u.client.name}</Badge>
                             : <span className="text-gray-400 text-xs">—</span>
                           }
                         </td>
