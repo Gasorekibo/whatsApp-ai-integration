@@ -10,8 +10,10 @@ export default (sequelize) => {
     },
     clientId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      comment: 'Tenant key — employee belongs to one client; their calendar is used for booking slots'
+      allowNull: false,
+      references: { model: 'clients', key: 'id' },
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE'
     },
     name: {
       type: DataTypes.STRING,

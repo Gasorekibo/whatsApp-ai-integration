@@ -1,6 +1,9 @@
 import { DataTypes } from 'sequelize';
 import CryptoJS from 'crypto-js';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export const SUBSCRIPTION_PLANS = {
   MESSAGE_ONLY:       'message_only',
@@ -38,24 +41,16 @@ export default (sequelize) => {
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
       validate: { isEmail: true }
     },
     phone: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+      allowNull: false
     },
-    company: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-
     // ── WhatsApp credentials ──────────────────────────────────────────
     whatsappBusinessId: {
       type: DataTypes.STRING,
       allowNull: true,
-      unique: true,
       comment: 'WhatsApp Cloud API phone_number_id — primary tenant key'
     },
     whatsappToken: {
@@ -72,11 +67,6 @@ export default (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true,
       comment: 'Webhook verify token set in Meta Developer Console'
-    },
-    whatsappToNumber: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Default recipient number for test messages'
     },
 
     // ── AI configuration ─────────────────────────────────────────────
@@ -122,10 +112,10 @@ export default (sequelize) => {
     trialEndDate:          { type: DataTypes.DATE, allowNull: true },
 
     // ── Per-client business configuration ────────────────────────────
-    companyName: {
+    botName: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: 'Display name used in AI prompts; falls back to name'
+      comment: 'Bot display name used in AI prompts and WhatsApp messages; falls back to name'
     },
     timezone: {
       type: DataTypes.STRING,
@@ -136,6 +126,7 @@ export default (sequelize) => {
     paymentRedirectUrl: {
       type: DataTypes.STRING,
       allowNull: true,
+      defaultValue: process.env.FLW_PAYMENT_REDIRECT_URL,
       comment: 'URL users land on after completing payment'
     },
     currency: {
@@ -263,6 +254,11 @@ export default (sequelize) => {
   }, {
     tableName: 'clients',
     timestamps: true,
+    indexes: [
+      { unique: true, fields: ['email'],                 name: 'clients_email_unique' },
+      { unique: true, fields: ['phone'],                 name: 'clients_phone_unique' },
+      { unique: true, fields: ['whatsapp_business_id'],  name: 'clients_whatsapp_business_id_unique' }
+    ],
     hooks: {
       beforeCreate: (client) => {
         if (client.whatsappToken)         client.whatsappToken         = encrypt(client.whatsappToken);

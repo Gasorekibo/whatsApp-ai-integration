@@ -15,21 +15,22 @@ async function syncServicesHandler(req, res) {
       });
     }
 
-    // clientId can be passed explicitly by the admin UI; falls back to null (legacy)
-    const clientId = req?.body?.clientId || null;
+    // For clients: always use their own clientId from the JWT — never trust the body.
+    // For admins: accept an explicit clientId from the body.
+    const isAdmin = req.user?.role === 'admin';
+    const clientId = isAdmin
+      ? (req.body?.clientId ?? null)
+      : req.user?.clientId;
 
-    // Find the employee whose calendar/OAuth token will be used for the sync.
-    // When clientId is provided we look up the client's own employee; otherwise
-    // fall back to the global EMPLOYEE_EMAIL env variable.
-    const employeeWhere = clientId
-      ? { clientId }
-      : { email: process.env.EMPLOYEE_EMAIL };
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
 
-    const employee = await dbConfig.db.Employee.findOne({ where: employeeWhere });
+    const employee = await dbConfig.db.Employee.findOne({ where: { clientId } });
     if (!employee) {
       return res.status(404).json({
         success: false,
-        error: 'Employee not found for this client. Please authenticate at /auth'
+        error: 'No employee found for this client. Please authenticate at /auth?clientId=' + clientId
       });
     }
 
@@ -37,13 +38,12 @@ async function syncServicesHandler(req, res) {
     if (!token) {
       return res.status(401).json({
         success: false,
-        error: 'No refresh token found. Please authenticate at /auth'
+        error: 'No refresh token found. Please re-authenticate at /auth?clientId=' + clientId
       });
     }
 
     const result = await googlesheets.syncServicesFromSheet(spreadsheetId, token, clientId);
     res.json(result);
-
   } catch (error) {
     logger.error('Sync error', { error: error.message });
     res.status(500).json({ success: false, error: error.message });

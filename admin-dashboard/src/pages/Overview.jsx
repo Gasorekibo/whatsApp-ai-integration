@@ -131,7 +131,7 @@ function ClientOverview() {
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-xl font-bold leading-tight">{me?.name || user?.name}</h2>
-          <p className="text-brand-100 text-sm mt-0.5">{me?.email || user?.email}{me?.company ? ` · ${me.company}` : ''}</p>
+          <p className="text-brand-100 text-sm mt-0.5">{me?.email || user?.email}</p>
         </div>
         <span className="bg-white/20 border border-white/30 rounded-full px-4 py-1.5 text-sm font-semibold whitespace-nowrap">
           {planLabel}

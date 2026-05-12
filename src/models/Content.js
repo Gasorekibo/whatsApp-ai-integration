@@ -9,8 +9,10 @@ export default (sequelize) => {
     },
     clientId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      comment: 'Tenant key — each client has their own services and FAQs row'
+      allowNull: false,
+      references: { model: 'clients', key: 'id' },
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE'
     },
     services: {
       type: DataTypes.JSONB,
@@ -20,18 +22,6 @@ export default (sequelize) => {
         isValidServices(value) {
           if (!Array.isArray(value)) {
             throw new Error('Services must be an array');
-          }
-        }
-      }
-    },
-    faqs: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-      defaultValue: [],
-      validate: {
-        isValidFaqs(value) {
-          if (!Array.isArray(value)) {
-            throw new Error('FAQs must be an array');
           }
         }
       }

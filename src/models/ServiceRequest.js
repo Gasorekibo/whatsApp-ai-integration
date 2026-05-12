@@ -8,8 +8,10 @@ export default (sequelize) => {
     },
     clientId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      comment: 'Tenant key — links booking/inquiry to the Client that received the WhatsApp message'
+      allowNull: false,
+      references: { model: 'clients', key: 'id' },
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE'
     },
     service: {
       type: DataTypes.STRING,
