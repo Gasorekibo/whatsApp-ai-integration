@@ -24,7 +24,16 @@ router.get('/services', async (req, res) => {
 router.get('/users', requireAdmin, async (req, res) => {
   try {
     const users = await dbConfig.db.UserSession?.findAll();
-    res.json({ users });
+    const usersWithClient = await Promise.all(users.map(async u => {
+      const client = await dbConfig.db.Client?.findByPk(u.clientId);
+      
+      //return only the client's name or company, not the whole client object
+      return {
+        ...u.dataValues,
+        client: client ? { name: client.name, company: client.company } : null
+      };
+    }));
+    res.json({ users: usersWithClient });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
