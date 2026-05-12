@@ -39,7 +39,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   if (!geminiKey) throw new Error('processWithGemini: client is missing a Gemini API key');
   const genAI              = new GoogleGenerativeAI(geminiKey);
   const timezone           = clientConfig.timezone           || 'Africa/Kigali';
-  const companyName        = clientConfig.companyName        || clientConfig.name || 'Our Company';
+  const botName            = clientConfig.botName            || clientConfig.name || 'Our Company';
   const paymentRedirectUrl = clientConfig.paymentRedirectUrl || '';
   const depositAmount      = clientConfig.depositAmount      || 5000;
   const currency           = clientConfig.currency           || 'RWF';
@@ -177,11 +177,11 @@ export async function processWithGemini(phoneNumber, message, history = [], user
           currentDate:    now,
           depositInfo: `All consultations require a commitment deposit of ${depositAmount} ${currency} to confirm booking.`,
           ...(isNewUser && {
-            welcomeContext: buildWelcomeContext(userName, companyName)
+            welcomeContext: buildWelcomeContext(userName, botName)
           })
         };
 
-        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { companyName });
+        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { botName });
         logger.info(`RAG retrieved ${retrievedData.relevantDocs} docs, intent=${ragIntent}, calendar=${calendarNeeded}`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
@@ -190,7 +190,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         const slots = calendarNeeded ? await loadSlots() : [];
         const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
         const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
-        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency, isNewUser, userName);
+        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, botName, depositAmount, currency, isNewUser, userName);
       }
     } else {
       detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
@@ -198,7 +198,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       const slots = calendarNeeded ? await loadSlots() : [];
       const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
       const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
-      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency, isNewUser, userName);
+      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, botName, depositAmount, currency, isNewUser, userName);
     }
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', tools });
@@ -255,7 +255,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
           }
 
           try {
-            const safePrefix = (companyName || 'deposit').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
+            const safePrefix = (botName || 'deposit').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
             const tx_ref     = `${safePrefix}-${phoneNumber.replace(/\+/g, '')}-${Date.now()}`;
 
             await dbConfig.db.ServiceRequest.create({
@@ -283,7 +283,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
                 currency,
                 redirect_url:  paymentRedirectUrl,
                 customer:      { email: data.email || 'customer@example.com', phone_number: phoneNumber.replace('+', ''), name: data.name },
-                customizations:{ title: `${companyName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
+                customizations:{ title: `${botName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
                 meta:          { phone: phoneNumber, booking_details: JSON.stringify({ ...data, slotStart: matchingSlot.isoStart, slotEnd: matchingSlot.isoEnd, tx_ref }) }
               })
             });
@@ -340,21 +340,21 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   }
 }
 
-function buildWelcomeContext(userName, companyName) {
+function buildWelcomeContext(userName, botName) {
   const greeting = userName ? `Hello ${userName}` : 'Hello';
   return `FIRST-TIME USER — This is the user's very first message.
 Your response MUST follow this structure:
-1. Start with a warm personal greeting: "${greeting}, Welcome to ${companyName}!"
-2. In 1-2 sentences, briefly describe what ${companyName} offers (draw from the RELEVANT INFORMATION section).
+1. Start with a warm personal greeting: "${greeting}, Welcome to ${botName}!"
+2. In 1-2 sentences, briefly describe what ${botName} offers (draw from the RELEVANT INFORMATION section).
 3. If the user asked a specific question in their message, answer it directly.
 4. Close by inviting them to share how you can help: "How can I assist you today?"
 Keep the entire reply friendly and concise.`;
 }
 
-function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', companyName = 'Our Company', depositAmount = 5000, currency = 'RWF', isNewUser = false, userName = null) {
-  const welcomeSection = isNewUser ? `\n${buildWelcomeContext(userName, companyName)}\n` : '';
+function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', botName = 'Our Company', depositAmount = 5000, currency = 'RWF', isNewUser = false, userName = null) {
+  const welcomeSection = isNewUser ? `\n${buildWelcomeContext(userName, botName)}\n` : '';
   return `
-You are a warm, professional AI assistant for ${companyName}.
+You are a warm, professional AI assistant for ${botName}.
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.

@@ -23,17 +23,15 @@ router.get('/services', async (req, res) => {
 
 router.get('/users', requireAdmin, async (req, res) => {
   try {
-    const users = await dbConfig.db.UserSession?.findAll();
-    const usersWithClient = await Promise.all(users.map(async u => {
-      const client = await dbConfig.db.Client?.findByPk(u.clientId);
-      
-      //return only the client's name or company, not the whole client object
-      return {
-        ...u.dataValues,
-        client: client ? { name: client.name, company: client.company } : null
-      };
-    }));
-    res.json({ users: usersWithClient });
+    const users = await dbConfig.db.UserSession?.findAll({
+      include: [{
+        model: dbConfig.db.Client,
+        attributes: ['name'],
+        required: false
+      }],
+      order: [['lastAccess', 'DESC']]
+    });
+    res.json({ users: users || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -65,36 +63,87 @@ router.get('/clients', async (req, res) => {
 router.post('/clients', requireAdmin, async (req, res) => {
   try {
     const {
-      name, email, phone, company, password,
-      whatsappBusinessId, whatsappToken, whatsappAccountId, whatsappWebhookVerifyToken, whatsappToNumber,
-      geminiApiKey, pineconeIndex, pineconeApiKey, pineconeIndexName, pineconeEnvironment,
+      // ── Core identity (required) ─────────────────────────────────────
+      name, email, phone, password,
+      // ── WhatsApp (required — system cannot route messages without these) ──
+      whatsappBusinessId, whatsappToken,
+      // ── Knowledge base (required — isolates each client's vector data) ──
+      pineconeIndex,
+      // ── Optional identity ────────────────────────────────────────────
+      botName,
+      // ── Optional WhatsApp extras ─────────────────────────────────────
+      whatsappAccountId, whatsappWebhookVerifyToken,
+      // ── Optional AI ──────────────────────────────────────────────────
+      geminiApiKey, pineconeApiKey, pineconeIndexName, pineconeEnvironment,
+      // ── Optional subscription & config ───────────────────────────────
+      subscriptionPlan, timezone, currency, depositAmount, paymentRedirectUrl,
+      // ── Optional payments ────────────────────────────────────────────
       flutterwaveSecretKey, flutterwaveWebhookSecret,
+      // ── Optional knowledge base integrations ─────────────────────────
       googleSheetId, googleSheetsWebhookToken,
-      microsoftClientId, microsoftObjectId, microsoftTenantId, microsoftClientSecret, microsoftUserEmail, microsoftDriveId, microsoftItemId,
+      microsoftClientId, microsoftObjectId, microsoftTenantId,
+      microsoftClientSecret, microsoftUserEmail, microsoftDriveId, microsoftItemId,
       confluenceBaseUrl, confluenceEmail, confluenceApiToken, confluenceSpaceKey,
-      subscriptionPlan
     } = req.body;
-    if (!name || !email || !phone) {
-      return res.status(400).json({ error: 'name, email, and phone are required' });
+
+    // ── Required field validation ─────────────────────────────────────────
+    const missing = [];
+    if (!name)               missing.push({ field: 'name',               message: 'Client name is required' });
+    if (!email)              missing.push({ field: 'email',              message: 'Email is required for portal login' });
+    if (!phone)              missing.push({ field: 'phone',              message: 'Phone number is required' });
+    if (!password)           missing.push({ field: 'password',           message: 'Password is required so the client can log into the portal' });
+    if (!whatsappBusinessId) missing.push({ field: 'whatsappBusinessId', message: 'WhatsApp phone_number_id is required — without it incoming messages cannot be routed to this client' });
+    if (!whatsappToken)      missing.push({ field: 'whatsappToken',      message: 'WhatsApp Cloud API token is required — without it the bot cannot send messages' });
+    if (!pineconeIndex)      missing.push({ field: 'pineconeIndex',      message: 'Pinecone namespace is required to isolate this client\'s knowledge base from other clients' });
+
+    if (missing.length > 0) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        missing
+      });
+    }
+
+    // ── Uniqueness pre-checks (return clean errors before DB constraint fires) ──
+    const [existingEmail, existingPhone, existingWaId] = await Promise.all([
+      dbConfig.db.Client.findOne({ where: { email } }),
+      dbConfig.db.Client.findOne({ where: { phone } }),
+      dbConfig.db.Client.findOne({ where: { whatsappBusinessId } })
+    ]);
+
+    const conflicts = [];
+    if (existingEmail) conflicts.push({ field: 'email',              message: `Email '${email}' is already registered to another client` });
+    if (existingPhone) conflicts.push({ field: 'phone',              message: `Phone '${phone}' is already registered to another client` });
+    if (existingWaId)  conflicts.push({ field: 'whatsappBusinessId', message: `WhatsApp Business ID '${whatsappBusinessId}' is already assigned to another client` });
+
+    if (conflicts.length > 0) {
+      return res.status(409).json({ error: 'Conflict: duplicate values', conflicts });
     }
 
     const client = await dbConfig.db.Client.create({
-      name, email, phone,
-      company:                    company                    || null,
-      password:                   password                   || null,
-      subscriptionPlan:           subscriptionPlan           || 'message_only',
-      whatsappBusinessId:         whatsappBusinessId         || null,
-      whatsappToken:              whatsappToken              || null,
+      // Required
+      name, email, phone, password,
+      whatsappBusinessId, whatsappToken,
+      pineconeIndex,
+      // Optional identity
+      botName:                    botName                    || null,
+      // Optional WhatsApp
       whatsappAccountId:          whatsappAccountId          || null,
       whatsappWebhookVerifyToken: whatsappWebhookVerifyToken || null,
-      whatsappToNumber:           whatsappToNumber           || null,
+      // Optional AI
       geminiApiKey:               geminiApiKey               || null,
-      pineconeIndex:              pineconeIndex              || null,
       pineconeApiKey:             pineconeApiKey             || null,
       pineconeIndexName:          pineconeIndexName          || null,
       pineconeEnvironment:        pineconeEnvironment        || null,
+      // Optional subscription & config
+      subscriptionPlan:           subscriptionPlan           || 'message_only',
+      timezone:                   timezone                   || 'Africa/Kigali',
+      currency:                   currency                   || 'RWF',
+      depositAmount:              depositAmount              || null,
+      paymentRedirectUrl:         paymentRedirectUrl         || null,
+      // Optional payments
       flutterwaveSecretKey:       flutterwaveSecretKey       || null,
       flutterwaveWebhookSecret:   flutterwaveWebhookSecret   || null,
+      // Optional knowledge base
       googleSheetId:              googleSheetId              || null,
       googleSheetsWebhookToken:   googleSheetsWebhookToken   || null,
       microsoftClientId:          microsoftClientId          || null,
@@ -109,9 +158,10 @@ router.post('/clients', requireAdmin, async (req, res) => {
       confluenceApiToken:         confluenceApiToken         || null,
       confluenceSpaceKey:         confluenceSpaceKey         || null,
     });
+
     res.status(201).json({ client });
   } catch (error) {
-    res.status(500).json({ error: error?.errors[0]?.message || error.message });
+    res.status(500).json({ error: error?.errors?.[0]?.message || error.message });
   }
 });
 
@@ -121,9 +171,9 @@ router.put('/clients/:id', requireAdmin, async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     const allowed = [
-      'name', 'email', 'phone', 'company', 'timezone', 'currency', 'depositAmount', 'paymentRedirectUrl', 'companyName',
+      'name', 'email', 'phone', 'botName', 'timezone', 'currency', 'depositAmount', 'paymentRedirectUrl',
       'subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate', 'isActive', 'messageCount', 'maxMonthlyMessages',
-      'whatsappBusinessId', 'whatsappToken', 'whatsappAccountId', 'whatsappWebhookVerifyToken', 'whatsappToNumber',
+      'whatsappBusinessId', 'whatsappToken', 'whatsappAccountId', 'whatsappWebhookVerifyToken',
       'geminiApiKey', 'pineconeIndex', 'pineconeApiKey', 'pineconeIndexName', 'pineconeEnvironment',
       'flutterwaveSecretKey', 'flutterwaveWebhookSecret',
       'googleSheetId', 'googleSheetsWebhookToken',
@@ -153,8 +203,11 @@ router.put('/clients/:id', requireAdmin, async (req, res) => {
 
 router.get('/employees', requireAdmin, async (req, res) => {
   try {
+    const where = req.query.clientId ? { clientId: req.query.clientId } : {};
     const employees = await dbConfig.db.Employee?.findAll({
-      attributes: ['id', 'name', 'email', 'createdAt'],
+      where,
+      attributes: ['id', 'clientId', 'name', 'email', 'createdAt'],
+      include: [{ model: dbConfig.db.Client, attributes: ['name'], required: false }],
       order: [['createdAt', 'DESC']]
     });
     res.json({ employees: employees || [] });

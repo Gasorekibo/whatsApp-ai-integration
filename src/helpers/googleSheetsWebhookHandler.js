@@ -7,11 +7,15 @@ dotenv.config();
 
 async function googleSheetsWebhookHandler(req, res) {
   try {
-    const { spreadsheetId, verifyToken, clientId = null } = req.body;
+    const { spreadsheetId, verifyToken, clientId } = req.body;
 
     if (process.env.SHEETS_WEBHOOK_TOKEN &&
         verifyToken !== process.env.SHEETS_WEBHOOK_TOKEN) {
       return res.status(403).json({ success: false, error: 'Invalid webhook token' });
+    }
+
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
     }
 
     const sheetId = spreadsheetId || process.env.GOOGLE_SHEET_ID;
@@ -19,24 +23,21 @@ async function googleSheetsWebhookHandler(req, res) {
       return res.status(400).json({ success: false, error: 'spreadsheetId required' });
     }
 
-    const employeeWhere = clientId
-      ? { clientId }
-      : { email: process.env.EMPLOYEE_EMAIL };
-
-    const employee = await dbConfig.db.Employee.findOne({ where: employeeWhere });
+    const employee = await dbConfig.db.Employee.findOne({ where: { clientId } });
     if (!employee) {
-      return res.status(404).json({ success: false, error: 'Employee not found' });
+      return res.status(404).json({ success: false, error: 'No employee found for this client' });
     }
 
-    const token  = employee.getDecryptedToken();
+    const token = employee.getDecryptedToken();
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'Employee has no calendar token' });
+    }
+
     const result = await googleSheet.syncServicesFromSheet(sheetId, token, clientId);
 
-    // Invalidate the services cache so processWithGemini picks up the new data
-    const cacheClientId = clientId || employee.clientId;
-    if (cacheClientId) await redisDel(`services:${cacheClientId}`);
+    await redisDel(`services:${clientId}`);
 
     res.json(result);
-
   } catch (error) {
     logger.error('Webhook sync error', { error: error.message });
     res.status(500).json({ success: false, error: error.message });

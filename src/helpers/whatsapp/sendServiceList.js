@@ -11,7 +11,7 @@ const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
 
 export async function sendServiceList(to, locale = 'en', client = null) {
   const clientId      = client?.id || null;
-  const companyName   = client?.companyName || client?.name || 'Our Services';
+  const botName   = client?.botName || client?.name || 'Our Services';
   const phoneNumberId = client?.whatsappBusinessId;
   const token         = client?.getDecryptedWhatsappToken?.();
 
@@ -58,7 +58,7 @@ export async function sendServiceList(to, locale = 'en', client = null) {
         type: 'interactive',
         interactive: {
           type:   'list',
-          header: { type: 'text', text: companyName },
+          header: { type: 'text', text: botName },
           body:   { text: t('select_service_body') },
           footer: { text: t('select_service_footer') },
           action: {
