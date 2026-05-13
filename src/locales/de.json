@@ -18,5 +18,6 @@
   "auth_failure_title": "Authentifizierung fehlgeschlagen",
   "auth_failure_info": "Bei der Authentifizierung ist ein Fehler aufgetreten.",
   "auth_failure_retry": "Bitte versuchen Sie es erneut.",
-  "auth_failure_button": "Authentifizierung erneut versuchen"
+  "auth_failure_button": "Authentifizierung erneut versuchen",
+  "language_selected_confirmation": "✅ Gut! Ich werde die nächsten 7 Tage auf *Deutsch* antworten.\n\n💡 Englisch wird für das beste Erlebnis empfohlen.\n\nSie können nach 7 Tagen eine Sprachänderung anfordern."
 }

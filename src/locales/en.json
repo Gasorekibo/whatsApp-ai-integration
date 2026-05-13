@@ -18,5 +18,6 @@
   "auth_failure_title": "Authentication Failed",
   "auth_failure_info": "There was an error during authentication.",
   "auth_failure_retry": "Please try again.",
-  "auth_failure_button": "Retry Authentication"
+  "auth_failure_button": "Retry Authentication",
+  "language_selected_confirmation": "✅ Got it! I'll respond in *English* for the next 7 days.\n\n💡 English is recommended for the best experience.\n\nYou can request a language change after 7 days."
 }
