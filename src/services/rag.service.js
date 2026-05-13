@@ -399,7 +399,7 @@ JSON Output:`;
      * @param {number} topK - Number of results to retrieve
      * @returns {Promise<object>} - Retrieved context and metadata
      */
-    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default') {
+    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default', knownLanguage = null) {
         try {
             if (!this.initialized) {
                 await this.initialize();
@@ -412,9 +412,13 @@ JSON Output:`;
 
             const startTime = Date.now();
 
-            // Classify intent and detect language (Unified LLM call)
+            // Classify intent — still needed for topK tuning and metadata filtering.
+            // Language detection inside classifyQuery is skipped when the session language
+            // is already known (passed via knownLanguage), saving a Gemini call.
             const classification = await this.classifyQuery(userMessage, conversationHistory);
-            const { intent, language } = classification;
+            const intent = classification.intent;
+            // Prefer the stored session language over anything RAG detected from the message.
+            const language = knownLanguage || classification.language;
 
             logger.debug('Query classified', {
                 intent,
@@ -488,8 +492,7 @@ JSON Output:`;
                 query: userMessage?.substring(0, 50)
             });
 
-            // Return fallback context — preserve detected language so the prompt still uses the right language
-            return await this._getFallbackContext(error, userMessage, conversationHistory);
+            return await this._getFallbackContext(error, userMessage, conversationHistory, knownLanguage);
         }
     }
 
@@ -957,8 +960,9 @@ ALWAYS return your response in the following JSON format:
      * Get fallback context on error
      * @private
      */
-    async _getFallbackContext(error, message = '', history = []) {
-        const language = message ? await this.detectLanguage(message, history) : 'en';
+    async _getFallbackContext(error, message = '', history = [], knownLanguage = null) {
+        // Use the session language if available — avoids a Gemini detection call on error paths.
+        const language = knownLanguage || (message ? await this.detectLanguage(message, history) : 'en');
         return {
             intent: 'general',
             language,

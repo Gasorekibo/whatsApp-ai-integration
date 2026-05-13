@@ -164,7 +164,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
     if (USE_RAG) {
       try {
-        const retrievedData = await ragService.retrieveContext(message, history, null, namespace);
+        const retrievedData = await ragService.retrieveContext(message, history, null, namespace, currentLanguage);
         detectedLanguage    = currentLanguage || retrievedData.language || 'en';
         ragIntent           = retrievedData.intent || 'general';
 
