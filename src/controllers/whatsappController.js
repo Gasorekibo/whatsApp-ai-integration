@@ -19,10 +19,16 @@ import {
   VALID_LANGS,
   LANGUAGE_TTL_MS
 } from '../helpers/whatsapp/sendLanguageSelectionList.js';
+import { sendIntentList, INTENT_PREFIX, VALID_INTENTS } from '../helpers/whatsapp/sendIntentList.js';
+import { handleOrderRouting, ORDER_PREFIX, VALID_ORDER_TYPES } from '../helpers/whatsapp/handlers/orderHandler.js';
+import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
+import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
 
 dotenv.config();
 
 export const whatsappSessions = new Map();
+
+// ── Language preference helpers ───────────────────────────────────────────────
 
 function hasValidLanguage(session) {
   return (
@@ -31,6 +37,48 @@ function hasValidLanguage(session) {
     Date.now() - new Date(session.languageSetAt).getTime() < LANGUAGE_TTL_MS
   );
 }
+
+// ── Quick intent detection (keyword shortcuts bypass the intent list) ─────────
+
+const QUICK_INTENT_MAP = [
+  ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative)\b/i],
+  ['order',    /\b(book|appointment|schedule|pay(?:ment)?|order|status|track|reservation)\b/i],
+  ['services', /\b(services?|products?|pricing|price|cost|offer|provide)\b/i],
+  ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close)\b/i],
+];
+
+function detectQuickIntent(text) {
+  for (const [intent, regex] of QUICK_INTENT_MAP) {
+    if (regex.test(text)) return intent;
+  }
+  return null;
+}
+
+// Prompt shown after user selects the "general inquiries" intent
+const GENERAL_PROMPTS = {
+  en: "What would you like to know? Ask about our contact info, hours, location, or FAQs.",
+  fr: "Que souhaitez-vous savoir? Posez vos questions sur nos coordonnées, horaires ou FAQ.",
+  rw: "Ni iki ushaka kumenya? Baza ibibazo ku turika, amasaha cyangwa ibibazo bikunze kubazwa.",
+  sw: "Ungependa kujua nini? Uliza kuhusu mawasiliano, saa za kazi au maswali ya kawaida.",
+  de: "Was möchten Sie wissen? Fragen Sie nach Kontaktdaten, Öffnungszeiten oder FAQs."
+};
+
+// Kick-off messages sent when an order sub-type is selected
+const ORDER_TRIGGER = {
+  booking: { en: "I'd like to book an appointment.", fr: "Je souhaite prendre rendez-vous.", rw: "Ndashaka gufata gahunda.", sw: "Ningependa kuweka miadi.", de: "Ich möchte einen Termin buchen." },
+  payment: { en: "I'd like to make a payment.", fr: "Je souhaite effectuer un paiement.", rw: "Ndashaka gukora ubwishyu.", sw: "Ningependa kufanya malipo.", de: "Ich möchte eine Zahlung vornehmen." },
+  status:  { en: "I'd like to check my order or booking status.", fr: "Je souhaite vérifier le statut de ma commande.", rw: "Ndashaka kureba aho iteka ryangye ryageze.", sw: "Ningependa kuangalia hali ya agizo langu.", de: "Ich möchte den Status meiner Bestellung prüfen." },
+};
+
+// ── History persistence helper ────────────────────────────────────────────────
+
+function pushHistory(session, locale, userContent, modelContent) {
+  session.history.push({ role: 'user',  content: userContent,  language: locale, timestamp: new Date() });
+  session.history.push({ role: 'model', content: modelContent, language: locale, timestamp: new Date() });
+  session.changed('history', true);
+}
+
+// ── Webhook handler ───────────────────────────────────────────────────────────
 
 const handleWebhook = async (req, res) => {
   const requestId = req.requestId || 'webhook-' + Date.now();
@@ -68,7 +116,6 @@ const handleWebhook = async (req, res) => {
       contactName: contact?.profile?.name
     });
 
-    // ── Resolve client BEFORE the transaction (uses in-memory cache) ──
     client = await resolveClient(phoneNumberId);
 
     if (client) {
@@ -80,22 +127,19 @@ const handleWebhook = async (req, res) => {
       });
     }
 
-    // ── Redis fast-path dedup — avoids opening a DB transaction for duplicates ──
     const clientId = client?.id || null;
     const dedupKey = `msgdedup:${messageId}:${clientId ?? 'null'}`;
-    const redisDedup = await redisSetNx(dedupKey, '1', 300); // 5-min TTL
+    const redisDedup = await redisSetNx(dedupKey, '1', 300);
     if (redisDedup === false) {
       logger.whatsapp('info', 'Deduplication: message already processed (Redis)', { requestId, messageId });
       return;
     }
-    // null → Redis unavailable, fall through to DB dedup below
 
-    // Helper bound to this request's client so call sites stay clean
     const send = (to, message) => sendMessage({ client, to, message });
 
     await dbConfig.db.sequelize.transaction(async (t) => {
 
-      // 1. DB deduplication — backup for when Redis is unavailable
+      // 1. DB deduplication
       try {
         const [, created] = await dbConfig.db.ProcessedMessage.findOrCreate({
           where:    { messageId, clientId },
@@ -114,8 +158,7 @@ const handleWebhook = async (req, res) => {
         throw dedupErr;
       }
 
-      // 2. Find or create session — scoped per client so the same phone number
-      //    across two different clients never shares conversation history
+      // 2. Find or create session
       let [session, isNewUser] = await dbConfig.db.UserSession.findOrCreate({
         where:    { phone: from, clientId },
         defaults: {
@@ -137,9 +180,7 @@ const handleWebhook = async (req, res) => {
         await session.save({ transaction: t });
       }
 
-      // 3. Language preference gate — runs before all message-type routing.
-      //    A language selection interactive reply bypasses this gate so the user
-      //    can complete the selection even if they first sent a text message.
+      // 3. Language preference gate
       const isLangReply = msg.type === 'interactive' &&
                           msg.interactive?.type === 'list_reply' &&
                           msg.interactive.list_reply.id?.startsWith(LANG_PREFIX);
@@ -153,7 +194,6 @@ const handleWebhook = async (req, res) => {
             ? Date.now() - new Date(session.languageSetAt).getTime() >= LANGUAGE_TTL_MS
             : false
         });
-        // Preserve the user's first message so we can process it once they pick a language.
         const pendingContent = msg.type === 'text' ? msg.text?.body : null;
         session.state = { ...session.state, awaitingLanguage: true, pendingMessage: pendingContent };
         session.changed('state', true);
@@ -162,7 +202,8 @@ const handleWebhook = async (req, res) => {
         return;
       }
 
-      // 4. Route by message type
+      // 4. Route by message type / payload
+
       if (isLangReply) {
         // ── Language selection ──────────────────────────────────────────────
         const langCode = msg.interactive.list_reply.id.slice(LANG_PREFIX.length);
@@ -187,60 +228,234 @@ const handleWebhook = async (req, res) => {
         await send(from, t_lang('language_selected_confirmation'));
 
         if (pendingMessage?.trim()) {
-          // Process the user's first message now that we know their language
+          // Process the first message now that we know their language
           const userEmail = session.state.email || null;
-          const response  = await processAI({ client, from, message: pendingMessage, history: session.history, userEmail, language: langCode });
+          const response  = await processAI({ client, from, message: pendingMessage, history: session.history, userEmail, language: langCode, isNewUser });
 
           if (response.showServices) {
             await sendServiceList(from, langCode, client);
-            session.history.push({ role: 'user',  content: pendingMessage,       language: langCode, timestamp: new Date() });
-            session.history.push({ role: 'model', content: 'Service list shown', language: langCode, timestamp: new Date() });
+            pushHistory(session, langCode, pendingMessage, 'Service list shown');
           } else if (response.reply) {
             await send(from, response.reply);
-            session.history.push({ role: 'user',  content: pendingMessage,  language: langCode, timestamp: new Date() });
-            session.history.push({ role: 'model', content: response.reply,  language: langCode, timestamp: new Date() });
+            pushHistory(session, langCode, pendingMessage, response.reply);
           } else {
-            await sendServiceList(from, langCode, client);
+            await sendIntentList(from, client, langCode);
           }
-          session.changed('history', true);
           await session.save({ transaction: t });
         } else {
-          await sendServiceList(from, langCode, client);
+          await sendIntentList(from, client, langCode);
+        }
+
+      } else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
+        // ── Interactive list reply ──────────────────────────────────────────
+        const selectedId    = msg.interactive.list_reply.id;
+        const selectedTitle = msg.interactive.list_reply.title;
+        const locale        = session.language;
+
+        logger.whatsapp('info', 'Interactive list selection received', { requestId, from: `***${from.slice(-4)}`, selectedId, selectedTitle });
+
+        if (selectedId.startsWith(INTENT_PREFIX)) {
+          // ── Intent selection ──────────────────────────────────────────────
+          const intent = selectedId.slice(INTENT_PREFIX.length);
+
+          if (!VALID_INTENTS.includes(intent)) {
+            logger.whatsapp('warn', 'Unknown intent in list reply', { requestId, intent });
+            await sendIntentList(from, client, locale);
+            return;
+          }
+
+          // Clear order sub-type when a fresh intent is picked
+          session.state = { ...session.state, activeIntent: intent, activeOrderType: null, aiPaused: intent === 'handoff' };
+          session.changed('state', true);
+
+          if (intent === 'handoff') {
+            await handleHumanHandoff(session, client, from, send, t);
+            return;
+          }
+
+          if (intent === 'order') {
+            await session.save({ transaction: t });
+            await handleOrderRouting(from, client, locale);
+            return;
+          }
+
+          if (intent === 'services') {
+            await session.save({ transaction: t });
+            await sendServiceList(from, locale, client);
+            return;
+          }
+
+          // general — prompt the user to ask their question
+          await session.save({ transaction: t });
+          await send(from, GENERAL_PROMPTS[locale] || GENERAL_PROMPTS.en);
+
+        } else if (selectedId.startsWith(ORDER_PREFIX)) {
+          // ── Order sub-type selection ──────────────────────────────────────
+          const orderType = selectedId.slice(ORDER_PREFIX.length);
+
+          if (!VALID_ORDER_TYPES.includes(orderType)) {
+            logger.whatsapp('warn', 'Unknown order type in list reply', { requestId, orderType });
+            await handleOrderRouting(from, client, locale);
+            return;
+          }
+
+          session.state = { ...session.state, activeIntent: 'order', activeOrderType: orderType };
+          session.changed('state', true);
+          await session.save({ transaction: t });
+
+          const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
+          const userEmail  = session.state.email || null;
+          const response   = await processAI({
+            client, from, message: triggerMsg, history: session.history,
+            userEmail, language: locale, activeIntent: 'order', activeOrderType: orderType
+          });
+
+          if (response.showServices) {
+            await sendServiceList(from, locale, client);
+            pushHistory(session, locale, triggerMsg, 'Service list shown');
+          } else if (response.reply) {
+            await send(from, response.reply);
+            pushHistory(session, locale, triggerMsg, response.reply);
+          }
+          await session.save({ transaction: t });
+
+        } else {
+          // ── Service list selection (existing logic) ───────────────────────
+          const svcKey   = `services:${clientId}`;
+          let   services = await redisGet(svcKey);
+          if (!services?.length) {
+            const namespace = client?.pineconeIndex || clientId || 'default';
+            services = await ragService.getServicesFromIndex(namespace);
+            if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
+          }
+          const service = services?.find(s => s.id === selectedId);
+
+          if (service) {
+            const activeIntent    = session.state.activeIntent    || null;
+            const activeOrderType = session.state.activeOrderType || null;
+            const response = await processAI({
+              client, from,
+              message: `I'm interested in ${service.name}. I'd like to learn more about this service.`,
+              history: session.history,
+              userEmail: null,
+              language: locale,
+              activeIntent,
+              activeOrderType
+            });
+
+            if (response.reply) await send(from, response.reply);
+
+            session.state.selectedService = service.id;
+            pushHistory(session, locale, `Selected: ${service.name}`, response.reply || 'Service selected');
+            await session.save({ transaction: t });
+          } else {
+            const t_err = i18next.getFixedT(locale);
+            await send(from, t_err('service_not_available'));
+            await sendIntentList(from, client, locale);
+          }
         }
 
       } else if (msg.type === 'text') {
         // ── Text message ────────────────────────────────────────────────────
         const text         = msg.text.body.trim().toLowerCase();
         const originalText = msg.text.body.trim();
-        const locale       = session.language; // guaranteed valid by gate above
+        const locale       = session.language;
+        const activeIntent    = session.state.activeIntent    || null;
+        const activeOrderType = session.state.activeOrderType || null;
+        const aiPaused        = session.state.aiPaused        || false;
 
         logger.whatsapp('info', 'Text message received', {
           requestId,
           from: `***${from.slice(-4)}`,
           messageLength: originalText.length,
-          isCommand: ['menu', 'restart'].includes(text),
-          isNewUser,
+          activeIntent,
+          activeOrderType,
+          aiPaused,
           locale
         });
 
+        // menu / restart — always allowed, even during handoff
         if (['menu', 'restart'].includes(text)) {
           logger.whatsapp('info', 'Resetting session — user typed ' + text, { requestId, from: `***${from.slice(-4)}` });
-          await sendServiceList(from, locale, client);
           session.history = [];
-          session.state   = { selectedService: null, pendingBooking: null };
+          session.state   = { selectedService: null, pendingBooking: null, activeIntent: null, activeOrderType: null, aiPaused: false };
+          session.changed('state', true);
           whatsappSessions.delete(from);
           await session.save({ transaction: t });
+          await sendIntentList(from, client, locale);
           return;
         }
 
+        // During human handoff — drop messages silently (agent will reply manually)
+        if (aiPaused) {
+          logger.whatsapp('info', 'Message dropped: AI paused for human handoff', { requestId, from: `***${from.slice(-4)}` });
+          return;
+        }
+
+        // No intent set — detect from keywords or show intent list
+        if (!activeIntent) {
+          const quickIntent = detectQuickIntent(originalText);
+          if (quickIntent) {
+            // Set intent in session and fall through to intent-specific routing below
+            session.state = { ...session.state, activeIntent: quickIntent, activeOrderType: null };
+            session.changed('state', true);
+            await session.save({ transaction: t });
+
+            if (quickIntent === 'handoff') {
+              await handleHumanHandoff(session, client, from, send, t);
+              return;
+            }
+            if (quickIntent === 'order') {
+              await handleOrderRouting(from, client, locale);
+              return;
+            }
+            // For general/services, fall through to processing below with the detected intent
+          } else {
+            await sendIntentList(from, client, locale);
+            return;
+          }
+        }
+
+        // Re-read activeIntent after potential quick-intent update
+        const resolvedIntent    = session.state.activeIntent    || null;
+        const resolvedOrderType = session.state.activeOrderType || null;
+
         const userEmail = session.state.email || null;
-        const response  = await processAI({ client, from, message: msg.text.body, history: session.history, userEmail, language: locale });
+
+        // ── Route by active intent ──────────────────────────────────────────
+
+        if (resolvedIntent === 'general') {
+          // Try JSON file first; fall through to RAG if it can't answer
+          const jsonReply = await handleGeneralInquiry(originalText, session, client);
+          if (jsonReply) {
+            await send(from, jsonReply);
+            pushHistory(session, locale, originalText, jsonReply);
+            await session.save({ transaction: t });
+            return;
+          }
+          // Fall through to processAI (RAG will answer)
+        }
+
+        if (resolvedIntent === 'order' && !resolvedOrderType) {
+          // User typed something without picking a sub-type — show sub-menu again
+          await handleOrderRouting(from, client, locale);
+          return;
+        }
+
+        const response = await processAI({
+          client, from, message: msg.text.body,
+          history: session.history,
+          userEmail,
+          language: locale,
+          activeIntent:    resolvedIntent,
+          activeOrderType: resolvedOrderType,
+          isNewUser,
+          userName: session.name || null
+        });
 
         if (response.showServices) {
           await sendServiceList(from, locale, client);
-          session.history.push({ role: 'user',  content: msg.text.body,       language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
-          session.changed('history', true);
+          pushHistory(session, locale, msg.text.body, 'Service list shown');
           await session.save({ transaction: t });
           return;
         }
@@ -253,50 +468,23 @@ const handleWebhook = async (req, res) => {
             if (emailMatch) session.state.email = emailMatch[0];
           }
 
-          session.history.push({ role: 'user',  content: msg.text.body,  language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply, language: locale, timestamp: new Date() });
-          session.changed('history', true);
+          pushHistory(session, locale, msg.text.body, response.reply);
           await session.save({ transaction: t });
-        }
-
-      } else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
-        // ── Service list selection ──────────────────────────────────────────
-        const selectedId    = msg.interactive.list_reply.id;
-        const selectedTitle = msg.interactive.list_reply.title;
-        const locale        = session.language;
-
-        logger.whatsapp('info', 'Interactive list selection received', { requestId, from: `***${from.slice(-4)}`, selectedId, selectedTitle });
-
-        const svcKey   = `services:${clientId}`;
-        let   services = await redisGet(svcKey);
-        if (!services?.length) {
-          const namespace = client?.pineconeIndex || clientId || 'default';
-          services = await ragService.getServicesFromIndex(namespace);
-          if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
-        }
-        const service = services?.find(s => s.id === selectedId);
-
-        if (service) {
-          const response = await processAI({ client, from, message: `I'm interested in ${service.name}. I'd like to learn more about this service.`, history: session.history, userEmail: null, language: locale });
-
-          if (response.reply) await send(from, response.reply);
-
-          session.state.selectedService = service.id;
-          session.history.push({ role: 'user',  content: `Selected: ${service.name}`,          language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply || 'Service selected', language: locale, timestamp: new Date() });
-          session.changed('history', true);
-          await session.save({ transaction: t });
-        } else {
-          const t_err = i18next.getFixedT(locale);
-          await send(from, t_err('service_not_available'));
-          await sendServiceList(from, locale, client);
         }
 
       } else if (msg.type === 'audio') {
         // ── Voice message ───────────────────────────────────────────────────
-        const locale = session.language;
+        const locale          = session.language;
+        const activeIntent    = session.state.activeIntent    || null;
+        const activeOrderType = session.state.activeOrderType || null;
+        const aiPaused        = session.state.aiPaused        || false;
 
         logger.whatsapp('info', 'Audio message received', { requestId, from: `***${from.slice(-4)}`, mediaId: msg.audio?.id });
+
+        if (aiPaused) {
+          logger.whatsapp('info', 'Audio dropped: AI paused for human handoff', { requestId, from: `***${from.slice(-4)}` });
+          return;
+        }
 
         if (client && !client.canUseVoice()) {
           logger.whatsapp('info', 'Voice rejected — plan does not include voice', { requestId, clientId: client.id, subscriptionPlan: client.subscriptionPlan });
@@ -318,22 +506,25 @@ const handleWebhook = async (req, res) => {
         logger.whatsapp('info', 'Audio transcribed', { requestId, from: `***${from.slice(-4)}`, transcriptionLength: transcribedText.length });
 
         const userEmail = session.state.email || null;
-        const response  = await processAI({ client, from, message: transcribedText, history: session.history, userEmail, language: locale });
+        const response  = await processAI({
+          client, from, message: transcribedText,
+          history: session.history,
+          userEmail,
+          language: locale,
+          activeIntent,
+          activeOrderType
+        });
 
         if (response.showServices) {
           await sendServiceList(from, locale, client);
-          session.history.push({ role: 'user',  content: `[Voice] ${transcribedText}`, language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: 'Service list shown',         language: locale, timestamp: new Date() });
-          session.changed('history', true);
+          pushHistory(session, locale, `[Voice] ${transcribedText}`, 'Service list shown');
           await session.save({ transaction: t });
           return;
         }
 
         if (response.reply) {
           await send(from, response.reply);
-          session.history.push({ role: 'user',  content: `[Voice] ${transcribedText}`, language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply,               language: locale, timestamp: new Date() });
-          session.changed('history', true);
+          pushHistory(session, locale, `[Voice] ${transcribedText}`, response.reply);
           await session.save({ transaction: t });
         }
 
@@ -356,17 +547,15 @@ const handleWebhook = async (req, res) => {
 
 // Cleanup old sessions hourly — distributed lock prevents duplicate work across instances
 setInterval(async () => {
-  const lockAcquired = await redisSetNx('lock:session-cleanup', '1', 120); // 2-min lock
+  const lockAcquired = await redisSetNx('lock:session-cleanup', '1', 120);
   if (lockAcquired === false) {
     logger.info('Session cleanup skipped: another instance is running it');
     return;
   }
-  // null → Redis unavailable, proceed anyway (safe for single-instance deployments)
 
-  // Clear conversation history for sessions inactive > 24 h — preserves language
-  // preference (tiny fields) while reclaiming the large JSONB history blobs.
+  // Clear conversation history for sessions inactive > 24 h — preserves language preference
   const historyCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  // Destroy the full session row only after 8 days (just beyond the 7-day language TTL).
+  // Destroy the full session row only after 8 days (just beyond the 7-day language TTL)
   const sessionCutoff = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
   try {
     await dbConfig.db.UserSession.update(

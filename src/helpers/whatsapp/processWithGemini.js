@@ -25,15 +25,67 @@ function getRecentHistory(history = []) {
   return history.slice(-(MAX_HISTORY_TURNS * 2));
 }
 
-// Intents and keywords that require live calendar data
-const BOOKING_INTENTS  = new Set(['booking', 'payment']);
 const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm))\b/i;
 
-function needsCalendar(intent, message, history = []) {
-  if (BOOKING_INTENTS.has(intent)) return true;
+// Returns true only when calendar data is actually needed for this conversation turn.
+// activeIntent/activeOrderType from session state take precedence; keyword heuristics are the fallback.
+function needsCalendar(activeIntent, activeOrderType, ragIntent, message, history = []) {
+  if (activeIntent === 'order' && activeOrderType === 'booking') return true;
+  if (activeIntent === 'general' || activeIntent === 'handoff') return false;
+  if (activeIntent === 'order' && activeOrderType && activeOrderType !== 'booking') return false;
+  if (activeIntent === 'services') return false;
+  // No known intent — fall back to RAG intent and keyword heuristics
+  if (ragIntent === 'booking' || ragIntent === 'payment') return true;
   if (BOOKING_KEYWORDS.test(message)) return true;
-  // If the recent conversation was about booking, keep loading calendar so context isn't lost
   return history.slice(-6).some(h => BOOKING_KEYWORDS.test(h.content));
+}
+
+const SHOW_SERVICES_TOOL = {
+  name: 'show_services',
+  description: 'Show the list of available services to the user.'
+};
+const INITIATE_PAYMENT_TOOL = {
+  name: 'initiate_payment',
+  description: 'Initiate a payment for a consultation booking.',
+  parameters: {
+    type: 'OBJECT',
+    properties: {
+      service: { type: 'STRING', description: 'The service name' },
+      name:    { type: 'STRING', description: 'Customer name' },
+      email:   { type: 'STRING', description: 'Customer email' },
+      start:   { type: 'STRING', description: 'ISO start time of the slot' },
+      details: { type: 'STRING', description: 'Service specific details' },
+      company: { type: 'STRING', description: 'Company name (optional)' }
+    },
+    required: ['service', 'name', 'email', 'start']
+  }
+};
+const SAVE_INQUIRY_TOOL = {
+  name: 'save_inquiry',
+  description: 'Save an inquiry when a user is interested but not ready to book.',
+  parameters: {
+    type: 'OBJECT',
+    properties: {
+      service:  { type: 'STRING' },
+      name:     { type: 'STRING' },
+      email:    { type: 'STRING' },
+      details:  { type: 'STRING' },
+      timeline: { type: 'STRING' },
+      budget:   { type: 'STRING' }
+    }
+  }
+};
+
+function buildToolDeclarations(activeIntent, activeOrderType) {
+  if (activeIntent === 'general' || activeIntent === 'handoff') return [];
+  if (activeIntent === 'services') return [SHOW_SERVICES_TOOL];
+  if (activeIntent === 'order') {
+    if (activeOrderType === 'booking') return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+    if (activeOrderType === 'payment') return [INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+    return []; // status — just text answers
+  }
+  // No intent set — load all tools as fallback
+  return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
 }
 
 const USE_RAG = process.env.USE_RAG !== 'false';
@@ -51,8 +103,10 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   const currency           = clientConfig.currency           || 'RWF';
   const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
-  const isNewUser          = clientConfig.isNewUser          || false;
-  const userName           = clientConfig.userName           || null;
+  const activeIntent       = clientConfig.activeIntent        || null;
+  const activeOrderType    = clientConfig.activeOrderType     || null;
+  const isNewUser          = clientConfig.isNewUser           || false;
+  const userName           = clientConfig.userName            || null;
 
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
     phone: sanitizedPhone, messageLength: message.length,
@@ -114,48 +168,9 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       return _freeSlots;
     };
 
-    // ── Tool definitions ──────────────────────────────────────────────────
-    const tools = [
-      {
-        functionDeclarations: [
-          {
-            name: 'show_services',
-            description: 'Show the list of available services to the user.'
-          },
-          {
-            name: 'initiate_payment',
-            description: 'Initiate a payment for a consultation booking.',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                service: { type: 'STRING', description: 'The service name' },
-                name:    { type: 'STRING', description: 'Customer name' },
-                email:   { type: 'STRING', description: 'Customer email' },
-                start:   { type: 'STRING', description: 'ISO start time of the slot' },
-                details: { type: 'STRING', description: 'Service specific details' },
-                company: { type: 'STRING', description: 'Company name (optional)' }
-              },
-              required: ['service', 'name', 'email', 'start']
-            }
-          },
-          {
-            name: 'save_inquiry',
-            description: 'Save an inquiry when a user is interested but not ready to book.',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                service:  { type: 'STRING' },
-                name:     { type: 'STRING' },
-                email:    { type: 'STRING' },
-                details:  { type: 'STRING' },
-                timeline: { type: 'STRING' },
-                budget:   { type: 'STRING' }
-              }
-            }
-          }
-        ]
-      }
-    ];
+    // ── Tool definitions — scoped to the active intent ────────────────────
+    const toolDeclarations = buildToolDeclarations(activeIntent, activeOrderType);
+    const tools = toolDeclarations.length ? [{ functionDeclarations: toolDeclarations }] : [];
 
     // ── Build prompt ──────────────────────────────────────────────────────
     let prompt;
@@ -169,7 +184,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
         ragIntent           = retrievedData.intent || 'general';
 
         // Only fetch calendar if this looks like a booking conversation (also checks recent history)
-        const calendarNeeded = needsCalendar(ragIntent, message, history);
+        const calendarNeeded = needsCalendar(activeIntent, activeOrderType, ragIntent, message, history);
         logger.debug('Calendar needed check', { sanitizedPhone, ragIntent, calendarNeeded });
 
         const slots = calendarNeeded ? await loadSlots() : [];
@@ -192,7 +207,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
         detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-        const calendarNeeded = needsCalendar('general', message, history);
+        const calendarNeeded = needsCalendar(activeIntent, activeOrderType, 'general', message, history);
         const slots = calendarNeeded ? await loadSlots() : [];
         const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
         const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
@@ -200,7 +215,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       }
     } else {
       detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-      const calendarNeeded = needsCalendar('general', message, history);
+      const calendarNeeded = needsCalendar(activeIntent, activeOrderType, 'general', message, history);
       const slots = calendarNeeded ? await loadSlots() : [];
       const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
       const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
