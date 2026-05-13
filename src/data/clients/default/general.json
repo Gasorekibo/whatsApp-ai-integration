@@ -1,0 +1,26 @@
+{
+  "phone": "9403093",
+  "whatsapp": "9403093",
+  "email": "alsfdj@example.com",
+  "location": "Kimihuru, Kigali, Rwanda",
+  "hours": "Monday - Friday: 9am - 5pm",
+  "website": "hello.com",
+  "faqs": [
+    {
+      "question": "What are your business hours?",
+      "answer": "Our business hours are Monday to Friday, from 9am to 5pm."
+    },
+    {
+      "question": "Where are you located?",
+      "answer": "We are located in Kimihuru, Kigali, Rwanda."
+    },
+    {
+      "question": "How can I contact you?",
+      "answer": "You can contact us via phone at 9403093, email at alsfdj@example.com"
+    },
+    {
+      "question": "Do you have a website?",
+      "answer": "Yes, our website is hello.com."
+    }
+  ]
+}
