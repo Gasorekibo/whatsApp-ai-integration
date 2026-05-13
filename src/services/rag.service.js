@@ -805,7 +805,7 @@ JSON Output:`;
     buildAugmentedPrompt(retrievedData, userMessage, dynamicData = {}, clientConfig = {}) {
         const parts = [];
 
-        // Base instruction
+        // Base instruction — clientConfig.language (session preference) overrides RAG-detected language
         parts.push(this.getBaseInstruction(retrievedData.language, retrievedData.intent, clientConfig));
         parts.push('');
 
@@ -841,9 +841,11 @@ JSON Output:`;
             parts.push('');
         }
 
-        // Additional context hints
+        // When Pinecone returned nothing, make the boundary explicit so the model
+        // cannot justify using its training data to fill the gap.
         if (retrievedData.relevantDocs === 0) {
-            parts.push('Note: No specific information found in knowledge base for this query.');
+            parts.push('=== RELEVANT INFORMATION ===');
+            parts.push('[EMPTY — the knowledge base returned no results for this query. You MUST NOT answer from general knowledge. Follow the KNOWLEDGE BOUNDARY rule above.]');
             parts.push('');
         }
 
@@ -857,6 +859,30 @@ JSON Output:`;
      * @returns {string} - Base instruction
      */
     getBaseInstruction(_language, intent, clientConfig = {}) {
+        // Resolved language: explicit override wins over RAG-detected language
+        const resolvedLang = clientConfig.language || _language || 'en';
+
+        const LANGUAGE_NAMES = {
+            en: 'English',
+            fr: 'French (Français)',
+            rw: 'Kinyarwanda',
+            sw: 'Kiswahili',
+            de: 'German (Deutsch)'
+        };
+        const langName = LANGUAGE_NAMES[resolvedLang] || 'English';
+
+        // Non-English users get an explicit directive at the very top — before any
+        // RAG context — so the model sees it first and the English knowledge base
+        // text cannot bias it toward an English response.
+        const languageDirective = resolvedLang !== 'en'
+            ? `⚠️ LANGUAGE REQUIREMENT — HIGHEST PRIORITY:
+You MUST reply exclusively in ${langName} (${resolvedLang}).
+The knowledge base sections below are written in English — read and understand them internally, then compose your entire reply in ${langName}.
+Never write any part of your response in English. If a proper noun or technical term has no equivalent, keep it as-is — but the surrounding text must still be in ${langName}.
+
+`
+            : '';
+
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
             service_inquiry: 'Provide detailed service information from the knowledge base.',
@@ -867,35 +893,30 @@ JSON Output:`;
         }[intent] || 'Be helpful and professional.';
 
         const botName = clientConfig.botName || 'our company';
-        return `You are a professional AI assistant for ${botName}.
+        return `${languageDirective}You are a professional AI assistant for ${botName}.
 
-CRITICAL LANGUAGE RULE:
-- ALWAYS respond in the SAME language as the user's CURRENT message.
-- Determine the language by reading ONLY the user's current message — do NOT use the conversation history to decide.
-- If the user writes in Kinyarwanda → respond in Kinyarwanda.
-- If in French → respond in French. If in English → respond in English.
-- Supported: English (en), French (fr), Kinyarwanda (rw), Swahili (sw), German (de).
-- NEVER default to English if the user's current message is in another language.
+🚫 KNOWLEDGE BOUNDARY — ABSOLUTE RULE:
+You have NO general world knowledge. You are a blank slate.
+Your ONLY source of facts is the "=== RELEVANT INFORMATION ===" section below.
+If that section is empty or does not contain the answer:
+  → Do NOT guess, infer, or use anything you know from training data.
+  → Reply: "I don't have that information in our knowledge base. For more details, please contact us directly."
+This applies to ALL factual questions: location, pricing, hours, contacts, services, names — everything.
 
-CORE RULES:
-- Use ONLY information from the "RELEVANT INFORMATION" section above
-- Never invent or assume information not provided
-- For bookings, use ONLY dates from "AVAILABLE CONSULTATION SLOTS"
-- Keep responses concise (2-4 sentences) unless more detail is needed
-- Be warm, professional, and customer-focused
-- ${intentGuidance}
-- You are mid-conversation: always read the full conversation history before replying
-- If the user's message is a follow-up (e.g. "okay", "yes", "tell me more"), respond in the context of what was just discussed — do NOT start a fresh greeting
-- ONLY answer topics related to ${botName} and its services. If the user asks something unrelated (e.g. personal questions, weather, politics), politely redirect: "I'm here to help with ${botName} services. How can I assist you?"
+CONVERSATION RULES:
+- Use conversation history ONLY to understand follow-up references (e.g. "tell me more about that", "what about the price?"). Never use it as a source of facts — facts come only from the knowledge base.
+- For bookings, use ONLY dates from "=== AVAILABLE CONSULTATION SLOTS ===".
+- Keep responses concise (2-4 sentences) unless more detail is genuinely needed.
+- Be warm, professional, and customer-focused. ${intentGuidance}
+- If the user's message is off-topic (weather, politics, personal questions), politely redirect: "I'm here to help with ${botName} services only."
 
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:
 {
-  "language": "iso_code", // Language of your reply matching the user's current message: en, fr, rw, sw, or de
-  "reply": "your response text here"
-}
+  "language": "${resolvedLang}",
+  "reply": "your response text here in ${langName}"
+}`;
 
-If information is not available, politely say so and offer to help with something else.`;
     }
 
     /**

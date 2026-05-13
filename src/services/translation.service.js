@@ -86,14 +86,19 @@ JSON Output:`;
                 return translated;
             }
 
-            logger.warn('Translated services count mismatch, using original', { 
-                original: services.length, 
-                translated: translated?.length 
+            logger.warn('Translated services count mismatch, using original', {
+                original: services.length,
+                translated: translated?.length
             });
+            // Cache the English fallback briefly so a bad Gemini response doesn't
+            // trigger repeated LLM calls within the same degraded window.
+            cache.set(cacheKey, services, 300);
             return services;
 
         } catch (error) {
-            logger.error('Service translation failed', { error: error.message, locale });
+            logger.error('Service translation failed — using English fallback', { error: error.message, locale });
+            // Cache the English original for 5 min to avoid hammering Gemini during an outage.
+            cache.set(cacheKey, services, 300);
             return services;
         }
     }

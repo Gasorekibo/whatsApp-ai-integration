@@ -19,6 +19,12 @@ function toDisplay(date, timezone) {
   };
 }
 
+const MAX_HISTORY_TURNS = 10; // 10 user+assistant pairs = 20 entries
+
+function getRecentHistory(history = []) {
+  return history.slice(-(MAX_HISTORY_TURNS * 2));
+}
+
 // Intents and keywords that require live calendar data
 const BOOKING_INTENTS  = new Set(['booking', 'payment']);
 const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm))\b/i;
@@ -181,7 +187,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
           })
         };
 
-        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { botName });
+        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { botName, language: detectedLanguage });
         logger.info(`RAG retrieved ${retrievedData.relevantDocs} docs, intent=${ragIntent}, calendar=${calendarNeeded}`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
@@ -204,17 +210,15 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
-      history: history.map(h => ({
+      history: getRecentHistory(history).map(h => ({
         role:  h.role === 'user' ? 'user' : 'model',
         parts: [{ text: h.content }]
       }))
     });
 
-    const langNames    = { en: 'English', fr: 'French', rw: 'Kinyarwanda', de: 'German', sw: 'Swahili', kis: 'Swahili' };
-    const msgLangName  = langNames[currentLanguage];
-    const messageToSend = msgLangName
-      ? `${message}\n\n[IMPORTANT: This message is in ${msgLangName}. You MUST respond ONLY in ${msgLangName}.]`
-      : message;
+    // Language enforcement is now in the system prompt — do NOT append inline tags to the
+    // user message, as system-prompt instructions carry higher model weight.
+    const messageToSend = message;
 
     let result   = await chat.sendMessage(messageToSend);
     let response = result.response;

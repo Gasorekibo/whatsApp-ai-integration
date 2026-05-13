@@ -153,7 +153,9 @@ const handleWebhook = async (req, res) => {
             ? Date.now() - new Date(session.languageSetAt).getTime() >= LANGUAGE_TTL_MS
             : false
         });
-        session.state = { ...session.state, awaitingLanguage: true };
+        // Preserve the user's first message so we can process it once they pick a language.
+        const pendingContent = msg.type === 'text' ? msg.text?.body : null;
+        session.state = { ...session.state, awaitingLanguage: true, pendingMessage: pendingContent };
         session.changed('state', true);
         await session.save({ transaction: t });
         await sendLanguageSelectionList(from, client);
@@ -171,9 +173,11 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
+        const pendingMessage = session.state.pendingMessage || null;
+
         session.language      = langCode;
         session.languageSetAt = new Date();
-        session.state         = { ...session.state, awaitingLanguage: false };
+        session.state         = { ...session.state, awaitingLanguage: false, pendingMessage: null };
         session.changed('state', true);
         await session.save({ transaction: t });
 
@@ -181,7 +185,28 @@ const handleWebhook = async (req, res) => {
 
         const t_lang = i18next.getFixedT(langCode);
         await send(from, t_lang('language_selected_confirmation'));
-        await sendServiceList(from, langCode, client);
+
+        if (pendingMessage?.trim()) {
+          // Process the user's first message now that we know their language
+          const userEmail = session.state.email || null;
+          const response  = await processAI({ client, from, message: pendingMessage, history: session.history, userEmail, language: langCode });
+
+          if (response.showServices) {
+            await sendServiceList(from, langCode, client);
+            session.history.push({ role: 'user',  content: pendingMessage,       language: langCode, timestamp: new Date() });
+            session.history.push({ role: 'model', content: 'Service list shown', language: langCode, timestamp: new Date() });
+          } else if (response.reply) {
+            await send(from, response.reply);
+            session.history.push({ role: 'user',  content: pendingMessage,  language: langCode, timestamp: new Date() });
+            session.history.push({ role: 'model', content: response.reply,  language: langCode, timestamp: new Date() });
+          } else {
+            await sendServiceList(from, langCode, client);
+          }
+          session.changed('history', true);
+          await session.save({ transaction: t });
+        } else {
+          await sendServiceList(from, langCode, client);
+        }
 
       } else if (msg.type === 'text') {
         // ── Text message ────────────────────────────────────────────────────
