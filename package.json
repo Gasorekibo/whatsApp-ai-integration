@@ -4,8 +4,9 @@
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "dev": "node app.js",
-    "start": "node app.js"
+    "dev": "nodemon app.js",
+    "start": "node app.js",
+    "migrate": "node scripts/migrate.js"
   },
   "keywords": [],
   "author": "",
@@ -43,7 +44,7 @@
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11",
+    "nodemon": "^3.1.14",
     "sequelize-cli": "^6.6.5"
   }
 }

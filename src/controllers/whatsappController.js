@@ -13,10 +13,24 @@ import { resolveClient } from '../services/clientService.js';
 import { sendMessage, transcribeAudio } from '../services/whatsappService.js';
 import { processAI } from '../services/aiService.js';
 import { sendServiceList } from '../helpers/whatsapp/sendServiceList.js';
+import {
+  sendLanguageSelectionList,
+  LANG_PREFIX,
+  VALID_LANGS,
+  LANGUAGE_TTL_MS
+} from '../helpers/whatsapp/sendLanguageSelectionList.js';
 
 dotenv.config();
 
 export const whatsappSessions = new Map();
+
+function hasValidLanguage(session) {
+  return (
+    session.language &&
+    session.languageSetAt &&
+    Date.now() - new Date(session.languageSetAt).getTime() < LANGUAGE_TTL_MS
+  );
+}
 
 const handleWebhook = async (req, res) => {
   const requestId = req.requestId || 'webhook-' + Date.now();
@@ -123,54 +137,94 @@ const handleWebhook = async (req, res) => {
         await session.save({ transaction: t });
       }
 
-      // 3. Route by message type
-      if (msg.type === 'text') {
+      // 3. Language preference gate — runs before all message-type routing.
+      //    A language selection interactive reply bypasses this gate so the user
+      //    can complete the selection even if they first sent a text message.
+      const isLangReply = msg.type === 'interactive' &&
+                          msg.interactive?.type === 'list_reply' &&
+                          msg.interactive.list_reply.id?.startsWith(LANG_PREFIX);
+
+      if (!isLangReply && !hasValidLanguage(session)) {
+        logger.whatsapp('info', 'No valid language preference — prompting selection', {
+          requestId,
+          from: `***${from.slice(-4)}`,
+          hasLanguage: !!session.language,
+          isExpired: session.languageSetAt
+            ? Date.now() - new Date(session.languageSetAt).getTime() >= LANGUAGE_TTL_MS
+            : false
+        });
+        // Preserve the user's first message so we can process it once they pick a language.
+        const pendingContent = msg.type === 'text' ? msg.text?.body : null;
+        session.state = { ...session.state, awaitingLanguage: true, pendingMessage: pendingContent };
+        session.changed('state', true);
+        await session.save({ transaction: t });
+        await sendLanguageSelectionList(from, client);
+        return;
+      }
+
+      // 4. Route by message type
+      if (isLangReply) {
+        // ── Language selection ──────────────────────────────────────────────
+        const langCode = msg.interactive.list_reply.id.slice(LANG_PREFIX.length);
+
+        if (!VALID_LANGS.includes(langCode)) {
+          logger.whatsapp('warn', 'Unknown lang code in list reply', { requestId, langCode });
+          await sendLanguageSelectionList(from, client);
+          return;
+        }
+
+        const pendingMessage = session.state.pendingMessage || null;
+
+        session.language      = langCode;
+        session.languageSetAt = new Date();
+        session.state         = { ...session.state, awaitingLanguage: false, pendingMessage: null };
+        session.changed('state', true);
+        await session.save({ transaction: t });
+
+        logger.whatsapp('info', 'Language preference saved', { requestId, from: `***${from.slice(-4)}`, langCode });
+
+        const t_lang = i18next.getFixedT(langCode);
+        await send(from, t_lang('language_selected_confirmation'));
+
+        if (pendingMessage?.trim()) {
+          // Process the user's first message now that we know their language
+          const userEmail = session.state.email || null;
+          const response  = await processAI({ client, from, message: pendingMessage, history: session.history, userEmail, language: langCode });
+
+          if (response.showServices) {
+            await sendServiceList(from, langCode, client);
+            session.history.push({ role: 'user',  content: pendingMessage,       language: langCode, timestamp: new Date() });
+            session.history.push({ role: 'model', content: 'Service list shown', language: langCode, timestamp: new Date() });
+          } else if (response.reply) {
+            await send(from, response.reply);
+            session.history.push({ role: 'user',  content: pendingMessage,  language: langCode, timestamp: new Date() });
+            session.history.push({ role: 'model', content: response.reply,  language: langCode, timestamp: new Date() });
+          } else {
+            await sendServiceList(from, langCode, client);
+          }
+          session.changed('history', true);
+          await session.save({ transaction: t });
+        } else {
+          await sendServiceList(from, langCode, client);
+        }
+
+      } else if (msg.type === 'text') {
+        // ── Text message ────────────────────────────────────────────────────
         const text         = msg.text.body.trim().toLowerCase();
         const originalText = msg.text.body.trim();
-        let locale;
+        const locale       = session.language; // guaranteed valid by gate above
 
         logger.whatsapp('info', 'Text message received', {
           requestId,
           from: `***${from.slice(-4)}`,
           messageLength: originalText.length,
           isCommand: ['menu', 'restart'].includes(text),
-          isNewUser
+          isNewUser,
+          locale
         });
-
-        const trulyNewUser = isNewUser && (!session.history || session.history.length === 0);
-
-        if (trulyNewUser) {
-          logger.whatsapp('info', 'New user — generating personalised welcome', { requestId, from: `***${from.slice(-4)}` });
-          locale = await ragService.detectLanguage(originalText, []);
-          const userName = contact?.profile?.name || null;
-
-          const welcomeResponse = await processAI({
-            client, from,
-            message: msg.text.body,
-            history: [],
-            userEmail: null,
-            language: locale,
-            isNewUser: true,
-            userName,
-          });
-
-          if (welcomeResponse.showServices) {
-            await sendServiceList(from, locale, client);
-          } else if (welcomeResponse.reply) {
-            await send(from, welcomeResponse.reply);
-          }
-
-          session.history.push({ role: 'user',  content: msg.text.body, language: locale, timestamp: new Date() });
-          session.history.push({ role: 'model', content: welcomeResponse.reply || 'Welcome sent', language: locale, timestamp: new Date() });
-          session.changed('history', true);
-          await session.save({ transaction: t });
-          return;
-        }
 
         if (['menu', 'restart'].includes(text)) {
           logger.whatsapp('info', 'Resetting session — user typed ' + text, { requestId, from: `***${from.slice(-4)}` });
-          const lastHistory = session.history?.slice().reverse().find(h => h.language);
-          locale = lastHistory?.language || await ragService.detectLanguage(originalText, session.history);
           await sendServiceList(from, locale, client);
           session.history = [];
           session.state   = { selectedService: null, pendingBooking: null };
@@ -179,15 +233,12 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
-        const userEmail       = session.state.email || null;
-        const userInputLang   = await ragService.detectCurrentLanguage(originalText);
-        const response        = await processAI({ client, from, message: msg.text.body, history: session.history, userEmail, language: userInputLang });
-        locale = response.language || userInputLang;
+        const userEmail = session.state.email || null;
+        const response  = await processAI({ client, from, message: msg.text.body, history: session.history, userEmail, language: locale });
 
         if (response.showServices) {
-          const serviceListLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || userInputLang;
-          await sendServiceList(from, serviceListLocale, client);
-          session.history.push({ role: 'user',  content: msg.text.body, language: userInputLang, timestamp: new Date() });
+          await sendServiceList(from, locale, client);
+          session.history.push({ role: 'user',  content: msg.text.body,       language: locale, timestamp: new Date() });
           session.history.push({ role: 'model', content: 'Service list shown', language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
@@ -202,15 +253,17 @@ const handleWebhook = async (req, res) => {
             if (emailMatch) session.state.email = emailMatch[0];
           }
 
-          session.history.push({ role: 'user',  content: msg.text.body, language: userInputLang, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply, language: locale,       timestamp: new Date() });
+          session.history.push({ role: 'user',  content: msg.text.body,  language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: response.reply, language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
         }
 
       } else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
+        // ── Service list selection ──────────────────────────────────────────
         const selectedId    = msg.interactive.list_reply.id;
         const selectedTitle = msg.interactive.list_reply.title;
+        const locale        = session.language;
 
         logger.whatsapp('info', 'Interactive list selection received', { requestId, from: `***${from.slice(-4)}`, selectedId, selectedTitle });
 
@@ -221,34 +274,32 @@ const handleWebhook = async (req, res) => {
           services = await ragService.getServicesFromIndex(namespace);
           if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
         }
-        const service  = services?.find(s => s.id === selectedId);
+        const service = services?.find(s => s.id === selectedId);
 
         if (service) {
-          const historyLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
-          const response      = await processAI({ client, from, message: `I'm interested in ${service.name}. I'd like to learn more about this service.`, history: session.history, userEmail: null, language: historyLocale });
-          const locale        = response.language || historyLocale;
+          const response = await processAI({ client, from, message: `I'm interested in ${service.name}. I'd like to learn more about this service.`, history: session.history, userEmail: null, language: locale });
 
           if (response.reply) await send(from, response.reply);
 
           session.state.selectedService = service.id;
-          session.history.push({ role: 'user',  content: `Selected: ${service.name}`, language: locale, timestamp: new Date() });
+          session.history.push({ role: 'user',  content: `Selected: ${service.name}`,          language: locale, timestamp: new Date() });
           session.history.push({ role: 'model', content: response.reply || 'Service selected', language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
         } else {
-          const locale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || 'en';
-          const t_err  = i18next.getFixedT(locale);
+          const t_err = i18next.getFixedT(locale);
           await send(from, t_err('service_not_available'));
           await sendServiceList(from, locale, client);
         }
 
       } else if (msg.type === 'audio') {
+        // ── Voice message ───────────────────────────────────────────────────
+        const locale = session.language;
+
         logger.whatsapp('info', 'Audio message received', { requestId, from: `***${from.slice(-4)}`, mediaId: msg.audio?.id });
 
-        // Gate: voice requires message_and_voice plan
         if (client && !client.canUseVoice()) {
           logger.whatsapp('info', 'Voice rejected — plan does not include voice', { requestId, clientId: client.id, subscriptionPlan: client.subscriptionPlan });
-          const locale  = session.history?.slice().reverse().find(h => h.language)?.language || 'en';
           const t_voice = i18next.getFixedT(locale);
           await send(from, t_voice('voice_not_on_plan', 'Voice messages are not available on your current plan. Please send a text message instead.'));
           return;
@@ -259,24 +310,20 @@ const handleWebhook = async (req, res) => {
           transcribedText = await transcribeAudio({ client, mediaId: msg.audio.id, mimeType: msg.audio.mime_type || 'audio/ogg; codecs=opus' });
         } catch (transcribeErr) {
           logger.error('Audio transcription failed', { error: transcribeErr.message });
-          const locale = session.history?.slice().reverse().find(h => h.language)?.language || 'en';
-          const t_err  = i18next.getFixedT(locale);
+          const t_err = i18next.getFixedT(locale);
           await send(from, t_err('audio_transcription_failed', "Sorry, I couldn't understand your voice message. Please try sending a text message instead."));
           return;
         }
 
         logger.whatsapp('info', 'Audio transcribed', { requestId, from: `***${from.slice(-4)}`, transcriptionLength: transcribedText.length });
 
-        const userInputLang = await ragService.detectCurrentLanguage(transcribedText);
-        const userEmail     = session.state.email || null;
-        const response      = await processAI({ client, from, message: transcribedText, history: session.history, userEmail, language: userInputLang });
-        const locale        = response.language || userInputLang;
+        const userEmail = session.state.email || null;
+        const response  = await processAI({ client, from, message: transcribedText, history: session.history, userEmail, language: locale });
 
         if (response.showServices) {
-          const serviceListLocale = session.history?.slice().reverse().find(h => h.role === 'user' && h.language)?.language || userInputLang;
-          await sendServiceList(from, serviceListLocale);
-          session.history.push({ role: 'user',  content: `[Voice] ${transcribedText}`, language: userInputLang, timestamp: new Date() });
-          session.history.push({ role: 'model', content: 'Service list shown',         language: locale,       timestamp: new Date() });
+          await sendServiceList(from, locale, client);
+          session.history.push({ role: 'user',  content: `[Voice] ${transcribedText}`, language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: 'Service list shown',         language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
           return;
@@ -284,8 +331,8 @@ const handleWebhook = async (req, res) => {
 
         if (response.reply) {
           await send(from, response.reply);
-          session.history.push({ role: 'user',  content: `[Voice] ${transcribedText}`, language: userInputLang, timestamp: new Date() });
-          session.history.push({ role: 'model', content: response.reply,               language: locale,       timestamp: new Date() });
+          session.history.push({ role: 'user',  content: `[Voice] ${transcribedText}`, language: locale, timestamp: new Date() });
+          session.history.push({ role: 'model', content: response.reply,               language: locale, timestamp: new Date() });
           session.changed('history', true);
           await session.save({ transaction: t });
         }
@@ -316,10 +363,18 @@ setInterval(async () => {
   }
   // null → Redis unavailable, proceed anyway (safe for single-instance deployments)
 
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Clear conversation history for sessions inactive > 24 h — preserves language
+  // preference (tiny fields) while reclaiming the large JSONB history blobs.
+  const historyCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Destroy the full session row only after 8 days (just beyond the 7-day language TTL).
+  const sessionCutoff = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
   try {
-    await dbConfig.db.UserSession.destroy({ where: { lastAccess:   { [Op.lt]: cutoff } } });
-    await dbConfig.db.ProcessedMessage.destroy({ where: { processedAt: { [Op.lt]: cutoff } } });
+    await dbConfig.db.UserSession.update(
+      { history: [], state: { selectedService: null } },
+      { where: { lastAccess: { [Op.lt]: historyCutoff }, history: { [Op.ne]: [] } } }
+    );
+    await dbConfig.db.UserSession.destroy({ where: { lastAccess: { [Op.lt]: sessionCutoff } } });
+    await dbConfig.db.ProcessedMessage.destroy({ where: { processedAt: { [Op.lt]: historyCutoff } } });
     whatsappSessions.clear();
     logger.info('Session cleanup completed');
   } catch (err) {

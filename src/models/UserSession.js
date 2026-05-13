@@ -43,6 +43,14 @@ export default (sequelize) => {
       allowNull: true,
       defaultValue: {}
     },
+    language: {
+      type: DataTypes.STRING(10),
+      allowNull: true
+    },
+    languageSetAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
     lastAccess: {
       type: DataTypes.DATE,
       allowNull: false,
