@@ -14,7 +14,7 @@ const LABELS = {
     status:  { title: '🔍 Check order status',   description: 'Track your booking or order' }
   },
   fr: {
-    body:    'Que souhaitez-vous faire?',
+    body:    'Merci d’avoir choisi Commande/Réservation. Sélectionnez une option ci-dessous pour commencer.',
     button:  'Choisir',
     section: 'Options de commande',
     booking: { title: '📅 Prendre rendez-vous',  description: 'Planifier une consultation' },
@@ -22,7 +22,7 @@ const LABELS = {
     status:  { title: '🔍 Vérifier le statut',    description: 'Suivre votre réservation' }
   },
   rw: {
-    body:    'Urashaka gukora iki?',
+    body:    'Murakoze guhitamo Gutumiza/Kubika. Hitamo uburyo bumwe buri hasi utangire.',
     button:  'Hitamo',
     section: 'Amahitamo y\'iteka',
     booking: { title: '📅 Fata gahunda',           description: 'Tegura ikiganiro' },
@@ -30,7 +30,7 @@ const LABELS = {
     status:  { title: '🔍 Reba aho iteka ryageze', description: 'Kurikirana iteka ryawe' }
   },
   sw: {
-    body:    'Ungependa kufanya nini?',
+    body:    'Asante kwa kuchagua Oda/Uhifadhi. Chagua chaguo hapa chini ili kuanza.',
     button:  'Chagua',
     section: 'Chaguzi za agizo',
     booking: { title: '📅 Weka miadi',           description: 'Panga mashauriano' },
@@ -38,7 +38,7 @@ const LABELS = {
     status:  { title: '🔍 Angalia hali ya agizo', description: 'Fuatilia agizo lako' }
   },
   de: {
-    body:    'Was möchten Sie tun?',
+    body:    'Vielen Dank, dass Sie Bestellung/Buchung gewählt haben. Wählen Sie unten eine Option, um zu beginnen.',
     button:  'Wählen',
     section: 'Bestelloptionen',
     booking: { title: '📅 Termin buchen',         description: 'Beratung planen' },
