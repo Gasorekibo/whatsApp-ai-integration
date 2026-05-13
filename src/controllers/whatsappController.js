@@ -392,31 +392,35 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
-        // No intent set — detect from keywords or show intent list
-        if (!activeIntent) {
-          const quickIntent = detectQuickIntent(originalText);
-          if (quickIntent) {
-            // Set intent in session and fall through to intent-specific routing below
-            session.state = { ...session.state, activeIntent: quickIntent, activeOrderType: null };
-            session.changed('state', true);
-            await session.save({ transaction: t });
+        // Intent detection runs on every message so users can switch context naturally.
+        // Order is sticky (protects in-progress booking flows); handoff always wins.
+        const quickIntent    = detectQuickIntent(originalText);
+        const shouldOverride = quickIntent &&
+                               quickIntent !== activeIntent &&
+                               (activeIntent !== 'order' || quickIntent === 'handoff');
 
-            if (quickIntent === 'handoff') {
-              await handleHumanHandoff(session, client, from, send, t);
-              return;
-            }
-            if (quickIntent === 'order') {
-              await handleOrderRouting(from, client, locale);
-              return;
-            }
-            // For general/services, fall through to processing below with the detected intent
-          } else {
-            await sendIntentList(from, client, locale);
-            return;
-          }
+        if (!activeIntent && !quickIntent) {
+          await sendIntentList(from, client, locale);
+          return;
         }
 
-        // Re-read activeIntent after potential quick-intent update
+        if (shouldOverride) {
+          session.state = { ...session.state, activeIntent: quickIntent, activeOrderType: null };
+          session.changed('state', true);
+          await session.save({ transaction: t });
+
+          if (quickIntent === 'handoff') {
+            await handleHumanHandoff(session, client, from, send, t);
+            return;
+          }
+          if (quickIntent === 'order') {
+            await handleOrderRouting(from, client, locale);
+            return;
+          }
+          // general / services — update took effect, fall through with new intent
+        }
+
+        // Re-read after potential override
         const resolvedIntent    = session.state.activeIntent    || null;
         const resolvedOrderType = session.state.activeOrderType || null;
 

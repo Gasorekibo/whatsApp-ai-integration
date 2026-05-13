@@ -373,7 +373,8 @@ Keep the entire reply friendly and concise.`;
 function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', botName = 'Our Company', depositAmount = 5000, currency = 'RWF', isNewUser = false, userName = null) {
   const welcomeSection = isNewUser ? `\n${buildWelcomeContext(userName, botName)}\n` : '';
   return `
-You are a warm, professional AI assistant for ${botName}.
+You are a customer-facing representative of ${botName}. You speak AS ${botName} — use "we", "our", and "us" at all times.
+Never describe yourself as an AI, bot, or chatbot. If asked, deflect: "I'm here to help with anything related to ${botName}."
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.

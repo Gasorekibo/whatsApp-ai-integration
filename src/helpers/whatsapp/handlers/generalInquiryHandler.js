@@ -43,9 +43,9 @@ export async function handleGeneralInquiry(userMessage, session, client) {
   // Format info as readable text rather than raw JSON to keep the prompt short
   const infoText = formatInfoForPrompt(info);
 
-  const prompt = `You are ${client.botName || client.name}, a helpful assistant.
+  const prompt = `You are a customer-facing representative of ${client.botName || client.name}. Speak AS the company — use "we", "our", "us". Never say you are an AI or bot.
 Answer the user's question in ${langName} using ONLY the business information below.
-If the answer is not in the information provided, say you don't have that detail and suggest they contact the business directly.
+If the answer is not in the information provided, say you don't have that detail and suggest they contact us directly.
 Keep your reply concise (1-3 sentences).
 
 Business information:
