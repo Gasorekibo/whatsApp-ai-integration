@@ -56,11 +56,11 @@ function detectQuickIntent(text) {
 
 // Prompt shown after user selects the "general inquiries" intent
 const GENERAL_PROMPTS = {
-  en: "What would you like to know? Ask about our contact info, hours, location, or FAQs.",
-  fr: "Que souhaitez-vous savoir? Posez vos questions sur nos coordonnées, horaires ou FAQ.",
-  rw: "Ni iki ushaka kumenya? Baza ibibazo ku turika, amasaha cyangwa ibibazo bikunze kubazwa.",
-  sw: "Ungependa kujua nini? Uliza kuhusu mawasiliano, saa za kazi au maswali ya kawaida.",
-  de: "Was möchten Sie wissen? Fragen Sie nach Kontaktdaten, Öffnungszeiten oder FAQs."
+  en: "Thank you for choosing General Inquiries. What would you like to know? Ask about our contact info, hours, location or FAQs.",
+  fr: "Merci d’avoir choisi les demandes générales. Que souhaitez-vous savoir ? Posez des questions sur nos coordonnées, nos horaires, notre emplacement ou notre FAQ",
+  rw: "Murakoze guhitamo ibibazo rusange. Ni iki wifuza kumenya? Baza ku makuru y’itumanaho, amasaha dukoreramo, aho duherereye cyangwa ibibazo bikunze kubazwa.",
+  sw: "Asante kwa kuchagua Maswali ya Jumla. Ungependa kujua nini? Uliza kuhusu mawasiliano yetu, saa za kazi, eneo au maswali yanayoulizwa mara kwa mara (FAQs).",
+  de: "Vielen Dank, dass Sie Allgemeine Anfragen gewählt haben. Was möchten Sie wissen? Fragen Sie nach unseren Kontaktdaten, Öffnungszeiten, Standort oder FAQs."
 };
 
 // Kick-off messages sent when an order sub-type is selected
@@ -194,8 +194,9 @@ const handleWebhook = async (req, res) => {
             ? Date.now() - new Date(session.languageSetAt).getTime() >= LANGUAGE_TTL_MS
             : false
         });
-        const pendingContent = msg.type === 'text' ? msg.text?.body : null;
-        session.state = { ...session.state, awaitingLanguage: true, pendingMessage: pendingContent };
+        // Ignore the triggering message — intent list shown after language selection
+        // gives the user a clean, structured starting point.
+        session.state = { ...session.state, awaitingLanguage: true };
         session.changed('state', true);
         await session.save({ transaction: t });
         await sendLanguageSelectionList(from, client);
@@ -214,11 +215,9 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
-        const pendingMessage = session.state.pendingMessage || null;
-
         session.language      = langCode;
         session.languageSetAt = new Date();
-        session.state         = { ...session.state, awaitingLanguage: false, pendingMessage: null };
+        session.state         = { ...session.state, awaitingLanguage: false };
         session.changed('state', true);
         await session.save({ transaction: t });
 
@@ -226,25 +225,7 @@ const handleWebhook = async (req, res) => {
 
         const t_lang = i18next.getFixedT(langCode);
         await send(from, t_lang('language_selected_confirmation'));
-
-        if (pendingMessage?.trim()) {
-          // Process the first message now that we know their language
-          const userEmail = session.state.email || null;
-          const response  = await processAI({ client, from, message: pendingMessage, history: session.history, userEmail, language: langCode, isNewUser });
-
-          if (response.showServices) {
-            await sendServiceList(from, langCode, client);
-            pushHistory(session, langCode, pendingMessage, 'Service list shown');
-          } else if (response.reply) {
-            await send(from, response.reply);
-            pushHistory(session, langCode, pendingMessage, response.reply);
-          } else {
-            await sendIntentList(from, client, langCode);
-          }
-          await session.save({ transaction: t });
-        } else {
-          await sendIntentList(from, client, langCode);
-        }
+        await sendIntentList(from, client, langCode);
 
       } else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
         // ── Interactive list reply ──────────────────────────────────────────

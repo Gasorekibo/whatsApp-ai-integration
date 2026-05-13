@@ -19,5 +19,5 @@
   "auth_failure_info": "Une erreur est survenue lors de l'authentification.",
   "auth_failure_retry": "Veuillez réessayer.",
   "auth_failure_button": "Réessayer l'authentification",
-  "language_selected_confirmation": "✅ Parfait ! Je répondrai en *Français* pendant les 7 prochains jours.\n\n💡 L'anglais est recommandé pour la meilleure expérience.\n\nVotre langue préférée sera mise à jour dans les 7 prochains jours."
+  "language_selected_confirmation": "✅ Parfait ! Je répondrai en *Français* pendant les 7 prochains jours. L'anglais est recommandé pour la meilleure expérience.\n\nVotre langue préférée sera mise à jour dans les 7 prochains jours."
 }
