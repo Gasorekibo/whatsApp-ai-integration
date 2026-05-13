@@ -6,7 +6,7 @@ export const VALID_ORDER_TYPES = ['booking', 'payment', 'status'];
 
 const LABELS = {
   en: {
-    body:    'What would you like to do?',
+    body:    'Thank you for choosing Order/Booking. Select an option below to get started.',
     button:  'Choose',
     section: 'Order options',
     booking: { title: '📅 Book an appointment', description: 'Schedule a consultation' },
