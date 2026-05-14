@@ -17,6 +17,7 @@ export default (sequelize) => {
     industry:     { type: DataTypes.STRING },
     description:  { type: DataTypes.TEXT },
     phone:        { type: DataTypes.STRING },
+    whatsapp:     { type: DataTypes.STRING },
     email:        { type: DataTypes.STRING },
     website:      { type: DataTypes.STRING },
     address:      { type: DataTypes.TEXT },

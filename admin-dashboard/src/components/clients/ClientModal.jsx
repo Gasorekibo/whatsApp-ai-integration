@@ -208,6 +208,7 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
           })}
           {fld('pineconeIndexName', 'Index Name', {
             placeholder: 'moyo-tech-chatbot',
+            value: form.pineconeIndexName || '',
             hint: 'The shared index that holds all namespaces. Blank = server default.'
           })}
         </FormSection>

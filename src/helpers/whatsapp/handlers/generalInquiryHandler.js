@@ -68,17 +68,32 @@ Reply in ${langName}:`;
 
 function formatHours(hours) {
   if (!hours || typeof hours !== 'object' || Object.keys(hours).length === 0) return null;
+
   const entries = Object.entries(hours);
+
+  // Onboarding flat format: { mon_fri: "9am–5pm", saturday: "10am–2pm", sunday: "Closed", notes: "..." }
+  const FLAT_KEYS = new Set(['mon_fri', 'saturday', 'sunday', 'notes']);
+  if (entries.some(([k]) => FLAT_KEYS.has(k))) {
+    const lines = ['Business hours:'];
+    const labels = { mon_fri: 'Mon–Fri', saturday: 'Saturday', sunday: 'Sunday' };
+    ['mon_fri', 'saturday', 'sunday'].forEach(k => {
+      if (hours[k]) lines.push(`  ${labels[k]}: ${hours[k]}`);
+    });
+    if (hours.notes) lines.push(`  Note: ${hours.notes}`);
+    return lines;
+  }
+
+  // Admin structured format: { monday: { status, from, to }, ... }
   const all24 = entries.every(([, d]) => d?.status === '24hrs');
   if (all24) return ['Business hours: Open 24/7'];
 
   const lines = ['Business hours:'];
   entries.forEach(([day, d]) => {
     const label = day.charAt(0).toUpperCase() + day.slice(1);
-    if (!d || d.status === 'closed')      lines.push(`  ${label}: Closed`);
-    else if (d.status === '24hrs')        lines.push(`  ${label}: Open 24 hours`);
-    else if (d.from && d.to)             lines.push(`  ${label}: ${d.from} – ${d.to}`);
-    else                                  lines.push(`  ${label}: Open`);
+    if (!d || d.status === 'closed')  lines.push(`  ${label}: Closed`);
+    else if (d.status === '24hrs')    lines.push(`  ${label}: Open 24 hours`);
+    else if (d.from && d.to)         lines.push(`  ${label}: ${d.from} – ${d.to}`);
+    else                              lines.push(`  ${label}: Open`);
   });
   return lines;
 }
@@ -89,6 +104,7 @@ function formatInfoForPrompt(info) {
   if (info.industry)     lines.push(`Industry: ${info.industry}`);
   if (info.description)  lines.push(`About: ${info.description}`);
   if (info.phone)        lines.push(`Phone: ${info.phone}`);
+  if (info.whatsapp)     lines.push(`WhatsApp: ${info.whatsapp}`);
   if (info.email)        lines.push(`Email: ${info.email}`);
   if (info.website)      lines.push(`Website: ${info.website}`);
   if (info.location)     lines.push(`Location: ${info.location}`);

@@ -12,6 +12,7 @@ import ServiceRequest from './ServiceRequest.js';
 import ProcessedMessage from './ProcessedMessage.js';
 import Client from './Client.js';
 import ClientGeneralInfo from './ClientGeneralInfo.js';
+import FormToken from './FormToken.js';
 import logger from '../logger/logger.js';
 
 // CLS ensures every query dispatched within a request's async context is bound
@@ -47,6 +48,7 @@ const db = {
   ServiceRequest: ServiceRequest(sequelize, Sequelize),
   ProcessedMessage: ProcessedMessage(sequelize, Sequelize),
   ClientGeneralInfo: ClientGeneralInfo(sequelize, Sequelize),
+  FormToken: FormToken(sequelize, Sequelize),
 };
 
 // ── Associations ─────────────────────────────────────────────────────────────
@@ -70,6 +72,9 @@ db.Employee.belongsTo(db.Client,            { foreignKey: 'clientId' });
 
 db.Client.hasOne(db.ClientGeneralInfo,      { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 db.ClientGeneralInfo.belongsTo(db.Client,   { foreignKey: 'clientId' });
+
+db.Client.hasMany(db.FormToken,             { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.FormToken.belongsTo(db.Client,           { foreignKey: 'clientId' });
 
 // ── Lifecycle hooks ───────────────────────────────────────────────────────────
 Object.keys(db).forEach(modelName => {

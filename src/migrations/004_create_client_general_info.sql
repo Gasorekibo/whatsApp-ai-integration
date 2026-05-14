@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS client_general_info (
   industry        VARCHAR(255),
   description     TEXT,
   phone           VARCHAR(50),
+  whatsapp        VARCHAR(50),
   email           VARCHAR(255),
   website         VARCHAR(500),
   address         TEXT,

@@ -12,6 +12,7 @@ import Services from './pages/Services'
 import Employees from './pages/Employees'
 import Monitoring from './pages/Monitoring'
 import GeneralInfo from './pages/GeneralInfo'
+import Onboarding from './pages/Onboarding'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading, isAdmin } = useAuth()
@@ -39,6 +40,9 @@ function AppRoutes() {
         <Route path="employees"    element={<ProtectedRoute adminOnly><Employees /></ProtectedRoute>} />
         <Route path="monitoring"   element={<ProtectedRoute adminOnly><Monitoring /></ProtectedRoute>} />
       </Route>
+
+      {/* Public — no auth required, access gated by token */}
+      <Route path="/onboarding/:token" element={<Onboarding />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

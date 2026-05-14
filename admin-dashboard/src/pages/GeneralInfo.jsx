@@ -5,128 +5,80 @@ import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import Spinner from '../components/ui/Spinner'
 import FormField, { Input, Select, FormSection } from '../components/ui/FormField'
+import HoursEditor, { DEFAULT_DAY_HOURS } from '../components/ui/HoursEditor'
+import FaqsEditor from '../components/ui/FaqsEditor'
 import toast from 'react-hot-toast'
 
-// ── Days config ───────────────────────────────────────────────────────────────
+// ── Shareable link panel ───────────────────────────────────────────────────────
 
-const DAYS = [
-  { key: 'monday',    label: 'Monday' },
-  { key: 'tuesday',   label: 'Tuesday' },
-  { key: 'wednesday', label: 'Wednesday' },
-  { key: 'thursday',  label: 'Thursday' },
-  { key: 'friday',    label: 'Friday' },
-  { key: 'saturday',  label: 'Saturday' },
-  { key: 'sunday',    label: 'Sunday' },
-]
+function ShareLinkPanel({ clientId }) {
+  const [link,        setLink]        = useState(null)
+  const [expiresAt,   setExpiresAt]   = useState(null)
+  const [generating,  setGenerating]  = useState(false)
+  const [copied,      setCopied]      = useState(false)
 
-const DEFAULT_DAY_HOURS = Object.fromEntries(
-  DAYS.map(({ key }) => [
-    key,
-    { status: key === 'saturday' || key === 'sunday' ? 'closed' : 'open', from: '09:00', to: '17:00' },
-  ])
-)
-
-// ── Structured hours editor ───────────────────────────────────────────────────
-
-function HoursEditor({ value, onChange }) {
-  const hours = value && Object.keys(value).length > 0 ? value : DEFAULT_DAY_HOURS
-  const all24 = DAYS.every(({ key }) => hours[key]?.status === '24hrs')
-
-  const toggle24_7 = (checked) => {
-    onChange(
-      checked
-        ? Object.fromEntries(DAYS.map(({ key }) => [key, { status: '24hrs' }]))
-        : DEFAULT_DAY_HOURS
-    )
+  const generate = async () => {
+    setGenerating(true)
+    try {
+      const res = await clientsApi.generateFormToken(clientId)
+      setLink(res.data.url)
+      setExpiresAt(res.data.expiresAt)
+      toast.success('Link ready — share it with the client')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not generate link')
+    } finally {
+      setGenerating(false)
+    }
   }
 
-  const setDay = (key, field, val) =>
-    onChange({ ...hours, [key]: { ...hours[key], [field]: val } })
+  const copy = () => {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
-  const inputCls = 'px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent outline-none transition'
+  const expiry = expiresAt
+    ? new Date(expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : null
 
   return (
-    <div className="space-y-3">
-      <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={all24}
-          onChange={e => toggle24_7(e.target.checked)}
-          className="w-4 h-4 accent-brand-500"
-        />
-        <span className="text-sm font-medium text-gray-700">Open 24 / 7 — all days, all hours</span>
-      </label>
+    <div className="mb-6 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-sm font-semibold text-emerald-800">📤 Client Onboarding Form</p>
+          <p className="text-xs text-emerald-600 mt-0.5">
+            Generate a secure link so the client can fill in their business info directly.
+            {expiry && <span className="ml-1 text-gray-400">Expires {expiry}.</span>}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={generate}
+          disabled={generating}
+          className="shrink-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          {generating ? 'Generating…' : link ? '🔄 New Link' : '🔗 Publish & Get Link'}
+        </button>
+      </div>
 
-      {all24 ? (
-        <p className="text-sm text-green-600 font-medium">✅ This business is open 24 hours a day, 7 days a week.</p>
-      ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          {DAYS.map(({ key, label }, i) => {
-            const day = hours[key] || { status: 'open', from: '09:00', to: '17:00' }
-            return (
-              <div
-                key={key}
-                className={`flex items-center gap-3 px-4 py-2.5 ${i < DAYS.length - 1 ? 'border-b border-gray-100' : ''} ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
-              >
-                <span className="w-24 text-sm font-medium text-gray-600 shrink-0">{label}</span>
-
-                <select
-                  value={day.status || 'open'}
-                  onChange={e => setDay(key, 'status', e.target.value)}
-                  className={`${inputCls} w-28 bg-white`}
-                >
-                  <option value="open">Open</option>
-                  <option value="closed">Closed</option>
-                  <option value="24hrs">24 hours</option>
-                </select>
-
-                {day.status === 'open' && (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <input type="time" value={day.from || '09:00'} onChange={e => setDay(key, 'from', e.target.value)} className={inputCls} />
-                    <span className="text-gray-400">to</span>
-                    <input type="time" value={day.to || '17:00'} onChange={e => setDay(key, 'to', e.target.value)} className={inputCls} />
-                  </div>
-                )}
-                {day.status === 'closed' && <span className="text-xs text-gray-400 italic">No hours</span>}
-                {day.status === '24hrs'  && <span className="text-xs text-green-600 font-medium">All day</span>}
-              </div>
-            )
-          })}
+      {link && (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            readOnly
+            value={link}
+            className="flex-1 px-3 py-2 text-xs bg-white border border-emerald-200 rounded-lg outline-none text-gray-600 font-mono truncate"
+            onClick={e => e.target.select()}
+          />
+          <button
+            type="button"
+            onClick={copy}
+            className="shrink-0 px-3 py-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-lg transition-colors"
+          >
+            {copied ? '✓ Copied!' : 'Copy'}
+          </button>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── FAQ editor ────────────────────────────────────────────────────────────────
-
-function FaqsEditor({ value, onChange }) {
-  const faqs = value || []
-  const update = (i, field, val) => onChange(faqs.map((f, idx) => idx === i ? { ...f, [field]: val } : f))
-  const add    = () => onChange([...faqs, { question: '', answer: '' }])
-  const remove = (i) => onChange(faqs.filter((_, idx) => idx !== i))
-
-  return (
-    <div className="space-y-3">
-      {faqs.map((faq, i) => (
-        <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
-          <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">FAQ {i + 1}</span>
-            <button type="button" onClick={() => remove(i)} className="text-red-400 hover:text-red-600 text-xs font-medium">Remove</button>
-          </div>
-          <Input placeholder="Question" value={faq.question} onChange={e => update(i, 'question', e.target.value)} />
-          <textarea
-            placeholder="Answer"
-            value={faq.answer}
-            onChange={e => update(i, 'answer', e.target.value)}
-            rows={2}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent outline-none transition resize-none"
-          />
-        </div>
-      ))}
-      <button type="button" onClick={add} className="text-sm text-brand-500 hover:text-brand-600 font-medium">
-        + Add FAQ
-      </button>
     </div>
   )
 }
@@ -224,6 +176,8 @@ export default function GeneralInfo() {
       {!clientId && isAdmin && (
         <p className="text-gray-400 text-sm">Select a client to view or edit their general info.</p>
       )}
+
+      {clientId && isAdmin && <ShareLinkPanel clientId={clientId} />}
 
       {clientId && loading && (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
