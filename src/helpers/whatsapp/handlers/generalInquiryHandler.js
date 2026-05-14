@@ -71,9 +71,9 @@ function formatHours(hours) {
 
   const entries = Object.entries(hours);
 
-  // Onboarding flat format: { mon_fri: "9am–5pm", saturday: "10am–2pm", sunday: "Closed", notes: "..." }
-  const FLAT_KEYS = new Set(['mon_fri', 'saturday', 'sunday', 'notes']);
-  if (entries.some(([k]) => FLAT_KEYS.has(k))) {
+  // Flat format has string values: { mon_fri: "9am–5pm", saturday: "Closed", ... }
+  // mon_fri only exists in the flat format, so it's the definitive check.
+  if (typeof hours.mon_fri === 'string') {
     const lines = ['Business hours:'];
     const labels = { mon_fri: 'Mon–Fri', saturday: 'Saturday', sunday: 'Sunday' };
     ['mon_fri', 'saturday', 'sunday'].forEach(k => {
