@@ -66,14 +66,35 @@ Reply in ${langName}:`;
   }
 }
 
+function formatHours(hours) {
+  if (!hours || typeof hours !== 'object' || Object.keys(hours).length === 0) return null;
+  const entries = Object.entries(hours);
+  const all24 = entries.every(([, d]) => d?.status === '24hrs');
+  if (all24) return ['Business hours: Open 24/7'];
+
+  const lines = ['Business hours:'];
+  entries.forEach(([day, d]) => {
+    const label = day.charAt(0).toUpperCase() + day.slice(1);
+    if (!d || d.status === 'closed')      lines.push(`  ${label}: Closed`);
+    else if (d.status === '24hrs')        lines.push(`  ${label}: Open 24 hours`);
+    else if (d.from && d.to)             lines.push(`  ${label}: ${d.from} – ${d.to}`);
+    else                                  lines.push(`  ${label}: Open`);
+  });
+  return lines;
+}
+
 function formatInfoForPrompt(info) {
   const lines = [];
-  if (info.phone)    lines.push(`Phone: ${info.phone}`);
-  if (info.whatsapp) lines.push(`WhatsApp: ${info.whatsapp}`);
-  if (info.email)    lines.push(`Email: ${info.email}`);
-  if (info.location) lines.push(`Location: ${info.location}`);
-  if (info.hours)    lines.push(`Business hours: ${info.hours}`);
-  if (info.website)  lines.push(`Website: ${info.website}`);
+  if (info.businessName) lines.push(`Business name: ${info.businessName}`);
+  if (info.industry)     lines.push(`Industry: ${info.industry}`);
+  if (info.description)  lines.push(`About: ${info.description}`);
+  if (info.phone)        lines.push(`Phone: ${info.phone}`);
+  if (info.email)        lines.push(`Email: ${info.email}`);
+  if (info.website)      lines.push(`Website: ${info.website}`);
+  if (info.location)     lines.push(`Location: ${info.location}`);
+  if (info.mapsLink)     lines.push(`Google Maps: ${info.mapsLink}`);
+  const hoursLines = formatHours(info.hours);
+  if (hoursLines) lines.push(...hoursLines);
   if (Array.isArray(info.faqs) && info.faqs.length > 0) {
     lines.push('FAQs:');
     info.faqs.forEach(f => lines.push(`  Q: ${f.q}\n  A: ${f.a}`));

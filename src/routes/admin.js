@@ -4,6 +4,7 @@ import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
 import { invalidateClient } from '../services/clientService.js';
 import { requireAdmin } from '../middlewares/auth.js';
+import { invalidateGeneralInfoCache } from '../services/generalInfo.service.js';
 
 // GET /services — authenticated users; clients see only their own services
 router.get('/services', async (req, res) => {
@@ -213,6 +214,45 @@ router.get('/employees', requireAdmin, async (req, res) => {
     res.json({ employees: employees || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ── General Info (read & write, scoped per client) ────────────────────────────
+
+router.get('/general-info', async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.clientId : (req.query.clientId || null);
+    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+    res.json({ info: info || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/general-info', async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.clientId : (req.body.clientId || null);
+    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const allowed = ['businessName', 'industry', 'description', 'phone', 'email',
+                     'website', 'address', 'area', 'city', 'mapsLink', 'hours', 'faqs'];
+    const updates = {};
+    allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
+
+    // findOne + update/create guarantees we never create a duplicate row
+    let info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+    if (info) {
+      await info.update(updates);
+    } else {
+      info = await dbConfig.db.ClientGeneralInfo.create({ clientId, ...updates });
+    }
+    invalidateGeneralInfoCache(clientId);
+
+    res.json({ info });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -11,6 +11,7 @@ import Content from './Content.js';
 import ServiceRequest from './ServiceRequest.js';
 import ProcessedMessage from './ProcessedMessage.js';
 import Client from './Client.js';
+import ClientGeneralInfo from './ClientGeneralInfo.js';
 import logger from '../logger/logger.js';
 
 // CLS ensures every query dispatched within a request's async context is bound
@@ -44,7 +45,8 @@ const db = {
   UserSession: UserSession(sequelize, Sequelize),
   Content: Content(sequelize, Sequelize),
   ServiceRequest: ServiceRequest(sequelize, Sequelize),
-  ProcessedMessage: ProcessedMessage(sequelize, Sequelize)
+  ProcessedMessage: ProcessedMessage(sequelize, Sequelize),
+  ClientGeneralInfo: ClientGeneralInfo(sequelize, Sequelize),
 };
 
 // ── Associations ─────────────────────────────────────────────────────────────
@@ -63,8 +65,11 @@ db.ServiceRequest.belongsTo(db.Client, { foreignKey: 'clientId' });
 db.Client.hasMany(db.ProcessedMessage, { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 db.ProcessedMessage.belongsTo(db.Client, { foreignKey: 'clientId' });
 
-db.Client.hasMany(db.Employee,         { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.Employee.belongsTo(db.Client,       { foreignKey: 'clientId' });
+db.Client.hasMany(db.Employee,              { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.Employee.belongsTo(db.Client,            { foreignKey: 'clientId' });
+
+db.Client.hasOne(db.ClientGeneralInfo,      { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.ClientGeneralInfo.belongsTo(db.Client,   { foreignKey: 'clientId' });
 
 // ── Lifecycle hooks ───────────────────────────────────────────────────────────
 Object.keys(db).forEach(modelName => {

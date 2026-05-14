@@ -53,6 +53,11 @@ export const kbApi = {
   syncConfluence:(clientId) => api.post('/kb/sync/confluence', { clientId }),
 }
 
+export const generalInfoApi = {
+  get:    (clientId) => api.get('/outreach/general-info', { params: clientId ? { clientId } : {} }),
+  update: (data)     => api.put('/outreach/general-info', data),
+}
+
 export const monitoringApi = {
   getHealth: ()       => api.get('/outreach/monitoring/health'),
   getLogs:   (params) => api.get('/outreach/monitoring/logs', { params }),
