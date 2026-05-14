@@ -23,6 +23,7 @@ import { sendIntentList, INTENT_PREFIX, VALID_INTENTS } from '../helpers/whatsap
 import { handleOrderRouting, ORDER_PREFIX, VALID_ORDER_TYPES } from '../helpers/whatsapp/handlers/orderHandler.js';
 import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
 import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
+import { classifyIntent } from '../services/intentClassifier.service.js';
 
 dotenv.config();
 
@@ -41,10 +42,10 @@ function hasValidLanguage(session) {
 // ── Quick intent detection (keyword shortcuts bypass the intent list) ─────────
 
 const QUICK_INTENT_MAP = [
-  ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative)\b/i],
-  ['order',    /\b(book|appointment|schedule|pay(?:ment)?|order|status|track|reservation)\b/i],
-  ['services', /\b(services?|products?|pricing|price|cost|offer|provide)\b/i],
-  ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close)\b/i],
+  ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
+  ['order',    /\b(book|appointment|schedule|pay(?:ment)?|order|status|track|reservation|gufata|rendez-vous|paiement|miadi|malipo|termin)\b/i],
+  ['services', /\b(services?|products?|pricing|price|cost|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
+  ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close|aho|amasaha|où|horaires|mahali|saa|standort|öffnungszeiten)\b/i],
 ];
 
 function detectQuickIntent(text) {
@@ -53,6 +54,30 @@ function detectQuickIntent(text) {
   }
   return null;
 }
+
+// Phrases that are continuations of a conversation, not new intent signals.
+// When a user has an active intent and sends one of these, route to AI normally.
+const CONTINUATION_RE = /^(ok|okay|thanks|thank you|merci|murakoze|asante|danke|alright|great|got it|sure|yes|no|yep|nope|hi|hello|hey|good|perfect|understood|i see|noted|👍|😊|🙏|nice|cool|wow|really|interesting|oh|ah|hm+|lol|haha)[\s!.?]*$/i;
+
+function isContinuation(text) {
+  return CONTINUATION_RE.test(text.trim());
+}
+
+// Keywords that reset the session to the intent list — multilingual.
+const RESTART_WORDS = new Set([
+  'menu', 'restart', 'start', 'start over', 'reset',
+  'retour', 'recommencer', 'accueil',           // French
+  'tangira', 'subira', 'ongera',                // Kinyarwanda
+  'anza', 'rudi', 'mwanzo',                    // Kiswahili
+  'zurück', 'neustart', 'hauptmenü',           // German
+]);
+
+function isRestartCommand(text) {
+  return RESTART_WORDS.has(text.toLowerCase().trim());
+}
+
+// How long (ms) a handoff can stay paused before AI auto-resumes.
+const HANDOFF_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // Prompt shown after user selects the "general inquiries" intent
 const GENERAL_PROMPTS = {
@@ -176,6 +201,24 @@ const handleWebhook = async (req, res) => {
         logger.whatsapp('info', 'New user session created', { requestId, sessionId: session.id, from: `***${from.slice(-4)}` });
       } else {
         logger.whatsapp('info', 'Existing user session found', { requestId, sessionId: session.id, from: `***${from.slice(-4)}` });
+
+        // Reset intent state if the session has been idle for more than 2 hours.
+        // Prevents stale activeIntent (e.g. 'order' with no sub-type) from persisting
+        // across separate conversations.
+        const SESSION_INTENT_TTL_MS = 2 * 60 * 60 * 1000;
+        const idleMs = Date.now() - new Date(session.lastAccess).getTime();
+        if (idleMs > SESSION_INTENT_TTL_MS) {
+          session.state = {
+            ...session.state,
+            activeIntent:   null,
+            activeOrderType: null,
+            aiPaused:       false,
+            pausedAt:       null,
+          };
+          session.changed('state', true);
+          logger.whatsapp('info', 'Session intent cleared after idle timeout', { requestId, idleMs });
+        }
+
         session.lastAccess = new Date();
         await session.save({ transaction: t });
       }
@@ -355,8 +398,8 @@ const handleWebhook = async (req, res) => {
           locale
         });
 
-        // menu / restart — always allowed, even during handoff
-        if (['menu', 'restart'].includes(text)) {
+        // menu / restart — always allowed, even during handoff (multilingual)
+        if (isRestartCommand(text)) {
           logger.whatsapp('info', 'Resetting session — user typed ' + text, { requestId, from: `***${from.slice(-4)}` });
           session.history = [];
           session.state   = { selectedService: null, pendingBooking: null, activeIntent: null, activeOrderType: null, aiPaused: false };
@@ -367,38 +410,79 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
-        // During human handoff — drop messages silently (agent will reply manually)
+        // During human handoff — drop messages silently (agent will reply manually).
+        // Auto-resume AI if the handoff has been open too long with no agent response.
         if (aiPaused) {
-          logger.whatsapp('info', 'Message dropped: AI paused for human handoff', { requestId, from: `***${from.slice(-4)}` });
+          const pausedAt   = session.state.pausedAt ? new Date(session.state.pausedAt).getTime() : 0;
+          const timedOut   = pausedAt && (Date.now() - pausedAt) > HANDOFF_TIMEOUT_MS;
+
+          if (timedOut) {
+            logger.whatsapp('info', 'Handoff timed out — resuming AI', { requestId, from: `***${from.slice(-4)}` });
+            session.state = { ...session.state, aiPaused: false, pausedAt: null, activeIntent: null };
+            session.changed('state', true);
+            await session.save({ transaction: t });
+            await sendIntentList(from, client, locale);
+          } else {
+            logger.whatsapp('info', 'Message dropped: AI paused for human handoff', { requestId, from: `***${from.slice(-4)}` });
+          }
           return;
         }
 
-        // Intent detection runs on every message so users can switch context naturally.
-        // Order is sticky (protects in-progress booking flows); handoff always wins.
-        const quickIntent    = detectQuickIntent(originalText);
-        const shouldOverride = quickIntent &&
-                               quickIntent !== activeIntent &&
-                               (activeIntent !== 'order' || quickIntent === 'handoff');
+        // Continuations (greetings, acknowledgements) skip intent detection so
+        // "okay thanks" or "👍" don't break an active conversation.
+        const continuation = isContinuation(originalText);
 
-        if (!activeIntent && !quickIntent) {
+        // Layer 1: fast English keyword detection
+        const quickIntent = continuation ? null : detectQuickIntent(originalText);
+
+        // Layer 2: Gemini classifier — runs when:
+        //   (a) no active intent and keyword failed, OR
+        //   (b) active intent is 'order' but no sub-type chosen yet (user may have pivoted).
+        // Skip for continuations and very short messages (handled inside classifyIntent).
+        let classifiedIntent = null;
+        if (!continuation && !quickIntent) {
+          const needsClassify = !activeIntent || (activeIntent === 'order' && !activeOrderType);
+          if (needsClassify) {
+            classifiedIntent = await classifyIntent(originalText, client);
+          }
+        }
+
+        const resolvedNewIntent = quickIntent || classifiedIntent;
+
+        // Allow any detected intent to override when:
+        //   - it differs from the current intent, AND
+        //   - either we're not in 'order' mode, OR the user hasn't picked a sub-type yet
+        //     (meaning they haven't committed to the booking/payment/status flow), OR
+        //   - the new intent is 'handoff' (always wins).
+        const shouldOverride = resolvedNewIntent &&
+                               resolvedNewIntent !== activeIntent &&
+                               (activeIntent !== 'order' || !activeOrderType || resolvedNewIntent === 'handoff');
+
+        // Still no intent after both layers → show list (genuinely ambiguous)
+        if (!activeIntent && !resolvedNewIntent) {
           await sendIntentList(from, client, locale);
           return;
         }
 
-        if (shouldOverride) {
-          session.state = { ...session.state, activeIntent: quickIntent, activeOrderType: null };
+        if (shouldOverride || (!activeIntent && resolvedNewIntent)) {
+          session.state = { ...session.state, activeIntent: resolvedNewIntent, activeOrderType: null };
           session.changed('state', true);
           await session.save({ transaction: t });
 
-          if (quickIntent === 'handoff') {
+          if (resolvedNewIntent === 'handoff') {
             await handleHumanHandoff(session, client, from, send, t);
             return;
           }
-          if (quickIntent === 'order') {
+          if (resolvedNewIntent === 'order') {
             await handleOrderRouting(from, client, locale);
             return;
           }
-          // general / services — update took effect, fall through with new intent
+          if (resolvedNewIntent === 'services') {
+            await sendServiceList(from, locale, client);
+            return;
+          }
+          // general — fall through so the question is answered immediately,
+          // not just after the user is told "you're now in general inquiries"
         }
 
         // Re-read after potential override
@@ -544,7 +628,7 @@ setInterval(async () => {
   const sessionCutoff = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
   try {
     await dbConfig.db.UserSession.update(
-      { history: [], state: { selectedService: null } },
+      { history: [], state: { selectedService: null, activeIntent: null, activeOrderType: null, aiPaused: false, pausedAt: null } },
       { where: { lastAccess: { [Op.lt]: historyCutoff }, history: { [Op.ne]: [] } } }
     );
     await dbConfig.db.UserSession.destroy({ where: { lastAccess: { [Op.lt]: sessionCutoff } } });

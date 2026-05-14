@@ -18,6 +18,7 @@ import { zohoAuthCallbackHandler } from './src/helpers/zoho/zohoAuthCallbackHand
 import { zohoGetAllContactsHandler } from './src/helpers/zoho/zohoGetAllContactsHandler.js';
 import successfulPaymentPageHandler from './src/helpers/successfulPaymentPageHandler.js';
 import knowledgeBaseRoutes from './src/routes/knowledge-base.js';
+import onboardingRoutes from './src/routes/onboarding.routes.js';
 import dbConfig from './src/models/index.js';
 import googleSheetServices from './src/utils/googlesheets.js';
 import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/constants/constantMessages.js';
@@ -41,6 +42,9 @@ app.use(morgan('dev'));
 
 // Static files
 app.use(express.static('src/public'));
+
+// Public onboarding API (no auth — access is gated by the token itself)
+app.use('/api/onboarding', onboardingRoutes);
 
 // Public API routes
 app.post('/api/chat/book', bookMeetingHandler);
@@ -209,6 +213,15 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Redirect onboarding links to the React frontend.
+// Generated links use APP_BASE_URL; if it's not set they fall back to the backend
+// host and land here — redirect rather than 404.
+app.get('/onboarding/:token', (req, res) => {
+  const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+  if (base) return res.redirect(`${base}/onboarding/${req.params.token}`);
+  res.status(503).json({ error: 'APP_BASE_URL is not configured. Set it to your frontend URL (e.g. http://localhost:5173).' });
 });
 
 // 404 handler

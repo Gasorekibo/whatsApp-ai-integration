@@ -1,9 +1,11 @@
 import express from 'express';
+import crypto from 'crypto';
 const router = express.Router();
 import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
 import { invalidateClient } from '../services/clientService.js';
 import { requireAdmin } from '../middlewares/auth.js';
+import { invalidateGeneralInfoCache } from '../services/generalInfo.service.js';
 
 // GET /services — authenticated users; clients see only their own services
 router.get('/services', async (req, res) => {
@@ -213,6 +215,80 @@ router.get('/employees', requireAdmin, async (req, res) => {
     res.json({ employees: employees || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ── General Info (read & write, scoped per client) ────────────────────────────
+
+router.get('/general-info', async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.clientId : (req.query.clientId || null);
+    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+    res.json({ info: info || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/general-info', async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.clientId : (req.body.clientId || null);
+    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const allowed = ['businessName', 'industry', 'description', 'phone', 'email',
+                     'website', 'address', 'area', 'city', 'mapsLink', 'hours', 'faqs'];
+    const updates = {};
+    allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
+
+    // findOne + update/create guarantees we never create a duplicate row
+    let info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+    if (info) {
+      await info.update(updates);
+    } else {
+      info = await dbConfig.db.ClientGeneralInfo.create({ clientId, ...updates });
+    }
+    await invalidateGeneralInfoCache(clientId);
+
+    res.json({ info });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Onboarding form token (generate / reuse) ──────────────────────────────────
+
+router.post('/clients/:clientId/form-token', requireAdmin, async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    const client = await dbConfig.db.Client?.findByPk(clientId);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    // Reuse an existing token that hasn't expired yet
+    const existing = await dbConfig.db.FormToken.findOne({
+      where: { clientId, expiresAt: { [dbConfig.db.Sequelize.Op.gt]: new Date() } },
+      order: [['createdAt', 'DESC']],
+    });
+
+    if (existing) {
+      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      return res.json({ token: existing.token, url: `${baseUrl}/onboarding/${existing.token}`, expiresAt: existing.expiresAt });
+    }
+
+    // Expire all old tokens for this client before issuing a new one
+    await dbConfig.db.FormToken.destroy({ where: { clientId } });
+
+    const token     = crypto.randomBytes(32).toString('hex'); // 64 hex chars
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await dbConfig.db.FormToken.create({ token, clientId, expiresAt });
+
+    const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    logger.info('Form token generated', { clientId, expiresAt });
+    res.status(201).json({ token, url: `${baseUrl}/onboarding/${token}`, expiresAt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,44 +1,70 @@
-import { readFile } from 'fs/promises';
-import { join } from 'path';
 import NodeCache from 'node-cache';
+import { redisGet, redisSet, redisDel } from '../utils/redis.js';
+import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
 
-const cache = new NodeCache({ stdTTL: 3600 }); // 1 hour — general info changes rarely
+// L1: in-process (1 hour TTL, fastest)
+const l1 = new NodeCache({ stdTTL: 3600 });
+
+const REDIS_TTL = 3600; // 1 hour L2
+const KEY = (clientId) => `general:${clientId}`;
 
 /**
- * Loads a client's general info JSON from disk.
- * File location: src/data/clients/{clientId}/general.json
- * Falls back to src/data/clients/default/general.json if not found.
- *
- * @param {string} clientId - The client UUID (used as the directory name)
- * @returns {object|null}   - Parsed general info, or null if not found
+ * Loads a client's general info.
+ * Cache hierarchy: L1 node-cache → L2 Redis → DB
+ * Returns null if no row exists yet for this client.
  */
 export async function getClientGeneralInfo(clientId) {
-  const key = `general:${clientId}`;
-  const cached = cache.get(key);
-  if (cached !== undefined) return cached;
+  const key = KEY(clientId);
 
-  const candidates = [
-    join(process.cwd(), 'src/data/clients', clientId, 'general.json'),
-    join(process.cwd(), 'src/data/clients/default/general.json')
-  ];
+  // L1 hit
+  const l1Hit = l1.get(key);
+  if (l1Hit !== undefined) return l1Hit;
 
-  for (const filePath of candidates) {
-    try {
-      const data = JSON.parse(await readFile(filePath, 'utf8'));
-      cache.set(key, data);
-      logger.debug('General info loaded', { clientId, filePath });
-      return data;
-    } catch {
-      // file not found — try next
-    }
+  // L2 hit
+  const l2Hit = await redisGet(key);
+  if (l2Hit !== undefined && l2Hit !== null) {
+    l1.set(key, l2Hit);
+    return l2Hit;
   }
 
-  logger.warn('No general.json found for client', { clientId });
-  cache.set(key, null); // cache the miss to avoid repeated FS lookups
-  return null;
+  // DB fallback
+  try {
+    const row = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+
+    if (!row) {
+      l1.set(key, null);
+      await redisSet(key, null, REDIS_TTL);
+      logger.debug('No general info row found for client', { clientId });
+      return null;
+    }
+
+    const data = {
+      businessName: row.businessName || null,
+      industry:     row.industry     || null,
+      description:  row.description  || null,
+      phone:        row.phone        || null,
+      whatsapp:     row.whatsapp     || null,
+      email:        row.email        || null,
+      website:      row.website      || null,
+      location:     [row.address, row.area, row.city].filter(Boolean).join(', ') || null,
+      mapsLink:     row.mapsLink     || null,
+      hours:        row.hours        || {},
+      faqs:         (row.faqs || []).map(f => ({ q: f.question, a: f.answer })),
+    };
+
+    l1.set(key, data);
+    await redisSet(key, data, REDIS_TTL);
+    logger.debug('General info loaded from DB', { clientId });
+    return data;
+  } catch (err) {
+    logger.error('getClientGeneralInfo DB error', { clientId, error: err.message });
+    return null;
+  }
 }
 
-export function invalidateGeneralInfoCache(clientId) {
-  cache.del(`general:${clientId}`);
+export async function invalidateGeneralInfoCache(clientId) {
+  const key = KEY(clientId);
+  l1.del(key);
+  await redisDel(key);
 }
