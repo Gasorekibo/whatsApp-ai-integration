@@ -6,27 +6,21 @@ const LANGUAGE_NAMES = {
   en: 'English', fr: 'French', rw: 'Kinyarwanda', sw: 'Kiswahili', de: 'German'
 };
 
-// Keywords that signal a general inquiry question answerable from the JSON file
-const GENERAL_KEYWORDS = /\b(phone|number|contact|call|email|mail|location|address|where|office|find|hours|open|close|schedule|days|time|website|site|link|whatsapp|faq|deliver|payment|pay|method|accept)\b/i;
-
 /**
- * Handles general inquiries (contact info, hours, FAQs) using the client's
- * general.json file rather than Pinecone — faster, cheaper, deterministic.
+ * Handles general inquiries (contact info, hours, FAQs) using structured DB data
+ * rather than Pinecone — faster, cheaper, language-agnostic.
  *
- * @returns {string|null} - AI-formatted reply, or null if the question isn't
- *                          answerable from the JSON (caller should fall through to RAG)
+ * The keyword gate has been intentionally removed: Gemini itself decides whether
+ * the business info can answer the question. If not, it says so and the caller
+ * falls through to RAG. This makes the handler work in any language.
+ *
+ * @returns {string|null} - AI reply, or null if info is missing / Gemini fails
  */
 export async function handleGeneralInquiry(userMessage, session, client) {
   const info = await getClientGeneralInfo(client.id);
 
   if (!info) {
-    logger.debug('generalInquiryHandler: no general.json — falling through to RAG', { clientId: client.id });
-    return null;
-  }
-
-  // If the question doesn't look like a general-info question, let RAG handle it
-  if (!GENERAL_KEYWORDS.test(userMessage)) {
-    logger.debug('generalInquiryHandler: message not general-info type — falling through to RAG');
+    logger.debug('generalInquiryHandler: no general info in DB — falling through to RAG', { clientId: client.id });
     return null;
   }
 
@@ -44,25 +38,36 @@ export async function handleGeneralInquiry(userMessage, session, client) {
   const infoText = formatInfoForPrompt(info);
 
   const prompt = `You are a customer-facing representative of ${client.botName || client.name}. Speak AS the company — use "we", "our", "us". Never say you are an AI or bot.
-Answer the user's question in ${langName} using ONLY the business information below.
-If the answer is not in the information provided, say you don't have that detail and suggest they contact us directly.
-Keep your reply concise (1-3 sentences).
+
+Your job: answer the customer's question in ${langName} using ONLY the business information provided below.
+
+Rules:
+- If the business information clearly answers the question, reply concisely (1-3 sentences).
+- If the question is about something NOT covered in the business information (e.g. booking, specific medical advice, pricing of individual services), reply with exactly the single word: FALLBACK
+- Never invent information not present below.
 
 Business information:
 ${infoText}
 
-User question: ${userMessage}
+Customer question: ${userMessage}
 
 Reply in ${langName}:`;
 
   try {
     const result = await model.generateContent(prompt);
     const reply  = result.response.text().trim();
-    logger.info('generalInquiryHandler: answered from JSON', { clientId: client.id, language: session.language });
+
+    // Model signals it can't answer from structured data → let RAG handle it
+    if (reply.toUpperCase() === 'FALLBACK') {
+      logger.debug('generalInquiryHandler: model returned FALLBACK — routing to RAG', { clientId: client.id });
+      return null;
+    }
+
+    logger.info('generalInquiryHandler: answered from DB info', { clientId: client.id, language: session.language });
     return reply;
   } catch (err) {
     logger.error('generalInquiryHandler: Gemini call failed', { error: err.message });
-    return null; // fall through to RAG
+    return null;
   }
 }
 
