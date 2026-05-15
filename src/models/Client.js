@@ -352,6 +352,15 @@ export default (sequelize) => {
   Client.prototype.toJSON = function () {
     const values = Object.assign({}, this.get());
     delete values.password;
+    // Never expose ciphertexts to API consumers — replace with a sentinel so the
+    // frontend knows the field is set without being able to accidentally re-submit
+    // the encrypted string as plaintext (which would cause double-encryption on save).
+    const SENSITIVE = [
+      'whatsappToken', 'geminiApiKey', 'pineconeApiKey',
+      'flutterwaveSecretKey', 'flutterwaveWebhookSecret',
+      'microsoftClientSecret', 'confluenceApiToken',
+    ];
+    SENSITIVE.forEach(f => { if (values[f]) values[f] = '__ENCRYPTED__'; });
     return values;
   };
 

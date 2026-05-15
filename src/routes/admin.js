@@ -89,20 +89,44 @@ router.post('/clients', requireAdmin, async (req, res) => {
     } = req.body;
 
     // ── Required field validation ─────────────────────────────────────────
+    // Every field here is load-bearing: omitting any one of them will cause
+    // the bot to fail or produce incorrect behaviour for this client.
     const missing = [];
-    if (!name)               missing.push({ field: 'name',               message: 'Client name is required' });
-    if (!email)              missing.push({ field: 'email',              message: 'Email is required for portal login' });
-    if (!phone)              missing.push({ field: 'phone',              message: 'Phone number is required' });
-    if (!password)           missing.push({ field: 'password',           message: 'Password is required so the client can log into the portal' });
-    if (!whatsappBusinessId) missing.push({ field: 'whatsappBusinessId', message: 'WhatsApp phone_number_id is required — without it incoming messages cannot be routed to this client' });
-    if (!whatsappToken)      missing.push({ field: 'whatsappToken',      message: 'WhatsApp Cloud API token is required — without it the bot cannot send messages' });
-    if (!pineconeIndex)      missing.push({ field: 'pineconeIndex',      message: 'Pinecone namespace is required to isolate this client\'s knowledge base from other clients' });
+
+    // ── Identity & portal access ──────────────────────────────────────────
+    if (!name?.trim())
+      missing.push({ field: 'name',     message: 'Client name is required' });
+    if (!email?.trim())
+      missing.push({ field: 'email',    message: 'Email is required for portal login' });
+    if (!phone?.trim())
+      missing.push({ field: 'phone',    message: 'Phone number is required' });
+    if (!password?.trim())
+      missing.push({ field: 'password', message: 'Password is required so the client can log into the portal' });
+
+    // ── WhatsApp ──────────────────────────────────────────────────────────
+    if (!whatsappBusinessId?.trim())
+      missing.push({ field: 'whatsappBusinessId', message: 'WhatsApp phone_number_id is required — without it incoming messages cannot be routed to this client' });
+    if (!whatsappToken?.trim())
+      missing.push({ field: 'whatsappToken',      message: 'WhatsApp Cloud API token is required — without it the bot cannot send any messages' });
+
+    // ── AI ────────────────────────────────────────────────────────────────
+    if (!geminiApiKey?.trim())
+      missing.push({ field: 'geminiApiKey', message: 'Gemini API key is required — the AI engine throws immediately without it and no conversation can proceed' });
+
+    // ── Knowledge base ────────────────────────────────────────────────────
+    if (!pineconeIndex?.trim())
+      missing.push({ field: 'pineconeIndex', message: 'Pinecone namespace is required to isolate this client\'s knowledge base from other clients' });
+
+    // ── Localisation & subscription ───────────────────────────────────────
+    if (!timezone?.trim())
+      missing.push({ field: 'timezone', message: 'Timezone is required — booking slots and business hours are displayed in this timezone (e.g. Africa/Kigali, Europe/Paris)' });
+    if (!currency?.trim())
+      missing.push({ field: 'currency', message: 'Currency is required — deposit amounts and payment messages use this currency code (e.g. RWF, USD, EUR)' });
+    if (!subscriptionPlan?.trim())
+      missing.push({ field: 'subscriptionPlan', message: 'Subscription plan is required — choose message_only or message_and_voice' });
 
     if (missing.length > 0) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        missing
-      });
+      return res.status(400).json({ error: 'Missing required fields', missing });
     }
 
     // ── Uniqueness pre-checks (return clean errors before DB constraint fires) ──
@@ -122,30 +146,31 @@ router.post('/clients', requireAdmin, async (req, res) => {
     }
 
     const client = await dbConfig.db.Client.create({
-      // Required
+      // ── Required: identity & portal ──────────────────────────────────
       name, email, phone, password,
+      // ── Required: WhatsApp ───────────────────────────────────────────
       whatsappBusinessId, whatsappToken,
+      // ── Required: AI ────────────────────────────────────────────────
+      geminiApiKey,
+      // ── Required: knowledge base ─────────────────────────────────────
       pineconeIndex,
-      // Optional identity
+      // ── Required: localisation & subscription ────────────────────────
+      timezone, currency, subscriptionPlan,
+      // ── Optional: identity extras ────────────────────────────────────
       botName:                    botName                    || null,
-      // Optional WhatsApp
+      // ── Optional: WhatsApp extras ────────────────────────────────────
       whatsappAccountId:          whatsappAccountId          || null,
       whatsappWebhookVerifyToken: whatsappWebhookVerifyToken || null,
-      // Optional AI
-      geminiApiKey:               geminiApiKey               || null,
+      // ── Optional: AI extras (fall back to server-level env vars) ─────
       pineconeApiKey:             pineconeApiKey             || null,
       pineconeIndexName:          pineconeIndexName          || null,
       pineconeEnvironment:        pineconeEnvironment        || null,
-      // Optional subscription & config
-      subscriptionPlan:           subscriptionPlan           || 'message_only',
-      timezone:                   timezone                   || 'Africa/Kigali',
-      currency:                   currency                   || 'RWF',
+      // ── Optional: booking & payment ──────────────────────────────────
       depositAmount:              depositAmount              || null,
       paymentRedirectUrl:         paymentRedirectUrl         || null,
-      // Optional payments
       flutterwaveSecretKey:       flutterwaveSecretKey       || null,
       flutterwaveWebhookSecret:   flutterwaveWebhookSecret   || null,
-      // Optional knowledge base
+      // ── Optional: knowledge base integrations ────────────────────────
       googleSheetId:              googleSheetId              || null,
       googleSheetsWebhookToken:   googleSheetsWebhookToken   || null,
       microsoftClientId:          microsoftClientId          || null,
@@ -183,14 +208,31 @@ router.put('/clients/:id', requireAdmin, async (req, res) => {
       'confluenceBaseUrl', 'confluenceEmail', 'confluenceApiToken', 'confluenceSpaceKey',
       'password'
     ];
+
+    // Fields whose DB value is encrypted — the GET response masks them as '__ENCRYPTED__'.
+    // If the client sends back the sentinel (or an empty string), the admin did not
+    // intend to change the key, so we must NOT overwrite the stored ciphertext.
+    const encryptedFields = new Set([
+      'whatsappToken', 'geminiApiKey', 'pineconeApiKey',
+      'flutterwaveSecretKey', 'flutterwaveWebhookSecret',
+      'microsoftClientSecret', 'confluenceApiToken',
+    ]);
+
     const updates = {};
-    allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
+    allowed.forEach(field => {
+      if (req.body[field] === undefined) return;
+      if (encryptedFields.has(field)) {
+        // Skip if the frontend sent back the masked sentinel or left the field blank
+        const v = req.body[field];
+        if (!v || v === '__ENCRYPTED__') return;
+      }
+      updates[field] = req.body[field];
+    });
 
     client.set(updates);
 
-    // Force-mark encrypted fields as changed so the beforeUpdate hook always re-encrypts them,
-    // even when the incoming plaintext value matches what's already stored.
-    const encryptedFields = ['whatsappToken', 'geminiApiKey', 'pineconeApiKey', 'flutterwaveSecretKey', 'flutterwaveWebhookSecret', 'microsoftClientSecret', 'confluenceApiToken'];
+    // Force-mark encrypted fields as changed so the beforeUpdate hook always re-encrypts
+    // the new plaintext value — only when the admin actually supplied a new one.
     encryptedFields.forEach(f => { if (updates[f] !== undefined) client.changed(f, true); });
 
     await client.save();
