@@ -1,6 +1,7 @@
 import express from 'express';
 import dbConfig from '../models/index.js';
 import { invalidateGeneralInfoCache } from '../services/generalInfo.service.js';
+import knowledgeBaseService from '../services/knowledge-base.service.js';
 import logger from '../logger/logger.js';
 
 const router = express.Router();
@@ -11,7 +12,7 @@ async function resolveToken(token) {
   if (!token || token.length !== 64) return null;
   return dbConfig.db.FormToken.findOne({
     where: { token, expiresAt: { [dbConfig.db.Sequelize.Op.gt]: new Date() } },
-    include: [{ model: dbConfig.db.Client, attributes: ['id', 'name'] }],
+    include: [{ model: dbConfig.db.Client, attributes: ['id', 'name', 'pineconeIndex'] }],
   });
 }
 
@@ -87,6 +88,12 @@ router.post('/:token', express.json(), async (req, res) => {
     await invalidateGeneralInfoCache(clientId);
     logger.info('Onboarding form submitted', { clientId });
     res.json({ success: true });
+
+    // Sync general info into Pinecone in the background — don't block the response.
+    const namespace = record.Client.pineconeIndex || String(clientId);
+    knowledgeBaseService.syncGeneralInfo(clientId, namespace).catch(err =>
+      logger.error('syncGeneralInfo failed after onboarding submit', { clientId, error: err.message })
+    );
   } catch (err) {
     logger.error('Onboarding form save error', { clientId, error: err.message });
     res.status(500).json({ error: 'Something went wrong while saving. Please try again.' });

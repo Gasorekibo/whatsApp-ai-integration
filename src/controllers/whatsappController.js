@@ -43,8 +43,8 @@ function hasValidLanguage(session) {
 
 const QUICK_INTENT_MAP = [
   ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
-  ['order',    /\b(book|appointment|schedule|pay(?:ment)?|order|status|track|reservation|gufata|rendez-vous|paiement|miadi|malipo|termin)\b/i],
-  ['services', /\b(services?|products?|pricing|price|cost|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
+  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|gufata|rendez-vous|paiement|miadi|malipo|termin)\b/i],
+  ['services', /\b(services?|products?|pric(?:e|ing)|costs?|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
   ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close|aho|amasaha|où|horaires|mahali|saa|standort|öffnungszeiten)\b/i],
 ];
 
@@ -435,16 +435,13 @@ const handleWebhook = async (req, res) => {
         // Layer 1: fast English keyword detection
         const quickIntent = continuation ? null : detectQuickIntent(originalText);
 
-        // Layer 2: Gemini classifier — runs when:
-        //   (a) no active intent and keyword failed, OR
-        //   (b) active intent is 'order' but no sub-type chosen yet (user may have pivoted).
-        // Skip for continuations and very short messages (handled inside classifyIntent).
+        // Layer 2: Gemini classifier — runs whenever keyword detection found nothing
+        // and the message is not a continuation. Works in any language and is the
+        // only way to detect intent shifts mid-conversation (e.g. user was in
+        // 'general' and now wants to book). Flash-Lite cost is negligible.
         let classifiedIntent = null;
         if (!continuation && !quickIntent) {
-          const needsClassify = !activeIntent || (activeIntent === 'order' && !activeOrderType);
-          if (needsClassify) {
-            classifiedIntent = await classifyIntent(originalText, client);
-          }
+          classifiedIntent = await classifyIntent(originalText, client);
         }
 
         const resolvedNewIntent = quickIntent || classifiedIntent;
