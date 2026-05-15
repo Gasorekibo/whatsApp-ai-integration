@@ -38,11 +38,33 @@ export async function sendServiceList(to, locale = 'en', client = null) {
     return;
   }
 
-  const LIST_ROWS = services.map(s => ({
+  // WhatsApp interactive list hard limit is 10 rows total (across all sections).
+  // When there are more than 10 services, skip the interactive list entirely and
+  // send a numbered plain-text list — the text handler will intercept numeric replies.
+  const INTERACTIVE_LIMIT = 10;
+
+  if (services.length > INTERACTIVE_LIMIT) {
+    let fallbackText = t('select_service_body') + '\n\n';
+    services.forEach((s, i) => { fallbackText += `${i + 1}. ${s.short || s.name}\n`; });
+    fallbackText += `\n${t('reply_with_number') || 'Reply with the number of the service you\'re interested in.'}`;
+    await sendWhatsAppMessage(to, fallbackText, { token, phoneNumberId });
+    logger.info('Service list sent as numbered text (> 10 items)', { count: services.length });
+    return;
+  }
+
+  // ≤ 10 services — use the interactive list (single section, tappable rows)
+  const toRow = (s) => ({
     id:          s.id,
     title:       (s.short || s.name).slice(0, 24),
-    description: s.details?.slice(0, 40) + '...' || `Professional ${s.name}`
-  }));
+    description: s.details?.trim()
+      ? s.details.slice(0, 72)
+      : `Tap to learn more`
+  });
+
+  const sections = [{
+    title: t('our_services'),
+    rows:  services.map(toRow)
+  }];
 
   const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
   try {
@@ -63,7 +85,7 @@ export async function sendServiceList(to, locale = 'en', client = null) {
           footer: { text: t('select_service_footer') },
           action: {
             button:   t('view_services'),
-            sections: [{ title: t('our_services'), rows: LIST_ROWS }]
+            sections
           }
         }
       })
@@ -73,11 +95,13 @@ export async function sendServiceList(to, locale = 'en', client = null) {
 
     if (!res.ok) {
       logger.error('Interactive list send failed', { data });
+      // Plain-text fallback — number every service so user can reply with a number
       let fallbackText = t('select_service_body') + '\n\n';
       services.forEach((s, i) => { fallbackText += `${i + 1}. ${s.short || s.name}\n`; });
+      fallbackText += `\n${t('reply_with_number') || 'Reply with the number of the service you\'re interested in.'}`;
       await sendWhatsAppMessage(to, fallbackText, { token, phoneNumberId });
     } else {
-      logger.info('Service list sent successfully');
+      logger.info('Service list sent as interactive list', { count: services.length });
     }
     return data;
   } catch (err) {

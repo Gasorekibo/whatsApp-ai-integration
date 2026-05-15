@@ -758,34 +758,210 @@ JSON Output:`;
      * @param {string} namespace - Pinecone namespace (clientId or pineconeIndex)
      * @returns {Promise<Array<{id,name,short,details}>>}
      */
+    /**
+     * Return the full list of services for the WhatsApp interactive menu.
+     *
+     * Sources handled (all yield correct results without a re-sync):
+     *
+     * 1. Google Sheets / Excel chunks  — have `service_name` + `service_id` directly.
+     * 2. Confluence single-service pages — H1 split → one chunk per service.
+     *    After metadata normalisation these also carry `service_name`.
+     * 3. Confluence overview pages — one H1 section contains all services as H2/H3.
+     *    These chunks have NO individual `service_name` but DO carry `sub_headings`
+     *    (extracted H2/H3 texts). We expand each sub_heading into its own entry so
+     *    every service the client listed is visible in the menu.
+     *
+     * Deduplication is case-insensitive by resolved name so no service appears twice
+     * regardless of how many chunks reference it.
+     *
+     * @param {string} namespace - client.pineconeIndex
+     * @returns {Promise<Array<{id, name, short, details}>>}
+     */
     async getServicesFromIndex(namespace = 'default') {
         try {
             await this.initialize();
-            const queryEmbedding = await embeddingService.generateEmbedding(
-                'list all available services offered',
-                'RETRIEVAL_QUERY'
-            );
-            const results = await vectorDBService.searchSimilar(
-                queryEmbedding, 30, { type: { $in: ['company_service'] } }, namespace
-            );
-            const seen = new Set();
-            return results
-                .filter(r => r.metadata?.service_name)
-                .filter(r => {
-                    if (seen.has(r.metadata.service_name)) return false;
-                    seen.add(r.metadata.service_name);
-                    return true;
-                })
-                .map(r => ({
-                    id:      r.metadata.service_id || r.id,
-                    name:    r.metadata.service_name,
-                    short:   r.metadata.service_name,
-                    details: r.metadata.category || ''
-                }));
+
+            // Two phrasings maximise recall — domain-specific service names may
+            // score poorly on one phrasing but well on the other.
+            const [e1, e2] = await Promise.all([
+                embeddingService.generateEmbedding(
+                    'list all services treatments departments programs offered',
+                    'RETRIEVAL_QUERY'
+                ),
+                embeddingService.generateEmbedding(
+                    'what services products packages are available',
+                    'RETRIEVAL_QUERY'
+                ),
+            ]);
+
+            const filter = { type: { $in: ['company_service'] } };
+
+            const [r1, r2] = await Promise.all([
+                vectorDBService.searchSimilar(e1, 50, filter, namespace),
+                vectorDBService.searchSimilar(e2, 50, filter, namespace),
+            ]);
+
+            // Merge both result sets; highest-score occurrence wins during dedup
+            const allResults = [...r1, ...r2];
+
+            // Map keyed by lowercase service name — first occurrence (best score) kept
+            const byName = new Map();
+
+            const addEntry = (name, meta, vectorId) => {
+                const key = name.trim().toLowerCase();
+                if (!name.trim() || byName.has(key)) return;
+
+                // Extract a one-line description from the chunk content.
+                // Strip the heading line if it was prepended, then take the first sentence.
+                const rawContent  = meta.content || '';
+                const headingLine = meta.section_heading || meta.service_name || '';
+                const bodyText    = rawContent.startsWith(headingLine)
+                    ? rawContent.slice(headingLine.length).trimStart()
+                    : rawContent;
+                const firstLine   = bodyText.split(/[.\n]/)[0].trim();
+                const details     = firstLine.length > 8 ? firstLine : (meta.category || '');
+
+                byName.set(key, {
+                    id:      meta.service_id || vectorId,
+                    name:    name.trim(),
+                    short:   name.trim().length > 24
+                        ? name.trim().slice(0, 23) + '…'
+                        : name.trim(),
+                    details: details.slice(0, 72),
+                });
+            };
+
+            for (const r of allResults) {
+                const meta = r.metadata || {};
+
+                // ── Path 1: direct service_name (Sheets, Excel, normalised Confluence) ──
+                if (meta.service_name) {
+                    addEntry(meta.service_name, meta, r.id);
+                    continue;
+                }
+
+                // ── Path 2: sub_headings populated during indexing (H2/H3 or <li>) ──────
+                if (Array.isArray(meta.sub_headings) && meta.sub_headings.length > 0) {
+                    for (const heading of meta.sub_headings) {
+                        addEntry(heading, meta, `${r.id}-sub-${heading}`);
+                    }
+                    continue;
+                }
+
+                // ── Path 3: parse the flat content for "Service Name — description" ──────
+                // Handles already-indexed Confluence pages that list services separated by
+                // an em dash (—) or en dash (–) in plain text, e.g.:
+                //   "Physiotherapy — Recovery of mobility, strength..."
+                // No re-sync needed — works on the stored content string.
+                const content = meta.content || '';
+                const parsedServices = this._parseEmDashServices(content);
+                if (parsedServices.length > 0) {
+                    for (const svc of parsedServices) {
+                        const key = svc.name.trim().toLowerCase();
+                        if (!byName.has(key)) {
+                            // ID must be safe for WhatsApp row IDs — alphanumeric + hyphens only
+                            const safeSlug = key.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                            byName.set(key, {
+                                id:      `svc-${safeSlug}`,
+                                name:    svc.name,
+                                short:   svc.name.length > 24 ? svc.name.slice(0, 23) + '…' : svc.name,
+                                details: svc.details.slice(0, 72),
+                            });
+                        }
+                    }
+                    continue;
+                }
+
+                // ── Path 4: final fallback — section heading or page title ───────────────
+                const fallbackName = meta.section_heading || meta.page_title;
+                if (fallbackName) addEntry(fallbackName, meta, r.id);
+            }
+
+            const services = [...byName.values()];
+            logger.info('getServicesFromIndex resolved', { namespace, count: services.length });
+            return services;
+
         } catch (error) {
             logger.warn('getServicesFromIndex failed', { namespace, error: error.message });
             return [];
         }
+    }
+
+    /**
+     * Parse flat content text for services formatted as "Name — description" entries.
+     *
+     * Confluence pages often render service lists as plain text where each entry is
+     * "{Service Name} — {one-sentence description}" separated by periods and spaces.
+     * This parser handles both em dash (—, U+2014) and en dash (–, U+2013).
+     *
+     * Algorithm: split on the dash separator; the service name is the final
+     * sentence-fragment before each dash, and the description is the sentence-
+     * fragment that follows it (up to the start of the next service name).
+     *
+     * @param {string} content
+     * @returns {Array<{name: string, details: string}>}
+     * @private
+     */
+    _parseEmDashServices(content) {
+        if (!content) return [];
+
+        // Match "Some Words — description text" pattern (em or en dash, with spaces)
+        const DASH_RE = /\s[—–]\s/;
+        if (!DASH_RE.test(content)) return [];
+
+        const services = [];
+        const parts = content.split(DASH_RE);
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            const beforeDash = parts[i];
+            const afterDash  = parts[i + 1];
+
+            // The service name is the last line/sentence of the preceding segment.
+            // "Intro text. Service Name" → everything after the last '. '
+            const lastPeriod  = beforeDash.lastIndexOf('. ');
+            const lastNewline = beforeDash.lastIndexOf('\n');
+            const cutAt = Math.max(
+                lastPeriod  !== -1 ? lastPeriod  + 2 : 0,
+                lastNewline !== -1 ? lastNewline  + 1 : 0
+            );
+            const name = beforeDash.slice(cutAt).trim();
+
+            // Description: text before the last '. NextName' in the after-dash segment
+            const nextPeriod = afterDash.lastIndexOf('. ');
+            const details = (nextPeriod > 0
+                ? afterDash.slice(0, nextPeriod + 1)
+                : afterDash
+            ).trim();
+
+            if (!name || name.length > 80 || name.length < 2) continue;
+            if (/^\d/.test(name)) continue;
+
+            services.push({ name, details });
+        }
+
+        // ── Post-process: handle double-dash entries (e.g. "ENT — Ear, Nose and Throat — desc")
+        // In this format a short acronym is followed by its expansion then the real description.
+        // After splitting, the expansion text appears BOTH as a service name AND as a previous
+        // service's details. We keep the longer (expanded) name and the real description.
+        const detailsIndex = new Map();
+        for (let i = 0; i < services.length; i++) {
+            const key = services[i].details.trim().toLowerCase();
+            if (key) detailsIndex.set(key, i);
+        }
+
+        return services.filter((svc, i) => {
+            const nameKey = svc.name.trim().toLowerCase();
+            if (detailsIndex.has(nameKey)) {
+                // This name matches a previous entry's details — it's an expansion.
+                // Promote the previous entry to use the longer name + real description.
+                const prevIdx = detailsIndex.get(nameKey);
+                services[prevIdx].name    = svc.name;
+                services[prevIdx].short   = svc.name.length > 24 ? svc.name.slice(0, 23) + '…' : svc.name;
+                services[prevIdx].details = svc.details.slice(0, 72);
+                return false; // remove the expansion entry
+            }
+            return true;
+        });
     }
 
     /**

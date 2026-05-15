@@ -185,10 +185,10 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
         <FormSection title="WhatsApp Configuration">
           {fld('whatsappBusinessId', 'Phone Number ID', {
             required: !isEdit,
-            placeholder: '908772575661941',
+            placeholder: '908772575669393',
             hint: 'Meta → WhatsApp → API Setup → Phone Number ID'
           })}
-          {fld('whatsappAccountId', 'Business Account ID (WABA)', { placeholder: '863459623353177' })}
+          {fld('whatsappAccountId', 'Business Account ID (WABA)', { placeholder: '8634596238303983' })}
           {secret('whatsappToken', 'Permanent Token',
             'Meta Business Suite → System Users → Generate Token (not the temporary test token)',
             { required: !isEdit, placeholder: 'EAAxxxxxxx…' }
