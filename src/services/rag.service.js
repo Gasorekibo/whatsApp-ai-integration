@@ -571,14 +571,12 @@ JSON Output:`;
             const priorityBoost = (priority / 10) * 0.1; // Max 10% boost
             adjustedScore += priorityBoost;
 
-            // Intent-specific boosting
-            if (intent === 'booking' && result.metadata?.type === 'booking_rule') {
-                adjustedScore += 0.15;
-            } else if (intent === 'service_inquiry' && result.metadata?.type === 'service') {
-                adjustedScore += 0.1;
-            } else if (intent === 'faq' && result.metadata?.type === 'faq') {
-                adjustedScore += 0.12;
-            }
+            // Intent-specific boosting (uses standardised type names)
+            const t = result.metadata?.type;
+            if (intent === 'booking'         && t === 'booking_rule')    adjustedScore += 0.15;
+            else if (intent === 'service_inquiry' && t === 'company_service') adjustedScore += 0.10;
+            else if (intent === 'faq'         && t === 'faq')            adjustedScore += 0.12;
+            else if (intent === 'payment'     && t === 'payment_info')   adjustedScore += 0.15;
 
             // Recency boost (if timestamp available)
             if (result.metadata?.updated_at) {
@@ -663,26 +661,17 @@ JSON Output:`;
      * @returns {object} - Metadata filter
      */
     buildMetadataFilter(intent, _language) {
-        const filter = {};
-
-        // Map intent to document types
         const intentTypeMap = {
-            booking: ['booking_rule', 'service'],
-            service_inquiry: ['service', 'company_info'],
-            faq: ['faq', 'company_info'],
-            payment: ['booking_rule', 'faq'],
-            support: ['faq', 'company_info', 'confluence'],
-            general: [] // No type filter for general
+            general:         ['company_info'],
+            service_inquiry: ['company_service', 'company_info'],
+            booking:         ['booking_rule', 'company_service'],
+            payment:         ['payment_info', 'booking_rule'],
+            faq:             ['faq', 'company_info'],
+            support:         ['support', 'faq', 'company_info'],
         };
 
-        const types = intentTypeMap[intent];
-
-        if (types && types.length > 0) {
-            // Pinecone filter format
-            filter.type = { $in: types };
-        }
-
-        return filter;
+        const types = intentTypeMap[intent] || intentTypeMap.general;
+        return { type: { $in: types } };
     }
 
     /**
@@ -751,15 +740,16 @@ JSON Output:`;
      */
     getTypeLabel(type) {
         const labels = {
-            service: 'AVAILABLE SERVICES',
-            company_info: 'COMPANY INFORMATION',
-            booking_rule: 'BOOKING GUIDELINES',
-            faq: 'FREQUENTLY ASKED QUESTIONS',
-            confluence: 'KNOWLEDGE BASE',
-            general: 'GENERAL INFORMATION'
+            company_service: 'AVAILABLE SERVICES',
+            company_info:    'COMPANY INFORMATION',
+            booking_rule:    'BOOKING GUIDELINES',
+            payment_info:    'PRICING & PAYMENT',
+            faq:             'FREQUENTLY ASKED QUESTIONS',
+            support:         'SUPPORT INFORMATION',
+            general:         'GENERAL INFORMATION',
         };
 
-        return labels[type] || type.toUpperCase().replace('_', ' ');
+        return labels[type] || type.toUpperCase().replace(/_/g, ' ');
     }
 
     /**
@@ -776,7 +766,7 @@ JSON Output:`;
                 'RETRIEVAL_QUERY'
             );
             const results = await vectorDBService.searchSimilar(
-                queryEmbedding, 30, { type: 'service' }, namespace
+                queryEmbedding, 30, { type: { $in: ['company_service'] } }, namespace
             );
             const seen = new Set();
             return results
