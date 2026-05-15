@@ -181,31 +181,61 @@ class KnowledgeBaseService {
                 throw new Error('Confluence configuration incomplete — set credentials in the client edit form or .env');
             }
 
-            const pages = await confluence.fetchPages(
+            const rawPages = await confluence.fetchPages(
                 options.spaceKey || confluenceConfig.spaceKey,
                 clientConfluenceConfig
             );
 
-            if (!pages || pages.length === 0) {
+            if (!rawPages || rawPages.length === 0) {
                 logger.warn('No pages found in Confluence');
                 return 0;
             }
 
+            // Skip template pages — they add noise and no client-facing knowledge
+            const TEMPLATE_RE = /\btemplate\b/i;
+            const pages = rawPages.filter(p => {
+                if (TEMPLATE_RE.test(p.title || '')) {
+                    logger.debug('Skipping Confluence template page', { pageId: p.id, title: p.title });
+                    return false;
+                }
+                return true;
+            });
+
             logger.info('Retrieved pages from Confluence', {
-                count: pages.length,
+                total: rawPages.length,
+                afterFilter: pages.length,
+                skipped: rawPages.length - pages.length,
                 spaceKey: options.spaceKey || confluenceConfig.spaceKey
             });
 
-            // Process pages in batches
+            if (pages.length === 0) {
+                logger.warn('All pages were filtered out (templates)');
+                return 0;
+            }
+
+            // Process pages in batches.
+            // Before upserting each page's chunks, delete its previous vectors so
+            // removed or renamed sections don't linger in the index.
             const allChunks = [];
-            const batchSize = 10; // Process 10 pages at a time
-            
+            const batchSize = 10;
+
             for (let i = 0; i < pages.length; i += batchSize) {
                 const pageBatch = pages.slice(i, i + batchSize);
-                
+
                 logger.debug(`Processing Confluence batch ${Math.floor(i / batchSize) + 1}`, {
                     pages: pageBatch.length
                 });
+
+                // Pre-delete existing vectors for each page in the batch so stale
+                // sections from prior syncs don't remain in Pinecone.
+                await Promise.all(
+                    pageBatch.map(page =>
+                        vectorDBService.deleteByMetadataFilter(
+                            { page_id: { $eq: String(page.id) } },
+                            clientNamespace
+                        )
+                    )
+                );
 
                 const batchChunks = await documentProcessor.batchProcess(pageBatch, 'confluence');
                 allChunks.push(...batchChunks);

@@ -544,13 +544,16 @@ class DocumentProcessorService {
     _classifyByKeyword(headingText) {
         const h = (headingText || '').toLowerCase();
 
+        // More-specific types are checked first so a broad keyword (e.g. "service",
+        // "solution") in a less-specific rule cannot steal headings that clearly belong
+        // to a more-specific category (e.g. "About Us", "How to Access Services").
         const rules = [
-            ['company_service', /service|offer|product|package|solution|what we do|our work|portfolio|department|care|treatment|therapy|surgery|program|unit|clinic/],
-            ['booking_rule',    /booking|appointment|schedule|reservation|how to book|consultation|availability|access|admission|how to access/],
+            ['company_info',    /\babout\b|overview|mission|vision|history|contact|location|team|guideline|visitor|patient info/],
+            ['booking_rule',    /booking|appointment|schedule|reservation|how to book|consultation|availability|\baccess\b|admission|how to access/],
             ['payment_info',    /payment|pricing|price|cost|fee|invoice|deposit|billing|rates|refund|cancellation|policy/],
             ['faq',             /faq|frequently asked|question|help|common/],
             ['support',         /support|troubleshoot|issue|problem|helpdesk|technical/],
-            ['company_info',    /about|overview|mission|vision|history|contact|location|team|guideline|visitor|patient info/],
+            ['company_service', /service|offer|product|package|solution|what we do|our work|portfolio|department|care|treatment|therapy|surgery|program|unit|clinic/],
         ];
 
         for (const [type, regex] of rules) {
@@ -765,20 +768,36 @@ Reply with one word only.`;
     }
 
     /**
-     * Strip HTML tags from text
+     * Strip HTML tags and decode all HTML entities from text.
      * @private
      */
     _stripHtml(html) {
+        const namedEntities = {
+            nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+            mdash: '—', ndash: '–', hellip: '…',
+            lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+            copy: '©', reg: '®', trade: '™',
+            eacute: 'é', ecirc: 'ê', egrave: 'è', euml: 'ë',
+            aacute: 'á', acirc: 'â', agrave: 'à', auml: 'ä', atilde: 'ã', aring: 'å',
+            iacute: 'í', icirc: 'î', igrave: 'ì', iuml: 'ï',
+            oacute: 'ó', ocirc: 'ô', ograve: 'ò', ouml: 'ö', otilde: 'õ',
+            uacute: 'ú', ucirc: 'û', ugrave: 'ù', uuml: 'ü',
+            ccedil: 'ç', ntilde: 'ñ', szlig: 'ß',
+            Eacute: 'É', Aacute: 'Á', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú',
+            euro: '€', pound: '£', yen: '¥',
+            frac12: '½', frac14: '¼', frac34: '¾',
+        };
+
         return html
             .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
             .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
             .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
+            // Decode named HTML entities
+            .replace(/&([a-zA-Z]+);/g, (_, name) => namedEntities[name] ?? _)
+            // Decode decimal numeric entities (e.g. &#8211;)
+            .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+            // Decode hex numeric entities (e.g. &#x2014;)
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
             .replace(/\s+/g, ' ')
             .trim();
     }
