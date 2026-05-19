@@ -458,10 +458,11 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
-        // Numeric reply — user typed a number to pick from the plain-text service list
-        // (sent when services > 10 and interactive list is skipped).
+        // Numeric reply — user typed a number to pick from the plain-text service list.
+        // Only intercept when the user is actively in the services context; otherwise
+        // numbers are just part of a normal conversation (e.g. "I'll come at 9").
         const numericMatch = /^\s*(\d{1,2})\s*$/.exec(originalText);
-        if (numericMatch) {
+        if (numericMatch && activeIntent === 'services') {
           const svcKey   = `services:${clientId}`;
           let   services = await redisGet(svcKey);
           if (!services?.length) {
@@ -608,10 +609,11 @@ const handleWebhook = async (req, res) => {
           history: session.history,
           userEmail,
           language: locale,
-          activeIntent:    resolvedIntent,
-          activeOrderType: resolvedOrderType,
+          activeIntent:         resolvedIntent,
+          activeOrderType:      resolvedOrderType,
           isNewUser,
-          userName: session.name || null
+          userName:             session.name || null,
+          selectedServiceName:  session.state.selectedServiceName || null,
         });
 
         if (response.showServices) {

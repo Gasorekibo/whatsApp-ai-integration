@@ -25,7 +25,7 @@ function getRecentHistory(history = []) {
   return history.slice(-(MAX_HISTORY_TURNS * 2));
 }
 
-const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm))\b/i;
+const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|meet|consultation|reserve|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm)|come|visit|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week)\b/i;
 
 // Returns true only when calendar data is actually needed for this conversation turn.
 // activeIntent/activeOrderType from session state take precedence; keyword heuristics are the fallback.
@@ -42,7 +42,7 @@ function needsCalendar(activeIntent, activeOrderType, ragIntent, message, histor
 
 const SHOW_SERVICES_TOOL = {
   name: 'show_services',
-  description: 'Show the list of available services to the user.'
+  description: 'Show the full list of services to the user. Use ONLY when the user explicitly wants to browse or see all available services — NOT when they have already selected or mentioned a specific service.'
 };
 const INITIATE_PAYMENT_TOOL = {
   name: 'initiate_payment',
@@ -76,9 +76,14 @@ const SAVE_INQUIRY_TOOL = {
   }
 };
 
-function buildToolDeclarations(activeIntent, activeOrderType) {
+function buildToolDeclarations(activeIntent, activeOrderType, selectedServiceName) {
   if (activeIntent === 'general' || activeIntent === 'handoff') return [];
-  if (activeIntent === 'services') return [SHOW_SERVICES_TOOL];
+  if (activeIntent === 'services') {
+    // User has already selected a specific service → they're likely heading toward booking.
+    // Give them payment tools; show_services would just re-display the list they came from.
+    if (selectedServiceName) return [INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+    return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+  }
   if (activeIntent === 'order') {
     if (activeOrderType === 'booking') return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
     if (activeOrderType === 'payment') return [INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
@@ -103,10 +108,11 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   const currency           = clientConfig.currency           || 'RWF';
   const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
-  const activeIntent       = clientConfig.activeIntent        || null;
-  const activeOrderType    = clientConfig.activeOrderType     || null;
-  const isNewUser          = clientConfig.isNewUser           || false;
-  const userName           = clientConfig.userName            || null;
+  const activeIntent          = clientConfig.activeIntent          || null;
+  const activeOrderType       = clientConfig.activeOrderType       || null;
+  const isNewUser             = clientConfig.isNewUser             || false;
+  const userName              = clientConfig.userName              || null;
+  const selectedServiceName   = clientConfig.selectedServiceName   || null;
 
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
     phone: sanitizedPhone, messageLength: message.length,
@@ -169,7 +175,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     };
 
     // ── Tool definitions — scoped to the active intent ────────────────────
-    const toolDeclarations = buildToolDeclarations(activeIntent, activeOrderType);
+    const toolDeclarations = buildToolDeclarations(activeIntent, activeOrderType, selectedServiceName);
     const tools = toolDeclarations.length ? [{ functionDeclarations: toolDeclarations }] : [];
 
     // ── Build prompt ──────────────────────────────────────────────────────
@@ -197,6 +203,12 @@ export async function processWithGemini(phoneNumber, message, history = [], user
           availableSlots: slotDetails,
           currentDate:    now,
           depositInfo: `All consultations require a commitment deposit of ${depositAmount} ${currency} to confirm booking.`,
+          ...(selectedServiceName && {
+            selectedService: `The user has already selected: "${selectedServiceName}". Do NOT call show_services. If they want to book, collect their name and email then use initiate_payment.`
+          }),
+          ...(!calendarNeeded && {
+            noSlotHallucinationRule: 'IMPORTANT: Real-time slot data is not loaded for this message. Do NOT invent, guess, or mention any specific date, day, or time for an appointment. If the user wants to book, ask them to say "book" or "appointment" so you can check availability, or collect their name and email first.'
+          }),
           ...(isNewUser && {
             welcomeContext: buildWelcomeContext(userName, botName)
           })
