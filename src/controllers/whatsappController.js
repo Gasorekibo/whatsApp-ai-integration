@@ -20,7 +20,12 @@ import {
   LANGUAGE_TTL_MS
 } from '../helpers/whatsapp/sendLanguageSelectionList.js';
 import { sendIntentList, INTENT_PREFIX, VALID_INTENTS } from '../helpers/whatsapp/sendIntentList.js';
-import { handleOrderRouting, ORDER_PREFIX, VALID_ORDER_TYPES } from '../helpers/whatsapp/handlers/orderHandler.js';
+import {
+  handleOrderRouting, handleBookingTypeRouting,
+  ORDER_PREFIX, BOOKING_TYPE_PREFIX,
+  VALID_ORDER_TYPES, VALID_BOOKING_TYPES,
+  BOOKING_TYPE_PLACEHOLDERS,
+} from '../helpers/whatsapp/handlers/orderHandler.js';
 import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
 import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
 import { classifyIntent } from '../services/intentClassifier.service.js';
@@ -316,6 +321,32 @@ const handleWebhook = async (req, res) => {
           await session.save({ transaction: t });
           await send(from, GENERAL_PROMPTS[locale] || GENERAL_PROMPTS.en);
 
+        } else if (selectedId.startsWith(BOOKING_TYPE_PREFIX)) {
+          // ── Booking type selection (calendar / restaurant / hotel) ────────
+          const bookingType = selectedId.slice(BOOKING_TYPE_PREFIX.length);
+
+          if (!VALID_BOOKING_TYPES.includes(bookingType)) {
+            logger.whatsapp('warn', 'Unknown booking type in list reply', { requestId, bookingType });
+            await handleBookingTypeRouting(from, client, locale);
+            return;
+          }
+
+          logger.whatsapp('info', 'Booking type selected', { requestId, bookingType, from: `***${from.slice(-4)}` });
+
+          if (bookingType === 'calendar') {
+            session.state = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
+            session.changed('state', true);
+            await session.save({ transaction: t });
+            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+            await startBookingFlow(from, client, session, locale, send, saveSession);
+            await session.save({ transaction: t });
+          } else {
+            // Restaurant / hotel — placeholder until integration is built
+            const msg = BOOKING_TYPE_PLACEHOLDERS[bookingType]?.[locale]
+                     || BOOKING_TYPE_PLACEHOLDERS[bookingType]?.en;
+            await send(from, msg);
+          }
+
         } else if (selectedId.startsWith(ORDER_PREFIX)) {
           // ── Order sub-type selection ──────────────────────────────────────
           const orderType = selectedId.slice(ORDER_PREFIX.length);
@@ -331,8 +362,8 @@ const handleWebhook = async (req, res) => {
           await session.save({ transaction: t });
 
           if (orderType === 'booking') {
-            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
-            await startBookingFlow(from, client, session, locale, send, saveSession);
+            // Show booking type sub-menu instead of jumping straight to the calendar flow
+            await handleBookingTypeRouting(from, client, locale);
             await session.save({ transaction: t });
           } else {
             const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
