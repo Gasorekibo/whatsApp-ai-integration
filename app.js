@@ -40,6 +40,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: '*' }));
 app.use(morgan('dev'));
 
+// Log every incoming HTTP request to the log file (morgan only writes to stdout)
+app.use((req, _res, next) => {
+  logger.info('HTTP request', { method: req.method, path: req.path, query: req.query });
+  next();
+});
+
 // Static files
 app.use(express.static('src/public'));
 
@@ -179,7 +185,9 @@ app.get('/api/zoho/contacts', authenticate, setRLSContext, requireAdmin, zohoGet
 app.post('/calendar-data', authenticate, setRLSContext, calendarDataHandler);
 
 app.post('/webhook/flutterwave', express.json(), paymentWebhookHandler);
-app.get('/payment-success', successfulPaymentPageHandler);
+// Register both paths — the reverse proxy may or may not strip the /ai/ prefix
+app.get('/payment-success',     successfulPaymentPageHandler);
+app.get('/ai/payment-success',  successfulPaymentPageHandler);
 
 // Google Sheets legacy sync (protected — admin or authenticated client)
 app.post('/api/sync-services', authenticate, syncServicesHandler);

@@ -95,7 +95,6 @@ const GENERAL_PROMPTS = {
 // Kick-off messages sent when an order sub-type is selected
 const ORDER_TRIGGER = {
   booking: { en: "I'd like to book an appointment.", fr: "Je souhaite prendre rendez-vous.", rw: "Ndashaka gufata gahunda.", sw: "Ningependa kuweka miadi.", de: "Ich möchte einen Termin buchen." },
-  payment: { en: "I'd like to make a payment.", fr: "Je souhaite effectuer un paiement.", rw: "Ndashaka gukora ubwishyu.", sw: "Ningependa kufanya malipo.", de: "Ich möchte eine Zahlung vornehmen." },
   status:  { en: "I'd like to check my order or booking status.", fr: "Je souhaite vérifier le statut de ma commande.", rw: "Ndashaka kureba aho iteka ryangye ryageze.", sw: "Ningependa kuangalia hali ya agizo langu.", de: "Ich möchte den Status meiner Bestellung prüfen." },
 };
 
@@ -623,6 +622,29 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
+        if (response.triggerBookingFlow) {
+          // AI collected some booking info but couldn't select a real slot.
+          // Pre-populate state and hand off to the structured booking handler.
+          const prefill = response.bookingPrefill || {};
+          session.state.booking = {
+            step:          'await_day',
+            serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
+            name:          prefill.name        || session.name                      || null,
+            email:         prefill.email       || session.state.email               || null,
+            phone:         from,
+            slotStart:     null,
+            slotEnd:       null,
+            slotFormatted: null,
+          };
+          session.state.activeOrderType = 'booking';
+          session.changed('state', true);
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          await startBookingFlow(from, client, session, locale, send, saveSession);
+          pushHistory(session, locale, msg.text.body, 'Booking flow started');
+          await session.save({ transaction: t });
+          return;
+        }
+
         if (response.reply) {
           await send(from, response.reply);
 
@@ -681,6 +703,27 @@ const handleWebhook = async (req, res) => {
         if (response.showServices) {
           await sendServiceList(from, locale, client);
           pushHistory(session, locale, `[Voice] ${transcribedText}`, 'Service list shown');
+          await session.save({ transaction: t });
+          return;
+        }
+
+        if (response.triggerBookingFlow) {
+          const prefill = response.bookingPrefill || {};
+          session.state.booking = {
+            step:          'await_day',
+            serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
+            name:          prefill.name        || session.name                      || null,
+            email:         prefill.email       || session.state.email               || null,
+            phone:         from,
+            slotStart:     null,
+            slotEnd:       null,
+            slotFormatted: null,
+          };
+          session.state.activeOrderType = 'booking';
+          session.changed('state', true);
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          await startBookingFlow(from, client, session, locale, send, saveSession);
+          pushHistory(session, locale, `[Voice] ${transcribedText}`, 'Booking flow started');
           await session.save({ transaction: t });
           return;
         }

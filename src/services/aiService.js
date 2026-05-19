@@ -10,6 +10,7 @@ export async function processAI({ client, from, message, history, userEmail, lan
     paymentRedirectUrl:  client?.paymentRedirectUrl            || null,
     currency:            client?.currency                      || null,
     depositAmount:       client?.depositAmount                 || null,
+    flutterwaveKey:      client?.getDecryptedFlutterwaveKey?.() || null,
     activeIntent,
     activeOrderType,
     isNewUser,

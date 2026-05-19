@@ -2,7 +2,7 @@ import { sendWhatsAppInteractiveList } from '../sendWhatsAppInteractiveList.js';
 import logger from '../../../logger/logger.js';
 
 export const ORDER_PREFIX      = 'order:';
-export const VALID_ORDER_TYPES = ['booking', 'payment', 'status'];
+export const VALID_ORDER_TYPES = ['booking', 'status'];
 
 const LABELS = {
   en: {
@@ -63,7 +63,6 @@ export async function handleOrderRouting(to, client, language = 'en') {
       title: l.section,
       rows: [
         { id: `${ORDER_PREFIX}booking`, title: l.booking.title.slice(0, 24), description: l.booking.description.slice(0, 72) },
-        { id: `${ORDER_PREFIX}payment`, title: l.payment.title.slice(0, 24), description: l.payment.description.slice(0, 72) },
         { id: `${ORDER_PREFIX}status`,  title: l.status.title.slice(0, 24),  description: l.status.description.slice(0, 72) }
       ]
     }]
