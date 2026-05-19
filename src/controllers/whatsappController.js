@@ -24,6 +24,10 @@ import { handleOrderRouting, ORDER_PREFIX, VALID_ORDER_TYPES } from '../helpers/
 import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
 import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
 import { classifyIntent } from '../services/intentClassifier.service.js';
+import {
+  startBookingFlow, handleDaySelection, handleSlotSelection, handleBookingTextReply,
+  DAY_PREFIX, SLOT_PREFIX
+} from '../helpers/whatsapp/handlers/bookingHandler.js';
 
 dotenv.config();
 
@@ -327,20 +331,40 @@ const handleWebhook = async (req, res) => {
           session.changed('state', true);
           await session.save({ transaction: t });
 
-          const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
-          const userEmail  = session.state.email || null;
-          const response   = await processAI({
-            client, from, message: triggerMsg, history: session.history,
-            userEmail, language: locale, activeIntent: 'order', activeOrderType: orderType
-          });
+          if (orderType === 'booking') {
+            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+            await startBookingFlow(from, client, session, locale, send, saveSession);
+            await session.save({ transaction: t });
+          } else {
+            const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
+            const userEmail  = session.state.email || null;
+            const response   = await processAI({
+              client, from, message: triggerMsg, history: session.history,
+              userEmail, language: locale, activeIntent: 'order', activeOrderType: orderType
+            });
 
-          if (response.showServices) {
-            await sendServiceList(from, locale, client);
-            pushHistory(session, locale, triggerMsg, 'Service list shown');
-          } else if (response.reply) {
-            await send(from, response.reply);
-            pushHistory(session, locale, triggerMsg, response.reply);
+            if (response.showServices) {
+              await sendServiceList(from, locale, client);
+              pushHistory(session, locale, triggerMsg, 'Service list shown');
+            } else if (response.reply) {
+              await send(from, response.reply);
+              pushHistory(session, locale, triggerMsg, response.reply);
+            }
+            await session.save({ transaction: t });
           }
+
+        } else if (selectedId.startsWith(DAY_PREFIX)) {
+          // ── Calendar day selection (booking flow — step 1) ────────────────
+          const dayIndex   = parseInt(selectedId.slice(DAY_PREFIX.length), 10);
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          await handleDaySelection(from, client, session, dayIndex, locale, send, saveSession);
+          await session.save({ transaction: t });
+
+        } else if (selectedId.startsWith(SLOT_PREFIX)) {
+          // ── Calendar time-slot selection (booking flow — step 2) ──────────
+          const slotIndex  = parseInt(selectedId.slice(SLOT_PREFIX.length), 10);
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          await handleSlotSelection(from, client, session, slotIndex, locale, send, saveSession);
           await session.save({ transaction: t });
 
         } else {
@@ -374,7 +398,8 @@ const handleWebhook = async (req, res) => {
 
             if (response.reply) await send(from, response.reply);
 
-            session.state.selectedService = service.id;
+            session.state.selectedService     = service.id;
+            session.state.selectedServiceName = service.name;
             pushHistory(session, locale, `Selected: ${service.name}`, response.reply || 'Service selected');
             await session.save({ transaction: t });
           } else {
@@ -433,10 +458,11 @@ const handleWebhook = async (req, res) => {
           return;
         }
 
-        // Numeric reply — user typed a number to pick from the plain-text service list
-        // (sent when services > 10 and interactive list is skipped).
+        // Numeric reply — user typed a number to pick from the plain-text service list.
+        // Only intercept when the user is actively in the services context; otherwise
+        // numbers are just part of a normal conversation (e.g. "I'll come at 9").
         const numericMatch = /^\s*(\d{1,2})\s*$/.exec(originalText);
-        if (numericMatch) {
+        if (numericMatch && activeIntent === 'services') {
           const svcKey   = `services:${clientId}`;
           let   services = await redisGet(svcKey);
           if (!services?.length) {
@@ -461,8 +487,9 @@ const handleWebhook = async (req, res) => {
                 activeOrderType: null
               });
 
-              session.state.selectedService = service.id;
-              session.state.activeIntent    = 'services';
+              session.state.selectedService     = service.id;
+              session.state.selectedServiceName = service.name;
+              session.state.activeIntent        = 'services';
               session.changed('state', true);
 
               if (response.showServices) {
@@ -488,6 +515,13 @@ const handleWebhook = async (req, res) => {
             await session.save({ transaction: t });
             return;
           }
+        }
+
+        // Booking flow intercept — handle all text while booking is in progress
+        if (activeOrderType === 'booking' && session.state.booking) {
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          const handled = await handleBookingTextReply(from, client, session, originalText, locale, send, saveSession);
+          if (handled) return;
         }
 
         // Continuations (greetings, acknowledgements) skip intent detection so
@@ -575,10 +609,11 @@ const handleWebhook = async (req, res) => {
           history: session.history,
           userEmail,
           language: locale,
-          activeIntent:    resolvedIntent,
-          activeOrderType: resolvedOrderType,
+          activeIntent:         resolvedIntent,
+          activeOrderType:      resolvedOrderType,
           isNewUser,
-          userName: session.name || null
+          userName:             session.name || null,
+          selectedServiceName:  session.state.selectedServiceName || null,
         });
 
         if (response.showServices) {
