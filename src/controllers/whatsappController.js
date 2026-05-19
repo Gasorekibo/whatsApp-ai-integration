@@ -352,7 +352,12 @@ const handleWebhook = async (req, res) => {
             services = await ragService.getServicesFromIndex(namespace);
             if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
           }
-          const service = services?.find(s => s.id === selectedId);
+          // Match by ID (interactive list tap) or by name slug (plain-text fallback reply)
+          const service = services?.find(s => s.id === selectedId)
+            ?? services?.find(s => {
+              const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+              return `svc-${slug}` === selectedId;
+            });
 
           if (service) {
             const activeIntent    = session.state.activeIntent    || null;
@@ -426,6 +431,63 @@ const handleWebhook = async (req, res) => {
             logger.whatsapp('info', 'Message dropped: AI paused for human handoff', { requestId, from: `***${from.slice(-4)}` });
           }
           return;
+        }
+
+        // Numeric reply — user typed a number to pick from the plain-text service list
+        // (sent when services > 10 and interactive list is skipped).
+        const numericMatch = /^\s*(\d{1,2})\s*$/.exec(originalText);
+        if (numericMatch) {
+          const svcKey   = `services:${clientId}`;
+          let   services = await redisGet(svcKey);
+          if (!services?.length) {
+            const namespace = client?.pineconeIndex || clientId || 'default';
+            services = await ragService.getServicesFromIndex(namespace);
+            if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
+          }
+          if (services?.length) {
+            const idx     = parseInt(numericMatch[1], 10) - 1; // convert to 0-based
+            const service = services[idx];
+            if (service) {
+              logger.whatsapp('info', 'Numeric service selection', { requestId, idx: idx + 1, service: service.name });
+              // Force activeIntent to 'general' so processAI returns a descriptive
+              // reply rather than triggering "show services list" again.
+              const response = await processAI({
+                client, from,
+                message: `I'm interested in ${service.name}. I'd like to learn more about this service.`,
+                history: session.history,
+                userEmail: session.state.email || null,
+                language: locale,
+                activeIntent:    'general',
+                activeOrderType: null
+              });
+
+              session.state.selectedService = service.id;
+              session.state.activeIntent    = 'services';
+              session.changed('state', true);
+
+              if (response.showServices) {
+                // Shouldn't happen, but guard against infinite loop
+                await send(from, `You selected: *${service.name}*. Please ask your question about this service.`);
+                pushHistory(session, locale, originalText, service.name);
+              } else if (response.reply) {
+                await send(from, response.reply);
+                pushHistory(session, locale, originalText, response.reply);
+              } else {
+                logger.whatsapp('warn', 'processAI returned no reply for numeric service selection', { requestId, service: service.name });
+                await send(from, `You selected: *${service.name}*. How can I help you with this service?`);
+                pushHistory(session, locale, originalText, service.name);
+              }
+
+              await session.save({ transaction: t });
+              return;
+            }
+            // Number out of range — tell the user
+            const t_n = i18next.getFixedT(locale);
+            await send(from, t_n('invalid_service_number', { max: services.length }) ||
+              `Please reply with a number between 1 and ${services.length}.`);
+            await session.save({ transaction: t });
+            return;
+          }
         }
 
         // Continuations (greetings, acknowledgements) skip intent detection so

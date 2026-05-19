@@ -615,18 +615,46 @@ Reply with one word only.`;
     }
 
     /**
-     * Extract H2/H3 heading texts from within a section's HTML block.
-     * Stored as metadata so callers can inspect section structure without re-parsing.
+     * Extract sub-section names from a Confluence HTML block.
+     *
+     * Tries multiple extraction strategies in order of precision:
+     * 1. H2/H3 headings — most explicit (standard Confluence page outline)
+     * 2. <li> items that contain an em/en dash — "Service Name — description" lists
+     * 3. <li> items with a <strong>/<b> lead — bolded service names in bullet lists
+     *
      * @private
      */
     _extractSubHeadings(html) {
-        const re  = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
         const out = [];
+        const seen = new Set();
+
+        const add = (text) => {
+            const t = text.trim();
+            const key = t.toLowerCase();
+            if (t && t.length < 100 && !seen.has(key)) { seen.add(key); out.push(t); }
+        };
+
+        // Strategy 1: explicit H2/H3 headings
+        const hRe = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
         let m;
-        while ((m = re.exec(html)) !== null) {
-            const text = this._stripHtml(m[1]).trim();
-            if (text) out.push(text);
+        while ((m = hRe.exec(html)) !== null) add(this._stripHtml(m[1]));
+
+        if (out.length > 0) return out; // H2/H3 found — no need for fallback strategies
+
+        // Strategy 2: <li> items with em/en dash pattern → text before the dash is the name
+        const liRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+        while ((m = liRe.exec(html)) !== null) {
+            const text = this._stripHtml(m[1]);
+            const dashIdx = text.search(/\s[—–]\s/); // em dash or en dash with spaces
+            if (dashIdx !== -1) {
+                add(text.slice(0, dashIdx));
+            } else {
+                // Strategy 3: <li> with leading <strong>/<b> — take the bold text
+                const boldM = m[1].match(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/i);
+                if (boldM) add(this._stripHtml(boldM[1]));
+            }
         }
+
         return out;
     }
 

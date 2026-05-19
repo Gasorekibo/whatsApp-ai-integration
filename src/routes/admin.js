@@ -42,7 +42,13 @@ router.get('/users', requireAdmin, async (req, res) => {
 router.get('/appointments', async (req, res) => {
   try {
     const where = req.user.role === 'client' ? { clientId: req.user.clientId } : {};
-    const appointments = await dbConfig.db.ServiceRequest?.findAll({ where, order: [['createdAt', 'DESC']] });
+    const appointments = await dbConfig.db.ServiceRequest?.findAll({ where, include: [{
+        model: dbConfig.db.Client,
+        attributes: ['name'],
+        required: false
+      }],
+      order: [['createdAt', 'DESC']],
+     });
     res.json({ appointments: appointments || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
