@@ -376,7 +376,6 @@ export async function processWithGemini(phoneNumber, message, history = [], user
             });
 
             const paymentData = await paymentRes.json();
-            console.log('============> Flutterwave response', { paymentData });
             toolResults.push(paymentData.status === 'success'
               ? { functionResponse: { name: 'initiate_payment', response: { success: true, paymentLink: paymentData.data.link } } }
               : { functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment gateway error' } } }
@@ -407,15 +406,34 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     let parsedResult;
     try {
       // Strip Gemini's {{json. ... }} or ```json ... ``` wrapper when present
-      const cleaned   = responseText
+      const cleaned = responseText
         .replace(/^\s*\{\{json\.\s*/i, '')
         .replace(/\}\}\s*$/, '')
         .replace(/^\s*```json\s*/i, '')
         .replace(/\s*```\s*$/, '')
         .trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      parsedResult    = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+
+      // Find the outermost JSON object by locating the "language" or "reply" key
+      // rather than blindly taking first { to last } (which breaks on nested braces).
+      let jsonStr = cleaned;
+      const keyMatch = cleaned.match(/"(?:language|reply)"\s*:/);
+      if (keyMatch) {
+        // Walk backwards from the key to find the opening brace of the object
+        const keyPos = cleaned.indexOf(keyMatch[0]);
+        const start  = cleaned.lastIndexOf('{', keyPos);
+        if (start !== -1) {
+          // Find the matching closing brace
+          let depth = 0, end = -1;
+          for (let i = start; i < cleaned.length; i++) {
+            if (cleaned[i] === '{') depth++;
+            else if (cleaned[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+          }
+          if (end !== -1) jsonStr = cleaned.slice(start, end + 1);
+        }
+      }
+      parsedResult = JSON.parse(jsonStr);
     } catch {
+      // Last resort: treat whole text as plain reply
       parsedResult = { reply: responseText, language: detectedLanguage, showServices: false, showSlots: false };
     }
 

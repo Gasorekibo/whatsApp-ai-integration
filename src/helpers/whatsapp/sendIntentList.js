@@ -6,7 +6,7 @@ export const VALID_INTENTS  = ['general', 'services', 'order', 'handoff'];
 
 const LABELS = {
   en: {
-    body:     'We offer a variety of services. Please select one that best matches your needs:',
+    body:     'Please select one Service that best matches your needs:',
     button:   'Choose',
     section:  'Options',
     general:  { title: '💬 General inquiries',    description: 'Contact info, hours, location' },

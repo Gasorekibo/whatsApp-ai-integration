@@ -52,7 +52,8 @@ function hasValidLanguage(session) {
 
 const QUICK_INTENT_MAP = [
   ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
-  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|gufata|rendez-vous|paiement|miadi|malipo|termin)\b/i],
+  // order: English + French + Kinyarwanda (gufata, kuza, kwiza, naza, nshaka kuza, ndashaka) + Swahili (miadi, ninataka kuja, nataka) + German
+  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|come in|i('ll| will) come|want to come|i'd like to visit|gufata|kuza|kwiza|nshaka kuza|ndashaka kuza|rendez-vous|paiement|je veux venir|miadi|malipo|ninataka kuja|nataka kuja|termin|ich möchte kommen)\b/i],
   ['services', /\b(services?|products?|pric(?:e|ing)|costs?|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
   ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close|aho|amasaha|où|horaires|mahali|saa|standort|öffnungszeiten)\b/i],
 ];
@@ -66,7 +67,7 @@ function detectQuickIntent(text) {
 
 // Phrases that are continuations of a conversation, not new intent signals.
 // When a user has an active intent and sends one of these, route to AI normally.
-const CONTINUATION_RE = /^(ok|okay|thanks|thank you|merci|murakoze|asante|danke|alright|great|got it|sure|yes|no|yep|nope|hi|hello|hey|good|perfect|understood|i see|noted|👍|😊|🙏|nice|cool|wow|really|interesting|oh|ah|hm+|lol|haha)[\s!.?]*$/i;
+const CONTINUATION_RE = /^(ok|okay|thanks|thank you|merci|murakoze|asante|danke|alright|great|got it|sure|yes|no|yep|nope|hi|hello|hey|good|perfect|understood|i see|noted|👍|😊|🙏|nice|cool|wow|really|interesting|oh|ah|hm+|lol|haha|neza|sawa|yego|oya|ndio|hapana|bien|d'accord|oui|non|ja|nein|ça va|super)[\s!.?]*$/i;
 
 function isContinuation(text) {
   return CONTINUATION_RE.test(text.trim());
@@ -218,10 +219,13 @@ const handleWebhook = async (req, res) => {
         if (idleMs > SESSION_INTENT_TTL_MS) {
           session.state = {
             ...session.state,
-            activeIntent:   null,
-            activeOrderType: null,
-            aiPaused:       false,
-            pausedAt:       null,
+            activeIntent:        null,
+            activeOrderType:     null,
+            booking:             null,
+            selectedService:     null,
+            selectedServiceName: null,
+            aiPaused:            false,
+            pausedAt:            null,
           };
           session.changed('state', true);
           logger.whatsapp('info', 'Session intent cleared after idle timeout', { requestId, idleMs });
@@ -462,7 +466,8 @@ const handleWebhook = async (req, res) => {
         if (isRestartCommand(text)) {
           logger.whatsapp('info', 'Resetting session — user typed ' + text, { requestId, from: `***${from.slice(-4)}` });
           session.history = [];
-          session.state   = { selectedService: null, pendingBooking: null, activeIntent: null, activeOrderType: null, aiPaused: false };
+          session.state   = { selectedService: null, selectedServiceName: null, pendingBooking: null, booking: null, activeIntent: null, activeOrderType: null, aiPaused: false, pausedAt: null };
+          session.changed('history', true);
           session.changed('state', true);
           whatsappSessions.delete(from);
           await session.save({ transaction: t });
@@ -596,7 +601,27 @@ const handleWebhook = async (req, res) => {
             return;
           }
           if (resolvedNewIntent === 'order') {
-            await handleOrderRouting(from, client, locale);
+            // If user already has a service selected, jump straight to booking — skip sub-menus
+            if (session.state.selectedServiceName) {
+              session.state.activeOrderType = 'booking';
+              session.state.booking = {
+                step:          'await_day',
+                serviceName:   session.state.selectedServiceName,
+                name:          session.name || null,
+                email:         session.state.email || null,
+                phone:         from,
+                slotStart:     null,
+                slotEnd:       null,
+                slotFormatted: null,
+              };
+              session.changed('state', true);
+              await session.save({ transaction: t });
+              const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+              await startBookingFlow(from, client, session, locale, send, saveSession);
+              await session.save({ transaction: t });
+            } else {
+              await handleOrderRouting(from, client, locale);
+            }
             return;
           }
           if (resolvedNewIntent === 'services') {

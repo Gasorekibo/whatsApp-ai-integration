@@ -269,6 +269,13 @@ export async function handleSlotSelection(from, client, session, slotIndex, loca
     return;
   }
 
+  if (!slot.start || !slot.end) {
+    logger.error('handleSlotSelection: slot missing start or end', { slot, clientId, from: `***${from.slice(-4)}` });
+    await send(from, 'That slot has incomplete data. Please choose another time.');
+    await showAvailableDays(from, client, session, locale, send, saveSession);
+    return;
+  }
+
   const b = session.state.booking;
   b.slotStart     = slot.start;
   b.slotEnd       = slot.end;
@@ -287,7 +294,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
   const lower = text.toLowerCase().trim();
 
   // Universal cancel
-  if (['no', 'cancel', 'stop', 'back', 'quit'].includes(lower)) {
+  if (['no', 'cancel', 'stop', 'back', 'quit', 'oya', 'hapana', 'non', 'nein', 'reka', 'harakabura'].includes(lower)) {
     session.state.booking         = null;
     session.state.activeOrderType = null;
     session.state.activeIntent    = null;
@@ -392,10 +399,21 @@ export async function handleBookingTextReply(from, client, session, text, locale
     }
 
     case 'await_confirm': {
-      if (['yes', 'oui', 'yego', 'ndio', 'ja', 'confirm', 'ok', 'okay'].includes(lower)) {
+      const CONFIRM_YES = new Set(['yes', 'oui', 'yego', 'ndio', 'ndiyo', 'ja', 'confirm', 'ok', 'okay', 'neza', 'sawa', 'sure', 'si']);
+      const CONFIRM_NO  = new Set(['no', 'non', 'oya', 'hapana', 'nein', 'cancel', 'stop', 'back']);
+      if (CONFIRM_YES.has(lower)) {
         await finalizeBooking(from, client, session, locale, send, saveSession);
+      } else if (CONFIRM_NO.has(lower)) {
+        session.state.booking         = null;
+        session.state.activeOrderType = null;
+        session.state.activeIntent    = null;
+        session.changed('state', true);
+        await saveSession();
+        const t_i = i18next.getFixedT(locale);
+        await send(from, t_i('booking_cancelled') || '❌ Booking cancelled. How else can I help you?');
       } else {
-        await send(from, 'Please reply *Yes* to confirm your booking or *No* to cancel.');
+        // Re-show summary so user knows what they're confirming
+        await sendConfirmationSummary(from, session, locale, send, saveSession);
       }
       return true;
     }

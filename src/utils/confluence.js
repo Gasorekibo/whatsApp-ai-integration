@@ -17,7 +17,6 @@ class ConfluenceClient {
      */
     async fetchPages(spaceKey = null, clientConfig = null) {
         const config = clientConfig || this.defaultConfig;
-        console.log('Using Confluence config===>:', config);
         const auth   = this._buildAuth(config);
         const key    = spaceKey || config.spaceKey;
 
@@ -25,8 +24,6 @@ class ConfluenceClient {
         if (!config.baseUrl || !config.email || !config.apiToken) {
             throw new Error('Confluence credentials incomplete (baseUrl, email, apiToken required)');
         }
-
-        console.log('Auth header===>:', auth);
 
         try {
             logger.info(`Fetching Confluence pages for space: ${key}`, { baseUrl: config.baseUrl });
