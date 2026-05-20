@@ -139,6 +139,12 @@ export default (sequelize) => {
       allowNull: true,
       comment: 'Consultation deposit in the client currency; null = use DEPOSIT_AMOUNT env var'
     },
+    requireDepositBeforeBooking: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'When true the calendar event is only created after the deposit payment is confirmed'
+    },
 
     // ── Payments — Flutterwave ────────────────────────────────────────
     flutterwaveSecretKey: {
@@ -298,6 +304,10 @@ export default (sequelize) => {
 
   Client.prototype.getDecryptedGeminiKey = function () {
     return decrypt(this.geminiApiKey);
+  };
+
+  Client.prototype.getDecryptedFlutterwaveKey = function () {
+    return decrypt(this.flutterwaveSecretKey) || process.env.FLW_SECRET_KEY || null;
   };
 
   Client.prototype.getDecryptedConfluenceToken = function () {

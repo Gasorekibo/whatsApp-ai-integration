@@ -106,6 +106,8 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   const paymentRedirectUrl = clientConfig.paymentRedirectUrl || '';
   const depositAmount      = clientConfig.depositAmount      || 5000;
   const currency           = clientConfig.currency           || 'RWF';
+  // Per-client Flutterwave key takes precedence over the shared env var
+  const flutterwaveKey     = clientConfig.flutterwaveKey     || process.env.FLW_SECRET_KEY || '';
   const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
   const activeIntent          = clientConfig.activeIntent          || null;
@@ -271,18 +273,66 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
         if (call.name === 'initiate_payment') {
           const data           = call.args;
-          const requestedStart = new Date(data.start);
-          logger.info('initiate_payment tool called', { data });
+          const requestedStart = data.start ? new Date(data.start) : null;
+          const validStart     = requestedStart && !isNaN(requestedStart.getTime()) && requestedStart > new Date();
 
-          // Ensure slots are loaded before matching
-          const freeSlots = await loadSlots().catch(() => []);
-          const matchingSlot = freeSlots.find(slot =>
-            Math.abs(new Date(slot.isoStart) - requestedStart) < 60000
+          logger.info('initiate_payment tool called', {
+            service: data.service, name: data.name, start: data.start, validStart
+          }); 
+          const freeSlots = await loadSlots().catch(err => {
+            logger.warn('initiate_payment: loadSlots failed', { error: err.message });
+            return [];
+          });
+
+          // If AI called payment without a real ISO slot, or the slot it invented
+          // doesn't match any real calendar slot, hand off to the structured booking
+          // flow immediately. This avoids the AI saying "payment could not be processed"
+          // when the real problem is just that no slot was selected yet.
+          if (!validStart) {
+            logger.info('initiate_payment: no valid slot — handing off to booking flow', {
+              service: data.service, name: data.name
+            });
+            return {
+              reply:              null,
+              showServices:       false,
+              showSlots:          false,
+              freeSlots:          [],
+              triggerBookingFlow: true,
+              bookingPrefill: {
+                serviceName: data.service || selectedServiceName || null,
+                name:        data.name    || userName            || null,
+                email:       data.email   || userEmail           || null,
+              }
+            };
+          }
+
+          // Match the chosen slot with 30-minute tolerance (AI may reconstruct ISO
+          // with slight timezone offset). Fall back to same-day if no close match.
+          const SLOT_TOLERANCE_MS = 30 * 60 * 1000;
+          let matchingSlot = freeSlots.find(s =>
+            Math.abs(new Date(s.isoStart) - requestedStart) < SLOT_TOLERANCE_MS
           );
+          if (!matchingSlot) {
+            const reqDay = requestedStart.toDateString();
+            matchingSlot = freeSlots.find(s => new Date(s.isoStart).toDateString() === reqDay);
+          }
 
           if (!matchingSlot) {
-            toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Time slot no longer available.' } } });
-            continue;
+            logger.warn('initiate_payment: slot not found — handing off to booking flow', {
+              start: data.start, freeSlotsCount: freeSlots.length
+            });
+            return {
+              reply:              null,
+              showServices:       false,
+              showSlots:          false,
+              freeSlots:          [],
+              triggerBookingFlow: true,
+              bookingPrefill: {
+                serviceName: data.service || selectedServiceName || null,
+                name:        data.name    || userName            || null,
+                email:       data.email   || userEmail           || null,
+              }
+            };
           }
 
           try {
@@ -305,9 +355,15 @@ export async function processWithGemini(phoneNumber, message, history = [], user
               status:        'pending_payment'
             });
 
+            if (!flutterwaveKey) {
+              logger.error('initiate_payment: no Flutterwave key available', { clientId });
+              toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment system not configured' } } });
+              continue;
+            }
+
             const paymentRes = await fetch('https://api.flutterwave.com/v3/payments', {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.FLW_SECRET_KEY}`, 'Content-Type': 'application/json' },
+              headers: { 'Authorization': `Bearer ${flutterwaveKey}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 tx_ref,
                 amount:        depositAmount,
@@ -325,6 +381,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
               : { functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment gateway error' } } }
             );
           } catch (e) {
+            console.log('Error in initiate_payment tool:', e);
             logger.error('Error in initiate_payment tool', { error: e.message });
             toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: e.message } } });
           }
@@ -348,9 +405,35 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     const responseText = result.response.text();
     let parsedResult;
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      parsedResult    = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+      // Strip Gemini's {{json. ... }} or ```json ... ``` wrapper when present
+      const cleaned = responseText
+        .replace(/^\s*\{\{json\.\s*/i, '')
+        .replace(/\}\}\s*$/, '')
+        .replace(/^\s*```json\s*/i, '')
+        .replace(/\s*```\s*$/, '')
+        .trim();
+
+      // Find the outermost JSON object by locating the "language" or "reply" key
+      // rather than blindly taking first { to last } (which breaks on nested braces).
+      let jsonStr = cleaned;
+      const keyMatch = cleaned.match(/"(?:language|reply)"\s*:/);
+      if (keyMatch) {
+        // Walk backwards from the key to find the opening brace of the object
+        const keyPos = cleaned.indexOf(keyMatch[0]);
+        const start  = cleaned.lastIndexOf('{', keyPos);
+        if (start !== -1) {
+          // Find the matching closing brace
+          let depth = 0, end = -1;
+          for (let i = start; i < cleaned.length; i++) {
+            if (cleaned[i] === '{') depth++;
+            else if (cleaned[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+          }
+          if (end !== -1) jsonStr = cleaned.slice(start, end + 1);
+        }
+      }
+      parsedResult = JSON.parse(jsonStr);
     } catch {
+      // Last resort: treat whole text as plain reply
       parsedResult = { reply: responseText, language: detectedLanguage, showServices: false, showSlots: false };
     }
 
@@ -402,10 +485,7 @@ Current Date: ${currentDate}
 ${slotDetails ? `Deposit required to confirm booking: ${depositAmount} ${currency}` : ''}
 
 OUTPUT FORMAT:
-ALWAYS return your response in the following JSON format:
-{
-  "language": "iso_code",
-  "reply": "your response text here"
-}
+Return ONLY raw JSON — no markdown, no code fences, no {{json.}} wrappers. Exactly:
+{"language":"iso_code","reply":"your response text here"}
 `;
 }

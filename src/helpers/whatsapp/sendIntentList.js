@@ -6,7 +6,7 @@ export const VALID_INTENTS  = ['general', 'services', 'order', 'handoff'];
 
 const LABELS = {
   en: {
-    body:     'We offer a variety of services. Please select one that best matches your needs:',
+    body:     'Please select one Service that best matches your needs:',
     button:   'Choose',
     section:  'Options',
     general:  { title: '💬 General inquiries',    description: 'Contact info, hours, location' },
@@ -24,12 +24,12 @@ const LABELS = {
     handoff:  { title: '🙋 Parler à quelqu\'un',   description: 'Contacter notre équipe' }
   },
   rw: {
-    body:     'Nigute nakugira inkunga uyu munsi?',
+    body:     'Dutanga Serivisi zitandukanye, Hitamo serivisi wumva ushaka ko tugufasha?',
     button:   'Hitamo',
     section:  'Amahitamo',
     general:  { title: '💬 Ibibazo rusange',        description: 'Telefoni, amasaha, aho tuba' },
-    services: { title: '🛠️ Serivisi n\'ibicuruzwa', description: 'Reba ivyo dutanga' },
-    order:    { title: '📋 Iteka / Gahunda',        description: 'Fata gahunda cyangwa ishyura' },
+    services: { title: '🛠️ Serivisi n\'ibicuruzwa', description: 'Reba ibyo dutanga' },
+    order:    { title: '📋 Gutumiza / Gahunda',        description: 'Fata gahunda cyangwa ishyura' },
     handoff:  { title: '🙋 Vugana n\'umuntu',       description: 'Vugana n\'itsinda ryacu' }
   },
   sw: {

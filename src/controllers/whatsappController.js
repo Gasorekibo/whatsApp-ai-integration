@@ -20,7 +20,12 @@ import {
   LANGUAGE_TTL_MS
 } from '../helpers/whatsapp/sendLanguageSelectionList.js';
 import { sendIntentList, INTENT_PREFIX, VALID_INTENTS } from '../helpers/whatsapp/sendIntentList.js';
-import { handleOrderRouting, ORDER_PREFIX, VALID_ORDER_TYPES } from '../helpers/whatsapp/handlers/orderHandler.js';
+import {
+  handleOrderRouting, handleBookingTypeRouting,
+  ORDER_PREFIX, BOOKING_TYPE_PREFIX,
+  VALID_ORDER_TYPES, VALID_BOOKING_TYPES,
+  BOOKING_TYPE_PLACEHOLDERS,
+} from '../helpers/whatsapp/handlers/orderHandler.js';
 import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
 import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
 import { classifyIntent } from '../services/intentClassifier.service.js';
@@ -47,7 +52,8 @@ function hasValidLanguage(session) {
 
 const QUICK_INTENT_MAP = [
   ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
-  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|gufata|rendez-vous|paiement|miadi|malipo|termin)\b/i],
+  // order: English + French + Kinyarwanda (gufata, kuza, kwiza, naza, nshaka kuza, ndashaka) + Swahili (miadi, ninataka kuja, nataka) + German
+  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|come in|i('ll| will) come|want to come|i'd like to visit|gufata|kuza|kwiza|nshaka kuza|ndashaka kuza|rendez-vous|paiement|je veux venir|miadi|malipo|ninataka kuja|nataka kuja|termin|ich möchte kommen)\b/i],
   ['services', /\b(services?|products?|pric(?:e|ing)|costs?|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
   ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close|aho|amasaha|où|horaires|mahali|saa|standort|öffnungszeiten)\b/i],
 ];
@@ -61,7 +67,7 @@ function detectQuickIntent(text) {
 
 // Phrases that are continuations of a conversation, not new intent signals.
 // When a user has an active intent and sends one of these, route to AI normally.
-const CONTINUATION_RE = /^(ok|okay|thanks|thank you|merci|murakoze|asante|danke|alright|great|got it|sure|yes|no|yep|nope|hi|hello|hey|good|perfect|understood|i see|noted|👍|😊|🙏|nice|cool|wow|really|interesting|oh|ah|hm+|lol|haha)[\s!.?]*$/i;
+const CONTINUATION_RE = /^(ok|okay|thanks|thank you|merci|murakoze|asante|danke|alright|great|got it|sure|yes|no|yep|nope|hi|hello|hey|good|perfect|understood|i see|noted|👍|😊|🙏|nice|cool|wow|really|interesting|oh|ah|hm+|lol|haha|neza|sawa|yego|oya|ndio|hapana|bien|d'accord|oui|non|ja|nein|ça va|super)[\s!.?]*$/i;
 
 function isContinuation(text) {
   return CONTINUATION_RE.test(text.trim());
@@ -87,7 +93,7 @@ const HANDOFF_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const GENERAL_PROMPTS = {
   en: "Thank you for choosing General Inquiries. What would you like to know? Ask about our contact info, hours, location or FAQs.",
   fr: "Merci d’avoir choisi les demandes générales. Que souhaitez-vous savoir ? Posez des questions sur nos coordonnées, nos horaires, notre emplacement ou notre FAQ",
-  rw: "Murakoze guhitamo ibibazo rusange. Ni iki wifuza kumenya? Baza ku makuru y’itumanaho, amasaha dukoreramo, aho duherereye cyangwa ibibazo bikunze kubazwa.",
+  rw: "Murakoze guhitamo ibibazo rusange. Ni iki wifuza kumenya? Baza ku makuru y’itumanaho, amasaha dukoreraho, aho duherereye cyangwa ibibazo bikunze kubazwa.",
   sw: "Asante kwa kuchagua Maswali ya Jumla. Ungependa kujua nini? Uliza kuhusu mawasiliano yetu, saa za kazi, eneo au maswali yanayoulizwa mara kwa mara (FAQs).",
   de: "Vielen Dank, dass Sie Allgemeine Anfragen gewählt haben. Was möchten Sie wissen? Fragen Sie nach unseren Kontaktdaten, Öffnungszeiten, Standort oder FAQs."
 };
@@ -95,7 +101,6 @@ const GENERAL_PROMPTS = {
 // Kick-off messages sent when an order sub-type is selected
 const ORDER_TRIGGER = {
   booking: { en: "I'd like to book an appointment.", fr: "Je souhaite prendre rendez-vous.", rw: "Ndashaka gufata gahunda.", sw: "Ningependa kuweka miadi.", de: "Ich möchte einen Termin buchen." },
-  payment: { en: "I'd like to make a payment.", fr: "Je souhaite effectuer un paiement.", rw: "Ndashaka gukora ubwishyu.", sw: "Ningependa kufanya malipo.", de: "Ich möchte eine Zahlung vornehmen." },
   status:  { en: "I'd like to check my order or booking status.", fr: "Je souhaite vérifier le statut de ma commande.", rw: "Ndashaka kureba aho iteka ryangye ryageze.", sw: "Ningependa kuangalia hali ya agizo langu.", de: "Ich möchte den Status meiner Bestellung prüfen." },
 };
 
@@ -214,10 +219,13 @@ const handleWebhook = async (req, res) => {
         if (idleMs > SESSION_INTENT_TTL_MS) {
           session.state = {
             ...session.state,
-            activeIntent:   null,
-            activeOrderType: null,
-            aiPaused:       false,
-            pausedAt:       null,
+            activeIntent:        null,
+            activeOrderType:     null,
+            booking:             null,
+            selectedService:     null,
+            selectedServiceName: null,
+            aiPaused:            false,
+            pausedAt:            null,
           };
           session.changed('state', true);
           logger.whatsapp('info', 'Session intent cleared after idle timeout', { requestId, idleMs });
@@ -317,6 +325,32 @@ const handleWebhook = async (req, res) => {
           await session.save({ transaction: t });
           await send(from, GENERAL_PROMPTS[locale] || GENERAL_PROMPTS.en);
 
+        } else if (selectedId.startsWith(BOOKING_TYPE_PREFIX)) {
+          // ── Booking type selection (calendar / restaurant / hotel) ────────
+          const bookingType = selectedId.slice(BOOKING_TYPE_PREFIX.length);
+
+          if (!VALID_BOOKING_TYPES.includes(bookingType)) {
+            logger.whatsapp('warn', 'Unknown booking type in list reply', { requestId, bookingType });
+            await handleBookingTypeRouting(from, client, locale);
+            return;
+          }
+
+          logger.whatsapp('info', 'Booking type selected', { requestId, bookingType, from: `***${from.slice(-4)}` });
+
+          if (bookingType === 'calendar') {
+            session.state = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
+            session.changed('state', true);
+            await session.save({ transaction: t });
+            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+            await startBookingFlow(from, client, session, locale, send, saveSession);
+            await session.save({ transaction: t });
+          } else {
+            // Restaurant / hotel — placeholder until integration is built
+            const msg = BOOKING_TYPE_PLACEHOLDERS[bookingType]?.[locale]
+                     || BOOKING_TYPE_PLACEHOLDERS[bookingType]?.en;
+            await send(from, msg);
+          }
+
         } else if (selectedId.startsWith(ORDER_PREFIX)) {
           // ── Order sub-type selection ──────────────────────────────────────
           const orderType = selectedId.slice(ORDER_PREFIX.length);
@@ -332,8 +366,8 @@ const handleWebhook = async (req, res) => {
           await session.save({ transaction: t });
 
           if (orderType === 'booking') {
-            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
-            await startBookingFlow(from, client, session, locale, send, saveSession);
+            // Show booking type sub-menu instead of jumping straight to the calendar flow
+            await handleBookingTypeRouting(from, client, locale);
             await session.save({ transaction: t });
           } else {
             const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
@@ -432,7 +466,8 @@ const handleWebhook = async (req, res) => {
         if (isRestartCommand(text)) {
           logger.whatsapp('info', 'Resetting session — user typed ' + text, { requestId, from: `***${from.slice(-4)}` });
           session.history = [];
-          session.state   = { selectedService: null, pendingBooking: null, activeIntent: null, activeOrderType: null, aiPaused: false };
+          session.state   = { selectedService: null, selectedServiceName: null, pendingBooking: null, booking: null, activeIntent: null, activeOrderType: null, aiPaused: false, pausedAt: null };
+          session.changed('history', true);
           session.changed('state', true);
           whatsappSessions.delete(from);
           await session.save({ transaction: t });
@@ -510,8 +545,7 @@ const handleWebhook = async (req, res) => {
             }
             // Number out of range — tell the user
             const t_n = i18next.getFixedT(locale);
-            await send(from, t_n('invalid_service_number', { max: services.length }) ||
-              `Please reply with a number between 1 and ${services.length}.`);
+            await send(from, t_n('invalid_service_number', { max: services.length }));
             await session.save({ transaction: t });
             return;
           }
@@ -567,7 +601,27 @@ const handleWebhook = async (req, res) => {
             return;
           }
           if (resolvedNewIntent === 'order') {
-            await handleOrderRouting(from, client, locale);
+            // If user already has a service selected, jump straight to booking — skip sub-menus
+            if (session.state.selectedServiceName) {
+              session.state.activeOrderType = 'booking';
+              session.state.booking = {
+                step:          'await_day',
+                serviceName:   session.state.selectedServiceName,
+                name:          session.name || null,
+                email:         session.state.email || null,
+                phone:         from,
+                slotStart:     null,
+                slotEnd:       null,
+                slotFormatted: null,
+              };
+              session.changed('state', true);
+              await session.save({ transaction: t });
+              const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+              await startBookingFlow(from, client, session, locale, send, saveSession);
+              await session.save({ transaction: t });
+            } else {
+              await handleOrderRouting(from, client, locale);
+            }
             return;
           }
           if (resolvedNewIntent === 'services') {
@@ -619,6 +673,29 @@ const handleWebhook = async (req, res) => {
         if (response.showServices) {
           await sendServiceList(from, locale, client);
           pushHistory(session, locale, msg.text.body, 'Service list shown');
+          await session.save({ transaction: t });
+          return;
+        }
+
+        if (response.triggerBookingFlow) {
+          // AI collected some booking info but couldn't select a real slot.
+          // Pre-populate state and hand off to the structured booking handler.
+          const prefill = response.bookingPrefill || {};
+          session.state.booking = {
+            step:          'await_day',
+            serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
+            name:          prefill.name        || session.name                      || null,
+            email:         prefill.email       || session.state.email               || null,
+            phone:         from,
+            slotStart:     null,
+            slotEnd:       null,
+            slotFormatted: null,
+          };
+          session.state.activeOrderType = 'booking';
+          session.changed('state', true);
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          await startBookingFlow(from, client, session, locale, send, saveSession);
+          pushHistory(session, locale, msg.text.body, 'Booking flow started');
           await session.save({ transaction: t });
           return;
         }
@@ -681,6 +758,27 @@ const handleWebhook = async (req, res) => {
         if (response.showServices) {
           await sendServiceList(from, locale, client);
           pushHistory(session, locale, `[Voice] ${transcribedText}`, 'Service list shown');
+          await session.save({ transaction: t });
+          return;
+        }
+
+        if (response.triggerBookingFlow) {
+          const prefill = response.bookingPrefill || {};
+          session.state.booking = {
+            step:          'await_day',
+            serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
+            name:          prefill.name        || session.name                      || null,
+            email:         prefill.email       || session.state.email               || null,
+            phone:         from,
+            slotStart:     null,
+            slotEnd:       null,
+            slotFormatted: null,
+          };
+          session.state.activeOrderType = 'booking';
+          session.changed('state', true);
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+          await startBookingFlow(from, client, session, locale, send, saveSession);
+          pushHistory(session, locale, `[Voice] ${transcribedText}`, 'Booking flow started');
           await session.save({ transaction: t });
           return;
         }
