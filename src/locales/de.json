@@ -19,5 +19,10 @@
   "auth_failure_info": "Bei der Authentifizierung ist ein Fehler aufgetreten.",
   "auth_failure_retry": "Bitte versuchen Sie es erneut.",
   "auth_failure_button": "Authentifizierung erneut versuchen",
-  "language_selected_confirmation": "✅ Gut! Ich werde die nächsten 7 Tage auf *Deutsch* antworten. Englisch wird für das beste Erlebnis empfohlen.\n\nIhre bevorzugte Sprache wird in den nächsten 7 Tagen aktualisiert."
+  "language_selected_confirmation": "✅ Gut! Ich werde die nächsten 7 Tage auf *Deutsch* antworten. Englisch wird für das beste Erlebnis empfohlen.\n\nIhre bevorzugte Sprache wird in den nächsten 7 Tagen aktualisiert.",
+  "reply_with_number": "Antworten Sie mit der *Nummer* des Dienstes, der Sie interessiert.",
+  "invalid_service_number": "⚠️ Bitte wählen Sie eine Nummer zwischen *1* und *{{max}}*. Versuchen Sie es erneut!",
+  "booking_cancelled": "❌ Buchung storniert. Wie kann ich Ihnen sonst helfen?",
+  "booking_failed": "❌ Entschuldigung, wir konnten Ihren Termin gerade nicht erstellen. Bitte kontaktieren Sie uns direkt oder versuchen Sie es später noch einmal.",
+  "booking_payment_failed": "❌ Wir konnten Ihren Zahlungslink gerade nicht erstellen. Bitte kontaktieren Sie uns direkt, um Ihre Buchung abzuschließen."
 }

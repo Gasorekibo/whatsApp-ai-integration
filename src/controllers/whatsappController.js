@@ -92,7 +92,7 @@ const HANDOFF_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const GENERAL_PROMPTS = {
   en: "Thank you for choosing General Inquiries. What would you like to know? Ask about our contact info, hours, location or FAQs.",
   fr: "Merci d’avoir choisi les demandes générales. Que souhaitez-vous savoir ? Posez des questions sur nos coordonnées, nos horaires, notre emplacement ou notre FAQ",
-  rw: "Murakoze guhitamo ibibazo rusange. Ni iki wifuza kumenya? Baza ku makuru y’itumanaho, amasaha dukoreramo, aho duherereye cyangwa ibibazo bikunze kubazwa.",
+  rw: "Murakoze guhitamo ibibazo rusange. Ni iki wifuza kumenya? Baza ku makuru y’itumanaho, amasaha dukoreraho, aho duherereye cyangwa ibibazo bikunze kubazwa.",
   sw: "Asante kwa kuchagua Maswali ya Jumla. Ungependa kujua nini? Uliza kuhusu mawasiliano yetu, saa za kazi, eneo au maswali yanayoulizwa mara kwa mara (FAQs).",
   de: "Vielen Dank, dass Sie Allgemeine Anfragen gewählt haben. Was möchten Sie wissen? Fragen Sie nach unseren Kontaktdaten, Öffnungszeiten, Standort oder FAQs."
 };
@@ -540,8 +540,7 @@ const handleWebhook = async (req, res) => {
             }
             // Number out of range — tell the user
             const t_n = i18next.getFixedT(locale);
-            await send(from, t_n('invalid_service_number', { max: services.length }) ||
-              `Please reply with a number between 1 and ${services.length}.`);
+            await send(from, t_n('invalid_service_number', { max: services.length }));
             await session.save({ transaction: t });
             return;
           }

@@ -28,8 +28,8 @@ const LABELS = {
     button:   'Hitamo',
     section:  'Amahitamo',
     general:  { title: '💬 Ibibazo rusange',        description: 'Telefoni, amasaha, aho tuba' },
-    services: { title: '🛠️ Serivisi n\'ibicuruzwa', description: 'Reba ivyo dutanga' },
-    order:    { title: '📋 Iteka / Gahunda',        description: 'Fata gahunda cyangwa ishyura' },
+    services: { title: '🛠️ Serivisi n\'ibicuruzwa', description: 'Reba ibyo dutanga' },
+    order:    { title: '📋 Gutumiza / Gahunda',        description: 'Fata gahunda cyangwa ishyura' },
     handoff:  { title: '🙋 Vugana n\'umuntu',       description: 'Vugana n\'itsinda ryacu' }
   },
   sw: {
