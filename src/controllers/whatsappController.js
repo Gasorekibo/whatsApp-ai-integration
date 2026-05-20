@@ -32,7 +32,8 @@ import {
   startBookingFlow, startRestaurantBookingFlow, startHotelBookingFlow,
   handleDaySelection, handleSlotSelection, handleBookingTextReply,
   showAvailableDays,
-  DAY_PREFIX, SLOT_PREFIX, BOOKING_SVC_PREFIX
+  DAY_PREFIX, SLOT_PREFIX, BOOKING_SVC_PREFIX,
+  BOOKING_CONFIRM_BTN, BOOKING_CANCEL_BTN,
 } from '../helpers/whatsapp/handlers/bookingHandler.js';
 
 dotenv.config();
@@ -250,6 +251,15 @@ const handleWebhook = async (req, res) => {
             ? Date.now() - new Date(session.languageSetAt).getTime() >= LANGUAGE_TTL_MS
             : false
         });
+        // Greet new users before asking language preference
+        if (isNewUser) {
+          const userName   = contact?.profile?.name || session.name || 'there';
+          const botName    = client?.botName || 'AI Assistant';
+          const clientName = client?.name    || '';
+          const greeting   = `Hello ${userName}! 👋\n\nI'm *${botName}*${clientName ? `, an AI assistant for *${clientName}*` : ''}.\nI'm glad to have you and ready to help! 🙂`;
+          await send(from, greeting);
+        }
+
         // Ignore the triggering message — intent list shown after language selection
         // gives the user a clean, structured starting point.
         session.state = { ...session.state, awaitingLanguage: true };
@@ -282,6 +292,28 @@ const handleWebhook = async (req, res) => {
         const t_lang = i18next.getFixedT(langCode);
         await send(from, t_lang('language_selected_confirmation'));
         await sendIntentList(from, client, langCode);
+
+      } else if (msg.type === 'interactive' && msg.interactive?.type === 'button_reply') {
+        // ── Reply-button tap (booking confirm / cancel) ─────────────────────
+        const buttonId = msg.interactive.button_reply?.id;
+        const locale   = session.language;
+
+        logger.whatsapp('info', 'Button reply received', { requestId, from: `***${from.slice(-4)}`, buttonId });
+
+        if (buttonId === BOOKING_CONFIRM_BTN || buttonId === BOOKING_CANCEL_BTN) {
+          const activeOrderType = session.state.activeOrderType || null;
+          const booking         = session.state.booking;
+
+          if (activeOrderType === 'booking' && booking?.step === 'await_confirm') {
+            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+            // Reuse the text handler — 'yes'/'no' are in the CONFIRM_YES/NO sets
+            const syntheticText = buttonId === BOOKING_CONFIRM_BTN ? 'yes' : 'no';
+            await handleBookingTextReply(from, client, session, syntheticText, locale, send, saveSession);
+            await session.save({ transaction: t });
+          } else {
+            logger.whatsapp('warn', 'Booking button tapped outside confirm step — ignored', { requestId, buttonId });
+          }
+        }
 
       } else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
         // ── Interactive list reply ──────────────────────────────────────────

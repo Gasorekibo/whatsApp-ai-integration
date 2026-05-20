@@ -3,14 +3,17 @@ import getCalendarData from '../../../utils/getCalendarData.js';
 import { bookingService } from '../../../services/booking.service.js';
 import dbConfig from '../../../models/index.js';
 import { sendWhatsAppInteractiveList } from '../sendWhatsAppInteractiveList.js';
+import { sendWhatsAppButtons }         from '../sendWhatsAppButtons.js';
 import logger from '../../../logger/logger.js';
 import { redisGet, redisSet, redisDel } from '../../../utils/redis.js';
 import i18next from '../../../config/i18n.js';
 import ragService from '../../../services/rag.service.js';
 
-export const SLOT_PREFIX      = 'slot:';
-export const DAY_PREFIX       = 'day:';
+export const SLOT_PREFIX        = 'slot:';
+export const DAY_PREFIX         = 'day:';
 export const BOOKING_SVC_PREFIX = 'bsvc:';
+export const BOOKING_CONFIRM_BTN = 'bk_confirm';
+export const BOOKING_CANCEL_BTN  = 'bk_cancel';
 
 const SLOTS_CACHE_TTL    = 10 * 60; // 10 minutes
 const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
@@ -360,7 +363,7 @@ export async function handleSlotSelection(from, client, session, slotIndex, loca
   b.slotFormatted = slot.formatted;
   session.changed('state', true);
 
-  await promptNextField(from, session, locale, send, saveSession);
+  await promptNextField(from, client, session, locale, send, saveSession);
 }
 
 // ── Handles text messages while booking is active ────────────────────────────
@@ -456,7 +459,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       b.name = text.trim();
       session.changed('state', true);
       await saveSession();
-      await promptNextField(from, session, locale, send, saveSession);
+      await promptNextField(from, client, session, locale, send, saveSession);
       return true;
     }
 
@@ -471,7 +474,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       b.email = text.trim().toLowerCase();
       session.changed('state', true);
       await saveSession();
-      await sendConfirmationSummary(from, session, locale, send, saveSession);
+      await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       return true;
     }
 
@@ -492,7 +495,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
         await send(from, t_i('booking_cancelled') || '❌ Booking cancelled. How else can I help you?');
       } else {
         // Re-show summary so user knows what they're confirming
-        await sendConfirmationSummary(from, session, locale, send, saveSession);
+        await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       }
       return true;
     }
@@ -566,7 +569,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       b.specialRequests = SKIP_WORDS.has(lower) ? null : text.trim();
       session.changed('state', true);
       await saveSession();
-      await sendConfirmationSummary(from, session, locale, send, saveSession);
+      await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       return true;
     }
 
@@ -641,7 +644,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       } else {
         session.changed('state', true);
         await saveSession();
-        await sendConfirmationSummary(from, session, locale, send, saveSession);
+        await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       }
       return true;
     }
@@ -660,7 +663,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       } else {
         session.changed('state', true);
         await saveSession();
-        await sendConfirmationSummary(from, session, locale, send, saveSession);
+        await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       }
       return true;
     }
@@ -676,7 +679,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       b.email = text.trim().toLowerCase();
       session.changed('state', true);
       await saveSession();
-      await sendConfirmationSummary(from, session, locale, send, saveSession);
+      await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       return true;
     }
 
@@ -687,7 +690,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
 
 // ── Ask for the next missing piece of info ────────────────────────────────────
 
-async function promptNextField(from, session, locale, send, saveSession) {
+async function promptNextField(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
 
   if (!b.name) {
@@ -706,15 +709,20 @@ async function promptNextField(from, session, locale, send, saveSession) {
     return;
   }
 
-  await sendConfirmationSummary(from, session, locale, send, saveSession);
+  await sendConfirmationSummary(from, client, session, locale, send, saveSession);
 }
 
-// ── Confirmation summaries ────────────────────────────────────────────────────
+// ── Confirmation summaries (with reply buttons) ───────────────────────────────
 
-async function sendCalendarConfirmationSummary(from, session, locale, send, saveSession) {
+const CONFIRM_BUTTONS = [
+  { id: BOOKING_CONFIRM_BTN, title: '✅ Confirm' },
+  { id: BOOKING_CANCEL_BTN,  title: '❌ Cancel'  },
+];
+
+async function sendCalendarConfirmationSummary(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
 
-  const summary = [
+  const body = [
     '📋 *Booking Summary*',
     '',
     `Service:    ${b.serviceName}`,
@@ -722,17 +730,15 @@ async function sendCalendarConfirmationSummary(from, session, locale, send, save
     `Name:       ${b.name}`,
     `Email:      ${b.email}`,
     `Phone:      ${b.phone}`,
-    '',
-    'Reply *Yes* to confirm or *No* to cancel.',
   ].join('\n');
 
   b.step = 'await_confirm';
   session.changed('state', true);
   await saveSession();
-  await send(from, summary);
+  await sendWhatsAppButtons(from, client, { body, footer: 'Tap a button to confirm or cancel', buttons: CONFIRM_BUTTONS });
 }
 
-async function sendRestaurantConfirmationSummary(from, session, locale, send, saveSession) {
+async function sendRestaurantConfirmationSummary(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
 
   const lines = [
@@ -746,15 +752,14 @@ async function sendRestaurantConfirmationSummary(from, session, locale, send, sa
     `📞 Phone:   ${b.phone}`,
   ];
   if (b.specialRequests) lines.push(`✏️ Notes:   ${b.specialRequests}`);
-  lines.push('', 'Reply *Yes* to confirm or *No* to cancel.');
 
   b.step = 'await_confirm';
   session.changed('state', true);
   await saveSession();
-  await send(from, lines.join('\n'));
+  await sendWhatsAppButtons(from, client, { body: lines.join('\n'), footer: 'Tap a button to confirm or cancel', buttons: CONFIRM_BUTTONS });
 }
 
-async function sendHotelConfirmationSummary(from, session, locale, send, saveSession) {
+async function sendHotelConfirmationSummary(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
 
   const lines = [
@@ -769,19 +774,18 @@ async function sendHotelConfirmationSummary(from, session, locale, send, saveSes
     `📞 Phone:     ${b.phone}`,
   ];
   if (b.email) lines.push(`📧 Email:     ${b.email}`);
-  lines.push('', 'Reply *Yes* to confirm or *No* to cancel.');
 
   b.step = 'await_confirm';
   session.changed('state', true);
   await saveSession();
-  await send(from, lines.join('\n'));
+  await sendWhatsAppButtons(from, client, { body: lines.join('\n'), footer: 'Tap a button to confirm or cancel', buttons: CONFIRM_BUTTONS });
 }
 
-async function sendConfirmationSummary(from, session, locale, send, saveSession) {
+async function sendConfirmationSummary(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
-  if (b.bookingType === 'restaurant') return sendRestaurantConfirmationSummary(from, session, locale, send, saveSession);
-  if (b.bookingType === 'hotel')      return sendHotelConfirmationSummary(from, session, locale, send, saveSession);
-  return sendCalendarConfirmationSummary(from, session, locale, send, saveSession);
+  if (b.bookingType === 'restaurant') return sendRestaurantConfirmationSummary(from, client, session, locale, send, saveSession);
+  if (b.bookingType === 'hotel')      return sendHotelConfirmationSummary(from, client, session, locale, send, saveSession);
+  return sendCalendarConfirmationSummary(from, client, session, locale, send, saveSession);
 }
 
 // ── Finalization dispatcher ───────────────────────────────────────────────────
