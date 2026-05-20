@@ -24,5 +24,7 @@
   "invalid_service_number": "⚠️ Tafadhali chagua nambari kati ya *1* na *{{max}}*. Jaribu tena!",
   "booking_cancelled": "❌ Uhifadhi umefutwa. Ninaweza kukusaidia vipi zaidi?",
   "booking_failed": "❌ Samahani, hatukuweza kuunda miadi yako kwa sasa. Tafadhali wasiliana nasi moja kwa moja au jaribu tena baadaye.",
-  "booking_payment_failed": "❌ Hatukuweza kuunda kiungo cha malipo kwa sasa. Tafadhali wasiliana nasi moja kwa moja kukamilisha uhifadhi wako."
+  "booking_payment_failed": "❌ Hatukuweza kuunda kiungo cha malipo kwa sasa. Tafadhali wasiliana nasi moja kwa moja kukamilisha uhifadhi wako.",
+  "rest_booking_failed": "❌ Samahani, hatukuweza kukamilisha uhifadhi wa meza yako. Tafadhali wasiliana nasi moja kwa moja.",
+  "hotel_booking_failed": "❌ Samahani, hatukuweza kukamilisha uhifadhi wa chumba chako. Tafadhali wasiliana nasi moja kwa moja."
 }

@@ -58,6 +58,7 @@ function slotsKey(clientId, from) { return `bslots:${clientId}:${from}`; }
 
 function initBooking(session, from) {
   return {
+    bookingType:   'calendar',
     step:          'await_day',
     serviceName:   session.state.selectedServiceName || null,
     slotStart:     null,
@@ -69,7 +70,66 @@ function initBooking(session, from) {
   };
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+function initRestaurantBooking(session, from) {
+  return {
+    bookingType:     'restaurant',
+    step:            'await_rest_date',
+    name:            session.name || null,
+    phone:           from,
+    date:            null,
+    time:            null,
+    guests:          null,
+    specialRequests: null,
+  };
+}
+
+function initHotelBooking(session, from) {
+  return {
+    bookingType: 'hotel',
+    step:        'await_hotel_checkin',
+    name:        session.name || null,
+    email:       session.state.email || null,
+    phone:       from,
+    checkIn:     null,
+    checkOut:    null,
+    roomType:    null,
+    guests:      null,
+  };
+}
+
+// ── Entry points ──────────────────────────────────────────────────────────────
+
+export async function startRestaurantBookingFlow(from, client, session, locale, send, saveSession) {
+  if (!session.state.booking) {
+    session.state.booking = initRestaurantBooking(session, from);
+  } else {
+    session.state.booking.bookingType = 'restaurant';
+    session.state.booking.step        = 'await_rest_date';
+  }
+  session.changed('state', true);
+  await saveSession();
+  await send(from,
+    '🍽️ *Restaurant Table Reservation*\n\n' +
+    '📅 What date would you like to reserve a table?\n' +
+    '_(e.g. January 15, tomorrow, or 2024-01-15)_'
+  );
+}
+
+export async function startHotelBookingFlow(from, client, session, locale, send, saveSession) {
+  if (!session.state.booking) {
+    session.state.booking = initHotelBooking(session, from);
+  } else {
+    session.state.booking.bookingType = 'hotel';
+    session.state.booking.step        = 'await_hotel_checkin';
+  }
+  session.changed('state', true);
+  await saveSession();
+  await send(from,
+    '🏨 *Hotel Room Reservation*\n\n' +
+    '📅 What is your check-in date?\n' +
+    '_(e.g. January 15 or 2024-01-15)_'
+  );
+}
 
 export async function startBookingFlow(from, client, session, locale, send, saveSession) {
   if (!session.state.booking) {
@@ -297,7 +357,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
   if (['no', 'cancel', 'stop', 'back', 'quit', 'oya', 'hapana', 'non', 'nein', 'reka', 'harakabura'].includes(lower)) {
     session.state.booking         = null;
     session.state.activeOrderType = null;
-    session.state.activeIntent    = null;
+    session.state.activeIntent    = 'general';
     session.changed('state', true);
     await saveSession();
     const t = i18next.getFixedT(locale);
@@ -401,12 +461,14 @@ export async function handleBookingTextReply(from, client, session, text, locale
     case 'await_confirm': {
       const CONFIRM_YES = new Set(['yes', 'oui', 'yego', 'ndio', 'ndiyo', 'ja', 'confirm', 'ok', 'okay', 'neza', 'sawa', 'sure', 'si']);
       const CONFIRM_NO  = new Set(['no', 'non', 'oya', 'hapana', 'nein', 'cancel', 'stop', 'back']);
-      if (CONFIRM_YES.has(lower)) {
+      // Match on the full message OR just the first meaningful word ("yes please", "yes!", "no thanks")
+      const firstWord = lower.split(/[\s,!.?;:]+/)[0];
+      if (CONFIRM_YES.has(lower) || CONFIRM_YES.has(firstWord)) {
         await finalizeBooking(from, client, session, locale, send, saveSession);
-      } else if (CONFIRM_NO.has(lower)) {
+      } else if (CONFIRM_NO.has(lower) || CONFIRM_NO.has(firstWord)) {
         session.state.booking         = null;
         session.state.activeOrderType = null;
-        session.state.activeIntent    = null;
+        session.state.activeIntent    = 'general';
         session.changed('state', true);
         await saveSession();
         const t_i = i18next.getFixedT(locale);
@@ -415,6 +477,189 @@ export async function handleBookingTextReply(from, client, session, text, locale
         // Re-show summary so user knows what they're confirming
         await sendConfirmationSummary(from, session, locale, send, saveSession);
       }
+      return true;
+    }
+
+    // ── Restaurant steps ──────────────────────────────────────────────────────
+
+    case 'await_rest_date': {
+      const dateText = text.trim();
+      if (dateText.length < 2) {
+        await send(from, '📅 Please enter a valid date (e.g. *January 15*, *tomorrow*, or *2024-01-15*).');
+        return true;
+      }
+      b.date = dateText;
+      b.step = 'await_rest_time';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '🕐 What time would you like to arrive?\n_(e.g. 7:00 PM or 19:00)_');
+      return true;
+    }
+
+    case 'await_rest_time': {
+      const timeText = text.trim();
+      if (timeText.length < 2) {
+        await send(from, '🕐 Please enter a valid time (e.g. *7:00 PM* or *19:00*).');
+        return true;
+      }
+      b.time = timeText;
+      b.step = 'await_rest_guests';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '👥 How many guests will be dining?');
+      return true;
+    }
+
+    case 'await_rest_guests': {
+      const guestN = parseInt(text.trim(), 10);
+      if (!guestN || guestN < 1 || guestN > 100) {
+        await send(from, '👥 Please enter a valid number of guests (e.g. *2*).');
+        return true;
+      }
+      b.guests = guestN;
+      if (!b.name) {
+        b.step = 'await_rest_name';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, '👤 What name should the reservation be under?');
+      } else {
+        b.step = 'await_rest_special';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, '✏️ Any special requests?\n_(dietary needs, occasion, seating preference — reply *none* to skip)_');
+      }
+      return true;
+    }
+
+    case 'await_rest_name': {
+      if (text.trim().length < 2) {
+        await send(from, '👤 Please enter a valid name for the reservation.');
+        return true;
+      }
+      b.name = text.trim();
+      b.step = 'await_rest_special';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '✏️ Any special requests?\n_(dietary needs, occasion, seating preference — reply *none* to skip)_');
+      return true;
+    }
+
+    case 'await_rest_special': {
+      const SKIP_WORDS = new Set(['none', 'no', 'oya', 'hapana', 'non', 'nein', 'nta', 'ntacyo', 'skip', 'n/a', '-']);
+      b.specialRequests = SKIP_WORDS.has(lower) ? null : text.trim();
+      session.changed('state', true);
+      await saveSession();
+      await sendConfirmationSummary(from, session, locale, send, saveSession);
+      return true;
+    }
+
+    // ── Hotel steps ───────────────────────────────────────────────────────────
+
+    case 'await_hotel_checkin': {
+      const ci = text.trim();
+      if (ci.length < 2) {
+        await send(from, '📅 Please enter a valid check-in date (e.g. *January 15* or *2024-01-15*).');
+        return true;
+      }
+      b.checkIn = ci;
+      b.step    = 'await_hotel_checkout';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '📅 What is your check-out date?');
+      return true;
+    }
+
+    case 'await_hotel_checkout': {
+      const co = text.trim();
+      if (co.length < 2) {
+        await send(from, '📅 Please enter a valid check-out date (e.g. *January 17* or *2024-01-17*).');
+        return true;
+      }
+      b.checkOut = co;
+      b.step     = 'await_hotel_room_type';
+      session.changed('state', true);
+      await saveSession();
+      await send(from,
+        '🛏️ What type of room would you like?\n\n' +
+        '1. Standard\n' +
+        '2. Deluxe\n' +
+        '3. Suite\n\n' +
+        'Reply with *1*, *2*, or *3*.'
+      );
+      return true;
+    }
+
+    case 'await_hotel_room_type': {
+      const ROOM_MAP = { '1': 'Standard', '2': 'Deluxe', '3': 'Suite', 'standard': 'Standard', 'deluxe': 'Deluxe', 'suite': 'Suite' };
+      const roomType = ROOM_MAP[lower] || ROOM_MAP[text.trim().toLowerCase()];
+      if (!roomType) {
+        await send(from, '🛏️ Please choose: reply *1* for Standard, *2* for Deluxe, or *3* for Suite.');
+        return true;
+      }
+      b.roomType = roomType;
+      b.step     = 'await_hotel_guests';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '👥 How many guests will be staying?');
+      return true;
+    }
+
+    case 'await_hotel_guests': {
+      const hotelN = parseInt(text.trim(), 10);
+      if (!hotelN || hotelN < 1 || hotelN > 50) {
+        await send(from, '👥 Please enter a valid number of guests (e.g. *2*).');
+        return true;
+      }
+      b.guests = hotelN;
+      if (!b.name) {
+        b.step = 'await_hotel_name';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, '👤 What is your full name for the booking?');
+      } else if (!b.email) {
+        b.step = 'await_hotel_email';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, "📧 What is your email address?\nWe'll send your booking confirmation there.");
+      } else {
+        session.changed('state', true);
+        await saveSession();
+        await sendConfirmationSummary(from, session, locale, send, saveSession);
+      }
+      return true;
+    }
+
+    case 'await_hotel_name': {
+      if (text.trim().length < 2) {
+        await send(from, '👤 Please enter your full name.');
+        return true;
+      }
+      b.name = text.trim();
+      if (!b.email) {
+        b.step = 'await_hotel_email';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, "📧 What is your email address?\nWe'll send your booking confirmation there.");
+      } else {
+        session.changed('state', true);
+        await saveSession();
+        await sendConfirmationSummary(from, session, locale, send, saveSession);
+      }
+      return true;
+    }
+
+    case 'await_hotel_email': {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim())) {
+        await send(from,
+          "❌ That doesn't look like a valid email address.\n" +
+          'Please enter a valid email (e.g. *name@example.com*).'
+        );
+        return true;
+      }
+      b.email = text.trim().toLowerCase();
+      session.changed('state', true);
+      await saveSession();
+      await sendConfirmationSummary(from, session, locale, send, saveSession);
       return true;
     }
 
@@ -447,9 +692,9 @@ async function promptNextField(from, session, locale, send, saveSession) {
   await sendConfirmationSummary(from, session, locale, send, saveSession);
 }
 
-// ── Show booking summary and ask user to confirm ──────────────────────────────
+// ── Confirmation summaries ────────────────────────────────────────────────────
 
-async function sendConfirmationSummary(from, session, locale, send, saveSession) {
+async function sendCalendarConfirmationSummary(from, session, locale, send, saveSession) {
   const b = session.state.booking;
 
   const summary = [
@@ -470,17 +715,203 @@ async function sendConfirmationSummary(from, session, locale, send, saveSession)
   await send(from, summary);
 }
 
-// ── Create the Google Calendar event and ServiceRequest record ────────────────
+async function sendRestaurantConfirmationSummary(from, session, locale, send, saveSession) {
+  const b = session.state.booking;
+
+  const lines = [
+    '📋 *Reservation Summary*',
+    '',
+    '🍽️ Type:    Restaurant Table',
+    `📅 Date:    ${b.date}`,
+    `🕐 Time:    ${b.time}`,
+    `👥 Guests:  ${b.guests}`,
+    `👤 Name:    ${b.name}`,
+    `📞 Phone:   ${b.phone}`,
+  ];
+  if (b.specialRequests) lines.push(`✏️ Notes:   ${b.specialRequests}`);
+  lines.push('', 'Reply *Yes* to confirm or *No* to cancel.');
+
+  b.step = 'await_confirm';
+  session.changed('state', true);
+  await saveSession();
+  await send(from, lines.join('\n'));
+}
+
+async function sendHotelConfirmationSummary(from, session, locale, send, saveSession) {
+  const b = session.state.booking;
+
+  const lines = [
+    '📋 *Reservation Summary*',
+    '',
+    '🏨 Type:      Hotel Room',
+    `📅 Check-in:  ${b.checkIn}`,
+    `📅 Check-out: ${b.checkOut}`,
+    `🛏️ Room:      ${b.roomType}`,
+    `👥 Guests:    ${b.guests}`,
+    `👤 Name:      ${b.name}`,
+    `📞 Phone:     ${b.phone}`,
+  ];
+  if (b.email) lines.push(`📧 Email:     ${b.email}`);
+  lines.push('', 'Reply *Yes* to confirm or *No* to cancel.');
+
+  b.step = 'await_confirm';
+  session.changed('state', true);
+  await saveSession();
+  await send(from, lines.join('\n'));
+}
+
+async function sendConfirmationSummary(from, session, locale, send, saveSession) {
+  const b = session.state.booking;
+  if (b.bookingType === 'restaurant') return sendRestaurantConfirmationSummary(from, session, locale, send, saveSession);
+  if (b.bookingType === 'hotel')      return sendHotelConfirmationSummary(from, session, locale, send, saveSession);
+  return sendCalendarConfirmationSummary(from, session, locale, send, saveSession);
+}
+
+// ── Finalization dispatcher ───────────────────────────────────────────────────
 
 async function finalizeBooking(from, client, session, locale, send, saveSession) {
-  const b        = session.state.booking;
-  const clientId = client?.id;
-
+  const b = session.state.booking;
+  if (b.bookingType === 'restaurant') return finalizeRestaurantBooking(from, client, session, locale, send, saveSession);
+  if (b.bookingType === 'hotel')      return finalizeHotelBooking(from, client, session, locale, send, saveSession);
+  // calendar
   if (client?.requireDepositBeforeBooking) {
     await finalizeWithPayment(from, client, session, locale, send, saveSession);
   } else {
     await finalizeDirectly(from, client, session, locale, send, saveSession);
   }
+}
+
+// ── Restaurant finalization ───────────────────────────────────────────────────
+
+async function finalizeRestaurantBooking(from, client, session, locale, send, saveSession) {
+  const b        = session.state.booking;
+  const clientId = client?.id;
+  const t        = i18next.getFixedT(locale);
+
+  try {
+    await dbConfig.db.ServiceRequest.create({
+      clientId,
+      service:       'Restaurant Table',
+      bookingType:   'restaurant',
+      name:          b.name,
+      phone:         b.phone,
+      email:         null,
+      details: [
+        `Date: ${b.date}`,
+        `Time: ${b.time}`,
+        `Guests: ${b.guests}`,
+        b.specialRequests ? `Special requests: ${b.specialRequests}` : null,
+      ].filter(Boolean).join('\n'),
+      timeline:      `${b.date} at ${b.time}`,
+      participants:  b.guests,
+      status:        'confirmed',
+      paymentStatus: 'not_required',
+    });
+  } catch (err) {
+    logger.error('finalizeRestaurantBooking: ServiceRequest.create failed', { error: err.message, clientId });
+    session.state.booking         = null;
+    session.state.activeOrderType = null;
+    session.state.activeIntent    = 'general';
+    session.changed('state', true);
+    await saveSession();
+    await send(from, t('rest_booking_failed') || '❌ Sorry, we could not complete your reservation. Please contact us directly.');
+    return;
+  }
+
+  session.state.booking         = null;
+  session.state.activeOrderType = null;
+  session.state.activeIntent    = 'general';
+  session.changed('state', true);
+  await saveSession();
+
+  const lines = [
+    '✅ *Table Reserved!*',
+    '',
+    '🍽️ Restaurant Reservation',
+    `📅 Date:    ${b.date}`,
+    `🕐 Time:    ${b.time}`,
+    `👥 Guests:  ${b.guests}`,
+    `👤 Name:    ${b.name}`,
+    `📞 Phone:   ${b.phone}`,
+  ];
+  if (b.specialRequests) lines.push(`✏️ Notes:   ${b.specialRequests}`);
+  lines.push('', 'We look forward to seeing you! 😊');
+
+  const confirmMsg = lines.join('\n');
+  await send(from, confirmMsg);
+
+  pushHistory(session, locale,
+    `I'd like to reserve a table for ${b.guests} on ${b.date} at ${b.time} under ${b.name}.`,
+    confirmMsg
+  );
+  await saveSession();
+}
+
+// ── Hotel finalization ────────────────────────────────────────────────────────
+
+async function finalizeHotelBooking(from, client, session, locale, send, saveSession) {
+  const b        = session.state.booking;
+  const clientId = client?.id;
+  const t        = i18next.getFixedT(locale);
+
+  try {
+    await dbConfig.db.ServiceRequest.create({
+      clientId,
+      service:       'Hotel Room',
+      bookingType:   'hotel',
+      name:          b.name,
+      phone:         b.phone,
+      email:         b.email || null,
+      details: [
+        `Check-in: ${b.checkIn}`,
+        `Check-out: ${b.checkOut}`,
+        `Room type: ${b.roomType}`,
+        `Guests: ${b.guests}`,
+      ].join('\n'),
+      timeline:      `Check-in: ${b.checkIn}, Check-out: ${b.checkOut}`,
+      participants:  b.guests,
+      status:        'confirmed',
+      paymentStatus: 'not_required',
+    });
+  } catch (err) {
+    logger.error('finalizeHotelBooking: ServiceRequest.create failed', { error: err.message, clientId });
+    session.state.booking         = null;
+    session.state.activeOrderType = null;
+    session.state.activeIntent    = 'general';
+    session.changed('state', true);
+    await saveSession();
+    await send(from, t('hotel_booking_failed') || '❌ Sorry, we could not complete your reservation. Please contact us directly.');
+    return;
+  }
+
+  session.state.booking         = null;
+  session.state.activeOrderType = null;
+  session.state.activeIntent    = 'general';
+  session.changed('state', true);
+  await saveSession();
+
+  const lines = [
+    '✅ *Room Reserved!*',
+    '',
+    '🏨 Hotel Room Reservation',
+    `📅 Check-in:  ${b.checkIn}`,
+    `📅 Check-out: ${b.checkOut}`,
+    `🛏️ Room:      ${b.roomType}`,
+    `👥 Guests:    ${b.guests}`,
+    `👤 Name:      ${b.name}`,
+    `📞 Phone:     ${b.phone}`,
+  ];
+  if (b.email) lines.push(`📧 Email:     ${b.email}`);
+  lines.push('', 'We look forward to welcoming you! 😊');
+
+  const confirmMsg = lines.join('\n');
+  await send(from, confirmMsg);
+
+  pushHistory(session, locale,
+    `I'd like to book a ${b.roomType} room from ${b.checkIn} to ${b.checkOut} for ${b.guests} guest(s) under ${b.name}.`,
+    confirmMsg
+  );
+  await saveSession();
 }
 
 // Path A — payment required first ─────────────────────────────────────────────
@@ -567,7 +998,7 @@ async function finalizeWithPayment(from, client, session, locale, send, saveSess
   session.state.selectedService     = null;
   session.state.selectedServiceName = null;
   session.state.activeOrderType     = null;
-  session.state.activeIntent        = null;
+  session.state.activeIntent        = 'general';
   session.changed('state', true);
   await saveSession();
 
@@ -657,7 +1088,7 @@ async function finalizeDirectly(from, client, session, locale, send, saveSession
   session.state.selectedService     = null;
   session.state.selectedServiceName = null;
   session.state.activeOrderType     = null;
-  session.state.activeIntent        = null;
+  session.state.activeIntent        = 'general';
   session.changed('state', true);
   await saveSession();
 

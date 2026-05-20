@@ -205,6 +205,7 @@ router.put('/clients/:id', requireAdmin, async (req, res) => {
 
     const allowed = [
       'name', 'email', 'phone', 'botName', 'timezone', 'currency', 'depositAmount', 'paymentRedirectUrl',
+      'requireDepositBeforeBooking', 'bookingTypes',
       'subscriptionPlan', 'subscriptionStatus', 'subscriptionEndDate', 'isActive', 'messageCount', 'maxMonthlyMessages',
       'whatsappBusinessId', 'whatsappToken', 'whatsappAccountId', 'whatsappWebhookVerifyToken',
       'geminiApiKey', 'pineconeIndex', 'pineconeApiKey', 'pineconeIndexName', 'pineconeEnvironment',

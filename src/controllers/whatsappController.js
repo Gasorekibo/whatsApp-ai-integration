@@ -21,16 +21,16 @@ import {
 } from '../helpers/whatsapp/sendLanguageSelectionList.js';
 import { sendIntentList, INTENT_PREFIX, VALID_INTENTS } from '../helpers/whatsapp/sendIntentList.js';
 import {
-  handleOrderRouting, handleBookingTypeRouting,
+  handleOrderRouting, handleBookingTypeRouting, getClientBookingTypes,
   ORDER_PREFIX, BOOKING_TYPE_PREFIX,
   VALID_ORDER_TYPES, VALID_BOOKING_TYPES,
-  BOOKING_TYPE_PLACEHOLDERS,
 } from '../helpers/whatsapp/handlers/orderHandler.js';
 import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
 import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
 import { classifyIntent } from '../services/intentClassifier.service.js';
 import {
-  startBookingFlow, handleDaySelection, handleSlotSelection, handleBookingTextReply,
+  startBookingFlow, startRestaurantBookingFlow, startHotelBookingFlow,
+  handleDaySelection, handleSlotSelection, handleBookingTextReply,
   DAY_PREFIX, SLOT_PREFIX
 } from '../helpers/whatsapp/handlers/bookingHandler.js';
 
@@ -337,19 +337,19 @@ const handleWebhook = async (req, res) => {
 
           logger.whatsapp('info', 'Booking type selected', { requestId, bookingType, from: `***${from.slice(-4)}` });
 
-          if (bookingType === 'calendar') {
-            session.state = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
-            session.changed('state', true);
-            await session.save({ transaction: t });
-            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
-            await startBookingFlow(from, client, session, locale, send, saveSession);
-            await session.save({ transaction: t });
+          session.state = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
+          session.changed('state', true);
+          await session.save({ transaction: t });
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+
+          if (bookingType === 'restaurant') {
+            await startRestaurantBookingFlow(from, client, session, locale, send, saveSession);
+          } else if (bookingType === 'hotel') {
+            await startHotelBookingFlow(from, client, session, locale, send, saveSession);
           } else {
-            // Restaurant / hotel — placeholder until integration is built
-            const msg = BOOKING_TYPE_PLACEHOLDERS[bookingType]?.[locale]
-                     || BOOKING_TYPE_PLACEHOLDERS[bookingType]?.en;
-            await send(from, msg);
+            await startBookingFlow(from, client, session, locale, send, saveSession);
           }
+          await session.save({ transaction: t });
 
         } else if (selectedId.startsWith(ORDER_PREFIX)) {
           // ── Order sub-type selection ──────────────────────────────────────
@@ -366,9 +366,27 @@ const handleWebhook = async (req, res) => {
           await session.save({ transaction: t });
 
           if (orderType === 'booking') {
-            // Show booking type sub-menu instead of jumping straight to the calendar flow
-            await handleBookingTypeRouting(from, client, locale);
-            await session.save({ transaction: t });
+            const bookingTypes = getClientBookingTypes(client);
+            if (bookingTypes.length === 1) {
+              // Auto-select the only type — no sub-menu needed
+              const singleType  = bookingTypes[0];
+              session.state     = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
+              session.changed('state', true);
+              await session.save({ transaction: t });
+              const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+              if (singleType === 'restaurant') {
+                await startRestaurantBookingFlow(from, client, session, locale, send, saveSession);
+              } else if (singleType === 'hotel') {
+                await startHotelBookingFlow(from, client, session, locale, send, saveSession);
+              } else {
+                await startBookingFlow(from, client, session, locale, send, saveSession);
+              }
+              await session.save({ transaction: t });
+            } else {
+              // Multiple types — show filtered sub-menu
+              await handleBookingTypeRouting(from, client, locale);
+              await session.save({ transaction: t });
+            }
           } else {
             const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
             const userEmail  = session.state.email || null;
@@ -565,12 +583,14 @@ const handleWebhook = async (req, res) => {
         // Layer 1: fast English keyword detection
         const quickIntent = continuation ? null : detectQuickIntent(originalText);
 
-        // Layer 2: Gemini classifier — runs whenever keyword detection found nothing
-        // and the message is not a continuation. Works in any language and is the
-        // only way to detect intent shifts mid-conversation (e.g. user was in
-        // 'general' and now wants to book). Flash-Lite cost is negligible.
+        // Layer 2: Gemini classifier — runs when keyword detection found nothing,
+        // the message is not a continuation, AND the session has no active intent.
+        // Skipped mid-conversation (activeIntent set) so post-booking follow-ups
+        // don't get falsely re-classified as 'order' and show the sub-menu again.
+        // Genuine intent shifts mid-conversation are still caught by the keyword
+        // layer (layer 1), which covers all supported languages.
         let classifiedIntent = null;
-        if (!continuation && !quickIntent) {
+        if (!continuation && !quickIntent && !activeIntent) {
           classifiedIntent = await classifyIntent(originalText, client);
         }
 
@@ -605,6 +625,7 @@ const handleWebhook = async (req, res) => {
             if (session.state.selectedServiceName) {
               session.state.activeOrderType = 'booking';
               session.state.booking = {
+                bookingType:   'calendar',
                 step:          'await_day',
                 serviceName:   session.state.selectedServiceName,
                 name:          session.name || null,
@@ -682,6 +703,7 @@ const handleWebhook = async (req, res) => {
           // Pre-populate state and hand off to the structured booking handler.
           const prefill = response.bookingPrefill || {};
           session.state.booking = {
+            bookingType:   'calendar',
             step:          'await_day',
             serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
             name:          prefill.name        || session.name                      || null,
@@ -765,6 +787,7 @@ const handleWebhook = async (req, res) => {
         if (response.triggerBookingFlow) {
           const prefill = response.bookingPrefill || {};
           session.state.booking = {
+            bookingType:   'calendar',
             step:          'await_day',
             serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
             name:          prefill.name        || session.name                      || null,
