@@ -31,7 +31,8 @@ import { classifyIntent } from '../services/intentClassifier.service.js';
 import {
   startBookingFlow, startRestaurantBookingFlow, startHotelBookingFlow,
   handleDaySelection, handleSlotSelection, handleBookingTextReply,
-  DAY_PREFIX, SLOT_PREFIX
+  showAvailableDays,
+  DAY_PREFIX, SLOT_PREFIX, BOOKING_SVC_PREFIX
 } from '../helpers/whatsapp/handlers/bookingHandler.js';
 
 dotenv.config();
@@ -418,6 +419,38 @@ const handleWebhook = async (req, res) => {
           const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
           await handleSlotSelection(from, client, session, slotIndex, locale, send, saveSession);
           await session.save({ transaction: t });
+
+        } else if (selectedId.startsWith(BOOKING_SVC_PREFIX)) {
+          // ── Booking-flow service selection (interactive list, ≤ 10 services) ──
+          const svcIndex  = parseInt(selectedId.slice(BOOKING_SVC_PREFIX.length), 10);
+          const svcKey    = `services:${clientId}`;
+          let   services  = await redisGet(svcKey);
+          if (!services?.length) {
+            const namespace = client?.pineconeIndex || clientId || 'default';
+            services = await ragService.getServicesFromIndex(namespace);
+            if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
+          }
+          const pickedSvc = services?.[svcIndex];
+          if (!pickedSvc) {
+            logger.whatsapp('warn', 'bsvc index out of range', { requestId, svcIndex });
+            await startBookingFlow(from, client, session, locale, send,
+              async () => { session.changed('state', true); await session.save({ transaction: t }); });
+            await session.save({ transaction: t });
+          } else {
+            const b = session.state.booking;
+            if (b && session.state.activeOrderType === 'booking') {
+              b.serviceName = pickedSvc.name;
+              b.step        = 'await_day';
+              session.changed('state', true);
+              await session.save({ transaction: t });
+              const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+              await showAvailableDays(from, client, session, locale, send, saveSession);
+              await session.save({ transaction: t });
+            } else {
+              // Stale tap outside booking flow — ignore
+              logger.whatsapp('warn', 'bsvc tap ignored: not in booking flow', { requestId });
+            }
+          }
 
         } else {
           // ── Service list selection (existing logic) ───────────────────────

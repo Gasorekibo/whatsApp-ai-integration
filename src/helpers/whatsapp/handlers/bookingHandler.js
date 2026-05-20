@@ -8,8 +8,9 @@ import { redisGet, redisSet, redisDel } from '../../../utils/redis.js';
 import i18next from '../../../config/i18n.js';
 import ragService from '../../../services/rag.service.js';
 
-export const SLOT_PREFIX = 'slot:';
-export const DAY_PREFIX  = 'day:';
+export const SLOT_PREFIX      = 'slot:';
+export const DAY_PREFIX       = 'day:';
+export const BOOKING_SVC_PREFIX = 'bsvc:';
 
 const SLOTS_CACHE_TTL    = 10 * 60; // 10 minutes
 const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
@@ -33,13 +34,31 @@ async function getClientServices(clientId, namespace) {
   return services || [];
 }
 
-// Sends a numbered plain-text list (no interactive) so replies come back as
-// regular text and are handled inside the booking flow (not the interactive handler).
-async function sendServiceOptionsForBooking(from, send, services, introText) {
+// ≤ 10 services → interactive list (tappable, bsvc:N IDs routed by controller).
+// > 10 services → numbered plain-text list (user types number or service name).
+async function sendBookingServiceList(from, client, services, introText) {
+  const INTERACTIVE_LIMIT = 10;
+
+  if (services.length <= INTERACTIVE_LIMIT) {
+    const rows = services.map((s, i) => ({
+      id:          `${BOOKING_SVC_PREFIX}${i}`,
+      title:       (s.short || s.name).slice(0, 24),
+      description: (s.details?.trim() || '').slice(0, 72) || undefined,
+    }));
+    return sendWhatsAppInteractiveList(from, client, {
+      header:   '📋 Select a Service',
+      body:     introText,
+      button:   'Choose',
+      sections: [{ title: 'Available services', rows }],
+    });
+  }
+
+  // Fallback: plain-text numbered list
   let msg = introText + '\n\n';
   services.forEach((s, i) => { msg += `${i + 1}. ${s.name}\n`; });
-  msg += '\nReply by *Copying* the service name you want to book.';
-  await send(from, msg);
+  msg += '\nReply with the *number* of the service you want to book.';
+  // send() is injected via the caller for the text path
+  return { _textFallback: msg };
 }
 
 // Case-insensitive fuzzy match: exact first, then starts-with, then contains.
@@ -162,10 +181,9 @@ export async function startBookingFlow(from, client, session, locale, send, save
 
     const services = await getClientServices(clientId, namespace);
     if (services.length > 0) {
-      await sendServiceOptionsForBooking(
-        from, send, services,
-        '📋 Which service would you like to book an appointment for?'
-      );
+      const intro  = '📋 Which service would you like to book an appointment for?';
+      const result = await sendBookingServiceList(from, client, services, intro);
+      if (result?._textFallback) await send(from, result._textFallback);
     } else {
       await send(from,
         '📋 Which service would you like to book an appointment for?\n\n' +
@@ -398,7 +416,8 @@ export async function handleBookingTextReply(from, client, session, text, locale
           return true;
         }
         await send(from, `Please reply with a number between 1 and ${services.length}.`);
-        await sendServiceOptionsForBooking(from, send, services, 'Here are our available services:');
+        const r1 = await sendBookingServiceList(from, client, services, 'Here are our available services:');
+        if (r1?._textFallback) await send(from, r1._textFallback);
         return true;
       }
 
@@ -414,10 +433,8 @@ export async function handleBookingTextReply(from, client, session, text, locale
 
       // No match — show the list again
       await send(from, `❌ We don't currently offer "*${text.trim()}*".`);
-      await sendServiceOptionsForBooking(
-        from, send, services,
-        'Here are the services you can book an appointment for:'
-      );
+      const r2 = await sendBookingServiceList(from, client, services, 'Here are the services you can book an appointment for:');
+      if (r2?._textFallback) await send(from, r2._textFallback);
       return true;
     }
 
