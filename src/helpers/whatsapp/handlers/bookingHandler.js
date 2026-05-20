@@ -290,6 +290,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
   if (['no', 'cancel', 'stop', 'back', 'quit'].includes(lower)) {
     session.state.booking         = null;
     session.state.activeOrderType = null;
+    session.state.activeIntent    = null;
     session.changed('state', true);
     await saveSession();
     const t = i18next.getFixedT(locale);
@@ -548,6 +549,7 @@ async function finalizeWithPayment(from, client, session, locale, send, saveSess
   session.state.selectedService     = null;
   session.state.selectedServiceName = null;
   session.state.activeOrderType     = null;
+  session.state.activeIntent        = null;
   session.changed('state', true);
   await saveSession();
 
@@ -637,6 +639,7 @@ async function finalizeDirectly(from, client, session, locale, send, saveSession
   session.state.selectedService     = null;
   session.state.selectedServiceName = null;
   session.state.activeOrderType     = null;
+  session.state.activeIntent        = null;
   session.changed('state', true);
   await saveSession();
 
