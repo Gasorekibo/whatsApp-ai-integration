@@ -15,6 +15,12 @@ const SLOTS_CACHE_TTL    = 10 * 60; // 10 minutes
 const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
 const CAL_TZ             = 'Africa/Kigali';
 
+function pushHistory(session, locale, userContent, modelContent) {
+  session.history.push({ role: 'user',  content: userContent,  language: locale, timestamp: new Date() });
+  session.history.push({ role: 'model', content: modelContent, language: locale, timestamp: new Date() });
+  session.changed('history', true);
+}
+
 // ── Service helpers ───────────────────────────────────────────────────────────
 
 async function getClientServices(clientId, namespace) {
@@ -32,7 +38,7 @@ async function getClientServices(clientId, namespace) {
 async function sendServiceOptionsForBooking(from, send, services, introText) {
   let msg = introText + '\n\n';
   services.forEach((s, i) => { msg += `${i + 1}. ${s.name}\n`; });
-  msg += '\nReply with the *number* or *name* of the service you want to book.';
+  msg += '\nReply by *Copying* the service name you want to book.';
   await send(from, msg);
 }
 
@@ -567,7 +573,14 @@ async function finalizeWithPayment(from, client, session, locale, send, saveSess
     '_Your appointment will be confirmed automatically once payment is complete._',
   ];
 
-  await send(from, lines.join('\n'));
+  const payMsg = lines.join('\n');
+  await send(from, payMsg);
+
+  pushHistory(session, locale,
+    `I'd like to book ${b.serviceName} on ${b.slotFormatted} for ${b.name} (${b.email}, ${b.phone}).`,
+    payMsg
+  );
+  await saveSession();
 }
 
 // Path B — no payment required, book directly ─────────────────────────────────
@@ -642,5 +655,12 @@ async function finalizeDirectly(from, client, session, locale, send, saveSession
 
   lines.push('', `A confirmation email has been sent to ${b.email}. See you soon! 😊`);
 
-  await send(from, lines.join('\n'));
+  const confirmMsg = lines.join('\n');
+  await send(from, confirmMsg);
+
+  pushHistory(session, locale,
+    `I'd like to book ${b.serviceName} on ${b.slotFormatted} for ${b.name} (${b.email}, ${b.phone}).`,
+    confirmMsg
+  );
+  await saveSession();
 }
