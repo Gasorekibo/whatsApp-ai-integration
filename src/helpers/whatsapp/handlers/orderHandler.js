@@ -47,7 +47,7 @@ const LABELS = {
       body:       'Ni iki mushaka kubika?',
       button:     'Hitamo',
       section:    'Ubwoko bw\'ibikwa',
-      calendar:   { title: '📅 Gahunda',              description: 'Fata gahunda y\'ibikorwa' },
+      calendar:   { title: '📅 Gahunda ya Calendari',              description: 'Fata gahunda y\'ibikorwa' },
       restaurant: { title: '🍽️ Ameza kwa resitora',   description: 'Bika itable kwa resitora' },
       hotel:      { title: '🏨 Inzu y\'akazi',         description: 'Bika icyumba cy\'hoteli' },
     },

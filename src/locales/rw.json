@@ -19,7 +19,7 @@
   "auth_failure_info": "Hari ikibazo cyabaye mu gihe cy'iyandikisha.",
   "auth_failure_retry": "Ongera ugerageze.",
   "auth_failure_button": "Ongera uugerageze kwiyandikisha",
-  "language_selected_confirmation": "✅ Neza! Nzasubiza mu *Kinyarwanda* mu minsi 7 iri imbere. Icyongereza nicyiza cyane ku bisubizo byiza.\n\nUrurimi wahisemo ruzavugururwa mu minsi 7 iri imbere.",
+  "language_selected_confirmation": "✅ Urakoze! Nzasubiza mu *Kinyarwanda* mu minsi 7 iri imbere. Icyongereza cyaricyiza cyane ku bisubizo byiza.\n Niba wumva icyongereza wagihitamo mukugira ibisubizo byihuse\n\nUrurimi wahisemo ruzavugururwa mu minsi 7 iri imbere.",
   "reply_with_number": "Subiza *umubare* wa serivisi ushaka.",
   "invalid_service_number": "⚠️ Hitamo umubare uri hagati ya *1* na *{{max}}*. Ongera ugerageze!",
   "booking_cancelled": "❌ Kubika byahagaritswe. Ni iki kindi nshobora kukugirira ngo?",

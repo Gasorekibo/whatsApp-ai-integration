@@ -406,8 +406,15 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     const responseText = result.response.text();
     let parsedResult;
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      parsedResult    = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+      // Strip Gemini's {{json. ... }} or ```json ... ``` wrapper when present
+      const cleaned   = responseText
+        .replace(/^\s*\{\{json\.\s*/i, '')
+        .replace(/\}\}\s*$/, '')
+        .replace(/^\s*```json\s*/i, '')
+        .replace(/\s*```\s*$/, '')
+        .trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      parsedResult    = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
     } catch {
       parsedResult = { reply: responseText, language: detectedLanguage, showServices: false, showSlots: false };
     }
@@ -460,10 +467,7 @@ Current Date: ${currentDate}
 ${slotDetails ? `Deposit required to confirm booking: ${depositAmount} ${currency}` : ''}
 
 OUTPUT FORMAT:
-ALWAYS return your response in the following JSON format:
-{
-  "language": "iso_code",
-  "reply": "your response text here"
-}
+Return ONLY raw JSON — no markdown, no code fences, no {{json.}} wrappers. Exactly:
+{"language":"iso_code","reply":"your response text here"}
 `;
 }

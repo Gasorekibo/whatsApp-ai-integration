@@ -24,7 +24,7 @@ const LABELS = {
     handoff:  { title: '🙋 Parler à quelqu\'un',   description: 'Contacter notre équipe' }
   },
   rw: {
-    body:     'Nigute nakugira inkunga uyu munsi?',
+    body:     'Dutanga Serivisi zitandukanye, Hitamo serivisi wumva ushaka ko tugufasha?',
     button:   'Hitamo',
     section:  'Amahitamo',
     general:  { title: '💬 Ibibazo rusange',        description: 'Telefoni, amasaha, aho tuba' },
