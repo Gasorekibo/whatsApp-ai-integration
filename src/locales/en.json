@@ -18,5 +18,13 @@
   "auth_failure_title": "Authentication Failed",
   "auth_failure_info": "There was an error during authentication.",
   "auth_failure_retry": "Please try again.",
-  "auth_failure_button": "Retry Authentication"
+  "auth_failure_button": "Retry Authentication",
+  "language_selected_confirmation": "✅ Got it! I'll respond in *English* for the next 7 days.",
+  "reply_with_number": "Reply with the *number* of the service you're interested in.",
+  "invalid_service_number": "⚠️ Please choose a number between *1* and *{{max}}*. Try again!",
+  "booking_cancelled": "❌ Booking cancelled. How else can I help you?",
+  "booking_failed": "❌ Sorry, we couldn't create your appointment right now. Please contact us directly or try again later.",
+  "booking_payment_failed": "❌ We couldn't generate your payment link right now. Please contact us directly to complete your booking.",
+  "rest_booking_failed": "❌ Sorry, we couldn't complete your table reservation. Please contact us directly.",
+  "hotel_booking_failed": "❌ Sorry, we couldn't complete your room reservation. Please contact us directly."
 }

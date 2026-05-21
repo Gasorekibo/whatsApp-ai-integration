@@ -9,8 +9,10 @@ export default (sequelize) => {
     },
     clientId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      comment: 'Tenant key — links session to the Client record that owns this conversation'
+      allowNull: false,
+      references: { model: 'clients', key: 'id' },
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE'
     },
     name: {
       type: DataTypes.STRING,
@@ -40,6 +42,14 @@ export default (sequelize) => {
       type: DataTypes.JSONB,
       allowNull: true,
       defaultValue: {}
+    },
+    language: {
+      type: DataTypes.STRING(10),
+      allowNull: true
+    },
+    languageSetAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     },
     lastAccess: {
       type: DataTypes.DATE,

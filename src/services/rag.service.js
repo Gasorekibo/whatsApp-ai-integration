@@ -399,7 +399,7 @@ JSON Output:`;
      * @param {number} topK - Number of results to retrieve
      * @returns {Promise<object>} - Retrieved context and metadata
      */
-    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default') {
+    async retrieveContext(userMessage, conversationHistory = [], topK = null, namespace = 'default', knownLanguage = null) {
         try {
             if (!this.initialized) {
                 await this.initialize();
@@ -412,9 +412,13 @@ JSON Output:`;
 
             const startTime = Date.now();
 
-            // Classify intent and detect language (Unified LLM call)
+            // Classify intent — still needed for topK tuning and metadata filtering.
+            // Language detection inside classifyQuery is skipped when the session language
+            // is already known (passed via knownLanguage), saving a Gemini call.
             const classification = await this.classifyQuery(userMessage, conversationHistory);
-            const { intent, language } = classification;
+            const intent = classification.intent;
+            // Prefer the stored session language over anything RAG detected from the message.
+            const language = knownLanguage || classification.language;
 
             logger.debug('Query classified', {
                 intent,
@@ -459,25 +463,38 @@ JSON Output:`;
             // Post-process and rank results
             const rankedResults = this._rankResults(results, intent, userMessage);
 
+            // Drop results below the relevance threshold so Gemini cannot use
+            // loosely-matched docs to hallucinate an answer. When nothing clears
+            // the bar, relevantDocs=0 triggers the KNOWLEDGE BOUNDARY response.
+            const MIN_SCORE = 0.70;
+            const relevantResults = rankedResults.filter(r => (r.adjustedScore ?? r.score) >= MIN_SCORE);
+
+            if (rankedResults.length > 0 && relevantResults.length === 0) {
+                logger.info('RAG: all results below relevance threshold — treating as no context', {
+                    topScore: rankedResults[0]?.adjustedScore?.toFixed(3),
+                    threshold: MIN_SCORE
+                });
+            }
+
             // Extract and format context
-            const context = this.formatContext(rankedResults);
+            const context = this.formatContext(relevantResults);
 
             const latency = Date.now() - startTime;
 
             // Log retrieval details
-            this._logRetrieval(userMessage, intent, rankedResults, latency);
+            this._logRetrieval(userMessage, intent, relevantResults, latency);
 
             return {
                 intent,
                 language,
                 context,
-                results: rankedResults,
-                relevantDocs: rankedResults.length,
+                results: relevantResults,
+                relevantDocs: relevantResults.length,
                 latency,
                 metadata: {
                     topK: retrievalTopK,
                     filter,
-                    avgScore: this._calculateAvgScore(rankedResults)
+                    avgScore: this._calculateAvgScore(relevantResults)
                 }
             };
 
@@ -488,8 +505,7 @@ JSON Output:`;
                 query: userMessage?.substring(0, 50)
             });
 
-            // Return fallback context — preserve detected language so the prompt still uses the right language
-            return await this._getFallbackContext(error, userMessage, conversationHistory);
+            return await this._getFallbackContext(error, userMessage, conversationHistory, knownLanguage);
         }
     }
 
@@ -568,14 +584,12 @@ JSON Output:`;
             const priorityBoost = (priority / 10) * 0.1; // Max 10% boost
             adjustedScore += priorityBoost;
 
-            // Intent-specific boosting
-            if (intent === 'booking' && result.metadata?.type === 'booking_rule') {
-                adjustedScore += 0.15;
-            } else if (intent === 'service_inquiry' && result.metadata?.type === 'service') {
-                adjustedScore += 0.1;
-            } else if (intent === 'faq' && result.metadata?.type === 'faq') {
-                adjustedScore += 0.12;
-            }
+            // Intent-specific boosting (uses standardised type names)
+            const t = result.metadata?.type;
+            if (intent === 'booking'         && t === 'booking_rule')    adjustedScore += 0.15;
+            else if (intent === 'service_inquiry' && t === 'company_service') adjustedScore += 0.10;
+            else if (intent === 'faq'         && t === 'faq')            adjustedScore += 0.12;
+            else if (intent === 'payment'     && t === 'payment_info')   adjustedScore += 0.15;
 
             // Recency boost (if timestamp available)
             if (result.metadata?.updated_at) {
@@ -660,26 +674,17 @@ JSON Output:`;
      * @returns {object} - Metadata filter
      */
     buildMetadataFilter(intent, _language) {
-        const filter = {};
-
-        // Map intent to document types
         const intentTypeMap = {
-            booking: ['booking_rule', 'service'],
-            service_inquiry: ['service', 'company_info'],
-            faq: ['faq', 'company_info'],
-            payment: ['booking_rule', 'faq'],
-            support: ['faq', 'company_info', 'confluence'],
-            general: [] // No type filter for general
+            general:         ['company_info'],
+            service_inquiry: ['company_service', 'company_info'],
+            booking:         ['booking_rule', 'company_service'],
+            payment:         ['payment_info', 'booking_rule'],
+            faq:             ['faq', 'company_info'],
+            support:         ['support', 'faq', 'company_info'],
         };
 
-        const types = intentTypeMap[intent];
-
-        if (types && types.length > 0) {
-            // Pinecone filter format
-            filter.type = { $in: types };
-        }
-
-        return filter;
+        const types = intentTypeMap[intent] || intentTypeMap.general;
+        return { type: { $in: types } };
     }
 
     /**
@@ -748,15 +753,16 @@ JSON Output:`;
      */
     getTypeLabel(type) {
         const labels = {
-            service: 'AVAILABLE SERVICES',
-            company_info: 'COMPANY INFORMATION',
-            booking_rule: 'BOOKING GUIDELINES',
-            faq: 'FREQUENTLY ASKED QUESTIONS',
-            confluence: 'KNOWLEDGE BASE',
-            general: 'GENERAL INFORMATION'
+            company_service: 'AVAILABLE SERVICES',
+            company_info:    'COMPANY INFORMATION',
+            booking_rule:    'BOOKING GUIDELINES',
+            payment_info:    'PRICING & PAYMENT',
+            faq:             'FREQUENTLY ASKED QUESTIONS',
+            support:         'SUPPORT INFORMATION',
+            general:         'GENERAL INFORMATION',
         };
 
-        return labels[type] || type.toUpperCase().replace('_', ' ');
+        return labels[type] || type.toUpperCase().replace(/_/g, ' ');
     }
 
     /**
@@ -765,34 +771,210 @@ JSON Output:`;
      * @param {string} namespace - Pinecone namespace (clientId or pineconeIndex)
      * @returns {Promise<Array<{id,name,short,details}>>}
      */
+    /**
+     * Return the full list of services for the WhatsApp interactive menu.
+     *
+     * Sources handled (all yield correct results without a re-sync):
+     *
+     * 1. Google Sheets / Excel chunks  — have `service_name` + `service_id` directly.
+     * 2. Confluence single-service pages — H1 split → one chunk per service.
+     *    After metadata normalisation these also carry `service_name`.
+     * 3. Confluence overview pages — one H1 section contains all services as H2/H3.
+     *    These chunks have NO individual `service_name` but DO carry `sub_headings`
+     *    (extracted H2/H3 texts). We expand each sub_heading into its own entry so
+     *    every service the client listed is visible in the menu.
+     *
+     * Deduplication is case-insensitive by resolved name so no service appears twice
+     * regardless of how many chunks reference it.
+     *
+     * @param {string} namespace - client.pineconeIndex
+     * @returns {Promise<Array<{id, name, short, details}>>}
+     */
     async getServicesFromIndex(namespace = 'default') {
         try {
             await this.initialize();
-            const queryEmbedding = await embeddingService.generateEmbedding(
-                'list all available services offered',
-                'RETRIEVAL_QUERY'
-            );
-            const results = await vectorDBService.searchSimilar(
-                queryEmbedding, 30, { type: 'service' }, namespace
-            );
-            const seen = new Set();
-            return results
-                .filter(r => r.metadata?.service_name)
-                .filter(r => {
-                    if (seen.has(r.metadata.service_name)) return false;
-                    seen.add(r.metadata.service_name);
-                    return true;
-                })
-                .map(r => ({
-                    id:      r.metadata.service_id || r.id,
-                    name:    r.metadata.service_name,
-                    short:   r.metadata.service_name,
-                    details: r.metadata.category || ''
-                }));
+
+            // Two phrasings maximise recall — domain-specific service names may
+            // score poorly on one phrasing but well on the other.
+            const [e1, e2] = await Promise.all([
+                embeddingService.generateEmbedding(
+                    'list all services treatments departments programs offered',
+                    'RETRIEVAL_QUERY'
+                ),
+                embeddingService.generateEmbedding(
+                    'what services products packages are available',
+                    'RETRIEVAL_QUERY'
+                ),
+            ]);
+
+            const filter = { type: { $in: ['company_service'] } };
+
+            const [r1, r2] = await Promise.all([
+                vectorDBService.searchSimilar(e1, 50, filter, namespace),
+                vectorDBService.searchSimilar(e2, 50, filter, namespace),
+            ]);
+
+            // Merge both result sets; highest-score occurrence wins during dedup
+            const allResults = [...r1, ...r2];
+
+            // Map keyed by lowercase service name — first occurrence (best score) kept
+            const byName = new Map();
+
+            const addEntry = (name, meta, vectorId) => {
+                const key = name.trim().toLowerCase();
+                if (!name.trim() || byName.has(key)) return;
+
+                // Extract a one-line description from the chunk content.
+                // Strip the heading line if it was prepended, then take the first sentence.
+                const rawContent  = meta.content || '';
+                const headingLine = meta.section_heading || meta.service_name || '';
+                const bodyText    = rawContent.startsWith(headingLine)
+                    ? rawContent.slice(headingLine.length).trimStart()
+                    : rawContent;
+                const firstLine   = bodyText.split(/[.\n]/)[0].trim();
+                const details     = firstLine.length > 8 ? firstLine : (meta.category || '');
+
+                byName.set(key, {
+                    id:      meta.service_id || vectorId,
+                    name:    name.trim(),
+                    short:   name.trim().length > 24
+                        ? name.trim().slice(0, 23) + '…'
+                        : name.trim(),
+                    details: details.slice(0, 72),
+                });
+            };
+
+            for (const r of allResults) {
+                const meta = r.metadata || {};
+
+                // ── Path 1: direct service_name (Sheets, Excel, normalised Confluence) ──
+                if (meta.service_name) {
+                    addEntry(meta.service_name, meta, r.id);
+                    continue;
+                }
+
+                // ── Path 2: sub_headings populated during indexing (H2/H3 or <li>) ──────
+                if (Array.isArray(meta.sub_headings) && meta.sub_headings.length > 0) {
+                    for (const heading of meta.sub_headings) {
+                        addEntry(heading, meta, `${r.id}-sub-${heading}`);
+                    }
+                    continue;
+                }
+
+                // ── Path 3: parse the flat content for "Service Name — description" ──────
+                // Handles already-indexed Confluence pages that list services separated by
+                // an em dash (—) or en dash (–) in plain text, e.g.:
+                //   "Physiotherapy — Recovery of mobility, strength..."
+                // No re-sync needed — works on the stored content string.
+                const content = meta.content || '';
+                const parsedServices = this._parseEmDashServices(content);
+                if (parsedServices.length > 0) {
+                    for (const svc of parsedServices) {
+                        const key = svc.name.trim().toLowerCase();
+                        if (!byName.has(key)) {
+                            // ID must be safe for WhatsApp row IDs — alphanumeric + hyphens only
+                            const safeSlug = key.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                            byName.set(key, {
+                                id:      `svc-${safeSlug}`,
+                                name:    svc.name,
+                                short:   svc.name.length > 24 ? svc.name.slice(0, 23) + '…' : svc.name,
+                                details: svc.details.slice(0, 72),
+                            });
+                        }
+                    }
+                    continue;
+                }
+
+                // ── Path 4: final fallback — section heading or page title ───────────────
+                const fallbackName = meta.section_heading || meta.page_title;
+                if (fallbackName) addEntry(fallbackName, meta, r.id);
+            }
+
+            const services = [...byName.values()];
+            logger.info('getServicesFromIndex resolved', { namespace, count: services.length });
+            return services;
+
         } catch (error) {
             logger.warn('getServicesFromIndex failed', { namespace, error: error.message });
             return [];
         }
+    }
+
+    /**
+     * Parse flat content text for services formatted as "Name — description" entries.
+     *
+     * Confluence pages often render service lists as plain text where each entry is
+     * "{Service Name} — {one-sentence description}" separated by periods and spaces.
+     * This parser handles both em dash (—, U+2014) and en dash (–, U+2013).
+     *
+     * Algorithm: split on the dash separator; the service name is the final
+     * sentence-fragment before each dash, and the description is the sentence-
+     * fragment that follows it (up to the start of the next service name).
+     *
+     * @param {string} content
+     * @returns {Array<{name: string, details: string}>}
+     * @private
+     */
+    _parseEmDashServices(content) {
+        if (!content) return [];
+
+        // Match "Some Words — description text" pattern (em or en dash, with spaces)
+        const DASH_RE = /\s[—–]\s/;
+        if (!DASH_RE.test(content)) return [];
+
+        const services = [];
+        const parts = content.split(DASH_RE);
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            const beforeDash = parts[i];
+            const afterDash  = parts[i + 1];
+
+            // The service name is the last line/sentence of the preceding segment.
+            // "Intro text. Service Name" → everything after the last '. '
+            const lastPeriod  = beforeDash.lastIndexOf('. ');
+            const lastNewline = beforeDash.lastIndexOf('\n');
+            const cutAt = Math.max(
+                lastPeriod  !== -1 ? lastPeriod  + 2 : 0,
+                lastNewline !== -1 ? lastNewline  + 1 : 0
+            );
+            const name = beforeDash.slice(cutAt).trim();
+
+            // Description: text before the last '. NextName' in the after-dash segment
+            const nextPeriod = afterDash.lastIndexOf('. ');
+            const details = (nextPeriod > 0
+                ? afterDash.slice(0, nextPeriod + 1)
+                : afterDash
+            ).trim();
+
+            if (!name || name.length > 80 || name.length < 2) continue;
+            if (/^\d/.test(name)) continue;
+
+            services.push({ name, details });
+        }
+
+        // ── Post-process: handle double-dash entries (e.g. "ENT — Ear, Nose and Throat — desc")
+        // In this format a short acronym is followed by its expansion then the real description.
+        // After splitting, the expansion text appears BOTH as a service name AND as a previous
+        // service's details. We keep the longer (expanded) name and the real description.
+        const detailsIndex = new Map();
+        for (let i = 0; i < services.length; i++) {
+            const key = services[i].details.trim().toLowerCase();
+            if (key) detailsIndex.set(key, i);
+        }
+
+        return services.filter((svc, i) => {
+            const nameKey = svc.name.trim().toLowerCase();
+            if (detailsIndex.has(nameKey)) {
+                // This name matches a previous entry's details — it's an expansion.
+                // Promote the previous entry to use the longer name + real description.
+                const prevIdx = detailsIndex.get(nameKey);
+                services[prevIdx].name    = svc.name;
+                services[prevIdx].short   = svc.name.length > 24 ? svc.name.slice(0, 23) + '…' : svc.name;
+                services[prevIdx].details = svc.details.slice(0, 72);
+                return false; // remove the expansion entry
+            }
+            return true;
+        });
     }
 
     /**
@@ -805,7 +987,7 @@ JSON Output:`;
     buildAugmentedPrompt(retrievedData, userMessage, dynamicData = {}, clientConfig = {}) {
         const parts = [];
 
-        // Base instruction
+        // Base instruction — clientConfig.language (session preference) overrides RAG-detected language
         parts.push(this.getBaseInstruction(retrievedData.language, retrievedData.intent, clientConfig));
         parts.push('');
 
@@ -841,9 +1023,11 @@ JSON Output:`;
             parts.push('');
         }
 
-        // Additional context hints
+        // When Pinecone returned nothing, make the boundary explicit so the model
+        // cannot justify using its training data to fill the gap.
         if (retrievedData.relevantDocs === 0) {
-            parts.push('Note: No specific information found in knowledge base for this query.');
+            parts.push('=== RELEVANT INFORMATION ===');
+            parts.push('[EMPTY — the knowledge base returned no results for this query. You MUST NOT answer from general knowledge. Follow the KNOWLEDGE BOUNDARY rule above.]');
             parts.push('');
         }
 
@@ -857,6 +1041,30 @@ JSON Output:`;
      * @returns {string} - Base instruction
      */
     getBaseInstruction(_language, intent, clientConfig = {}) {
+        // Resolved language: explicit override wins over RAG-detected language
+        const resolvedLang = clientConfig.language || _language || 'en';
+
+        const LANGUAGE_NAMES = {
+            en: 'English',
+            fr: 'French (Français)',
+            rw: 'Kinyarwanda',
+            sw: 'Kiswahili',
+            de: 'German (Deutsch)'
+        };
+        const langName = LANGUAGE_NAMES[resolvedLang] || 'English';
+
+        // Non-English users get an explicit directive at the very top — before any
+        // RAG context — so the model sees it first and the English knowledge base
+        // text cannot bias it toward an English response.
+        const languageDirective = resolvedLang !== 'en'
+            ? `⚠️ LANGUAGE REQUIREMENT — HIGHEST PRIORITY:
+You MUST reply exclusively in ${langName} (${resolvedLang}).
+The knowledge base sections below are written in English — read and understand them internally, then compose your entire reply in ${langName}.
+Never write any part of your response in English. If a proper noun or technical term has no equivalent, keep it as-is — but the surrounding text must still be in ${langName}.
+
+`
+            : '';
+
         const intentGuidance = {
             booking: 'Focus on booking process, available slots, and requirements.',
             service_inquiry: 'Provide detailed service information from the knowledge base.',
@@ -866,36 +1074,46 @@ JSON Output:`;
             general: 'Be friendly and helpful.'
         }[intent] || 'Be helpful and professional.';
 
-        const companyName = clientConfig.companyName || 'our company';
-        return `You are a professional AI assistant for ${companyName}.
+        const botName = clientConfig.botName || 'our company';
+        return `${languageDirective}You are a customer-facing representative of ${botName}. You speak AS ${botName} — use "we", "our", and "us" at all times.
 
-CRITICAL LANGUAGE RULE:
-- ALWAYS respond in the SAME language as the user's CURRENT message.
-- Determine the language by reading ONLY the user's current message — do NOT use the conversation history to decide.
-- If the user writes in Kinyarwanda → respond in Kinyarwanda.
-- If in French → respond in French. If in English → respond in English.
-- Supported: English (en), French (fr), Kinyarwanda (rw), Swahili (sw), German (de).
-- NEVER default to English if the user's current message is in another language.
+🚫 IDENTITY RULE — NEVER BREAK:
+Never describe yourself as an AI, bot, chatbot, or assistant.
+Never say "I am an AI" or "as an AI". You are simply a representative of ${botName}.
+If asked "are you a bot/AI?", deflect naturally: "I'm here to help with anything related to ${botName}."
 
-CORE RULES:
-- Use ONLY information from the "RELEVANT INFORMATION" section above
-- Never invent or assume information not provided
-- For bookings, use ONLY dates from "AVAILABLE CONSULTATION SLOTS"
-- Keep responses concise (2-4 sentences) unless more detail is needed
-- Be warm, professional, and customer-focused
-- ${intentGuidance}
-- You are mid-conversation: always read the full conversation history before replying
-- If the user's message is a follow-up (e.g. "okay", "yes", "tell me more"), respond in the context of what was just discussed — do NOT start a fresh greeting
-- ONLY answer topics related to ${companyName} and its services. If the user asks something unrelated (e.g. personal questions, weather, politics), politely redirect: "I'm here to help with ${companyName} services. How can I assist you?"
+🚫 KNOWLEDGE BOUNDARY — ABSOLUTE RULE:
+You have NO general world knowledge. You are a blank slate.
+Your ONLY source of facts is the "=== RELEVANT INFORMATION ===" section below.
+If that section is empty OR does not directly address the user's specific question:
+  → Do NOT guess, infer, or use anything you know from training data.
+  → Respond warmly that you don't have that information, and invite them to ask something else or reach out to us directly.
+    Example: "I'm sorry, I don't have details on that right now. Feel free to ask me about anything else, or you're welcome to contact our team directly for more help! 😊"
+  → Keep the tone friendly and never leave the user without a clear next step.
+This applies to ALL factual questions: location, pricing, hours, contacts, services, names — everything.
+
+CONVERSATION RULES:
+- Use conversation history ONLY to understand follow-up references (e.g. "tell me more about that", "what about the price?"). Never use it as a source of facts — facts come only from the knowledge base.
+- For bookings, use ONLY dates from "=== AVAILABLE CONSULTATION SLOTS ===".
+- Keep responses concise (2-4 sentences) unless more detail is genuinely needed.
+- Be warm, professional, and customer-focused. ${intentGuidance}
+- If the user's message is off-topic (weather, politics, personal questions), politely redirect: "I'm here to help with ${botName} services only."
+- PSYCHOLOGICAL INTELLIGENCE — READ BETWEEN THE LINES: You are not a search engine. You are an intelligent assistant whose job is to understand what the user TRULY needs, not just what they literally say. Always ask yourself: "What is this person really trying to do?" Examples of what this means in practice:
+  • Someone asking about location or directions → they are planning to visit → after answering, offer to show services or book an appointment
+  • Someone mentioning a symptom, pain, or health concern → they need a service → immediately call show_services so they can find and book the right one
+  • Someone asking "do you offer X?" → they are interested in X → if yes, call show_services; if no, tell them warmly and suggest what you DO offer that might help
+  • Someone asking general questions that gradually move toward a specific need → recognize the trajectory and proactively guide them toward the next step
+  • When in doubt about what the user wants → ask one clarifying question rather than giving a generic response
+  Always connect the user's words to the action that best serves them. Never leave a user with just information when an action (showing services, booking) would serve them better.
+- FOLLOW-UP QUESTION RULE: Always end your reply with a warm, relevant follow-up question or offer — no exceptions. This applies whether you just answered a factual question OR the user sent a short acknowledgment ("okay", "thanks", "got it", "that's great", "perfect", etc.). Never end with a dead-end statement like "We are glad we could assist you." — that closes the conversation. Instead keep the door open: "Is there anything else I can help you with?", "Would you like to book an appointment?", "Do you have any other questions about [topic]?". The only exception is when you are already mid-way through collecting information from the user (name, email, date, etc.).
 
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:
 {
-  "language": "iso_code", // Language of your reply matching the user's current message: en, fr, rw, sw, or de
-  "reply": "your response text here"
-}
+  "language": "${resolvedLang}",
+  "reply": "your response text here in ${langName}"
+}`;
 
-If information is not available, politely say so and offer to help with something else.`;
     }
 
     /**
@@ -936,8 +1154,9 @@ If information is not available, politely say so and offer to help with somethin
      * Get fallback context on error
      * @private
      */
-    async _getFallbackContext(error, message = '', history = []) {
-        const language = message ? await this.detectLanguage(message, history) : 'en';
+    async _getFallbackContext(error, message = '', history = [], knownLanguage = null) {
+        // Use the session language if available — avoids a Gemini detection call on error paths.
+        const language = knownLanguage || (message ? await this.detectLanguage(message, history) : 'en');
         return {
             intent: 'general',
             language,

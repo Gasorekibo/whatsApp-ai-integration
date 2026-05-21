@@ -46,7 +46,7 @@ export default function Services() {
           >
             <option value="">— All Clients —</option>
             {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>

@@ -18,5 +18,13 @@
   "auth_failure_title": "Iyandikisha ntabwo ryagenze neza",
   "auth_failure_info": "Hari ikibazo cyabaye mu gihe cy'iyandikisha.",
   "auth_failure_retry": "Ongera ugerageze.",
-  "auth_failure_button": "Ongera uugerageze kwiyandikisha"
+  "auth_failure_button": "Ongera uugerageze kwiyandikisha",
+  "language_selected_confirmation": "✅ Urakoze! Nzasubiza mu *Kinyarwanda* mu minsi 7 iri imbere.",
+  "reply_with_number": "Subiza *umubare* wa serivisi ushaka.",
+  "invalid_service_number": "⚠️ Hitamo umubare uri hagati ya *1* na *{{max}}*. Ongera ugerageze!",
+  "booking_cancelled": "❌ Kubika byahagaritswe. Ni iki kindi nshobora kukugirira ngo?",
+  "booking_failed": "❌ Bihangane, ntabashije gufata gahunda yawe ubu. Mwaduhamagara mu buryo butaziguye cyangwa mugerageze nyuma.",
+  "booking_payment_failed": "❌ Ntabashije gukora urunigi rwo kwishyura ubu. Mwaduhamagara mu buryo butaziguye kugira ngo murangize kubika.",
+  "rest_booking_failed": "❌ Bihangane, ntabashije kurangiza kubika ameza. Mwaduhamagara mu buryo butaziguye.",
+  "hotel_booking_failed": "❌ Bihangane, ntabashije kurangiza kubika icyumba. Mwaduhamagara mu buryo butaziguye."
 }

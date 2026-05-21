@@ -25,10 +25,11 @@ export const authApi = {
 }
 
 export const clientsApi = {
-  getAll:         ()         => api.get('/outreach/clients'),
-  create:         (data)     => api.post('/outreach/clients', data),
-  update:         (id, data) => api.put(`/outreach/clients/${id}`, data),
-  resetMessages:  (id)       => api.put(`/outreach/clients/${id}`, { messageCount: 0 }),
+  getAll:            ()         => api.get('/outreach/clients'),
+  create:            (data)     => api.post('/outreach/clients', data),
+  update:            (id, data) => api.put(`/outreach/clients/${id}`, data),
+  resetMessages:     (id)       => api.put(`/outreach/clients/${id}`, { messageCount: 0 }),
+  generateFormToken: (id)       => api.post(`/outreach/clients/${id}/form-token`),
 }
 
 export const usersApi = {
@@ -51,6 +52,16 @@ export const kbApi = {
   syncSheets:    (clientId) => api.post('/kb/sync/sheets',     { clientId }),
   syncMicrosoft: (clientId) => api.post('/kb/sync/microsoft',  { clientId }),
   syncConfluence:(clientId) => api.post('/kb/sync/confluence', { clientId }),
+}
+
+export const generalInfoApi = {
+  get:    (clientId) => api.get('/outreach/general-info', { params: clientId ? { clientId } : {} }),
+  update: (data)     => api.put('/outreach/general-info', data),
+}
+
+export const onboardingApi = {
+  get:    (token)        => api.get(`/onboarding/${token}`),
+  submit: (token, data)  => api.post(`/onboarding/${token}`, data),
 }
 
 export const monitoringApi = {

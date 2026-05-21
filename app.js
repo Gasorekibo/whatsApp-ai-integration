@@ -8,7 +8,7 @@ import { handleWebhook } from './src/controllers/whatsappController.js';
 import adminRoutes from './src/routes/admin.js';
 import monitoringRoutes from './src/routes/monitoring.js';
 import authRoutes from './src/routes/auth.js';
-import { authenticate, requireAdmin } from './src/middlewares/auth.js';
+import { authenticate, requireAdmin, setRLSContext } from './src/middlewares/auth.js';
 import paymentWebhookHandler from './src/helpers/paymentWebhookHandler.js';
 import syncServicesHandler from './src/helpers/syncServicesHandler.js';
 import googleSheetsWebhookHandler from './src/helpers/googleSheetsWebhookHandler.js';
@@ -18,6 +18,7 @@ import { zohoAuthCallbackHandler } from './src/helpers/zoho/zohoAuthCallbackHand
 import { zohoGetAllContactsHandler } from './src/helpers/zoho/zohoGetAllContactsHandler.js';
 import successfulPaymentPageHandler from './src/helpers/successfulPaymentPageHandler.js';
 import knowledgeBaseRoutes from './src/routes/knowledge-base.js';
+import onboardingRoutes from './src/routes/onboarding.routes.js';
 import dbConfig from './src/models/index.js';
 import googleSheetServices from './src/utils/googlesheets.js';
 import { googleAuthSuccessMessage, googleAuthFailureMessage } from './src/constants/constantMessages.js';
@@ -39,19 +40,28 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: '*' }));
 app.use(morgan('dev'));
 
+// Log every incoming HTTP request to the log file (morgan only writes to stdout)
+app.use((req, _res, next) => {
+  logger.info('HTTP request', { method: req.method, path: req.path, query: req.query });
+  next();
+});
+
 // Static files
 app.use(express.static('src/public'));
+
+// Public onboarding API (no auth — access is gated by the token itself)
+app.use('/api/onboarding', onboardingRoutes);
 
 // Public API routes
 app.post('/api/chat/book', bookMeetingHandler);
 app.use('/api/auth', authRoutes);
 app.post('/api/webhook/sheets-sync', googleSheetsWebhookHandler); // Google Sheets push (no auth)
 
-// Auth-protected routes
-// Monitoring first (more specific prefix) to avoid double authenticate on /api/outreach
-app.use('/api/outreach/monitoring', authenticate, requireAdmin, monitoringRoutes);
-app.use('/api/outreach', authenticate, adminRoutes);  // services: admin+client; rest: admin only
-app.use('/api', authenticate, knowledgeBaseRoutes);   // KB sync: admin+client (scope enforced in router)
+// Auth-protected routes — setRLSContext runs after authenticate to wire per-request
+// PostgreSQL session variables that RLS policies read.
+app.use('/api/outreach/monitoring', authenticate, setRLSContext, requireAdmin, monitoringRoutes);
+app.use('/api/outreach', authenticate, setRLSContext, adminRoutes);
+app.use('/api', authenticate, setRLSContext, knowledgeBaseRoutes);
 
 // WhatsApp Webhook
 app.get('/webhook', verifyWebhook);
@@ -81,8 +91,13 @@ app.get('/auth', (req, res) => {
 
 app.get('/oauth/callback', async (req, res) => {
   const { code, state } = req.query;
-  // state is the raw clientId UUID passed from /auth?clientId=
   const clientId = (state && state.length > 0) ? state : null;
+
+  if (!clientId) {
+    logger.warn('Google OAuth callback missing clientId — rejecting', { requestId: req.requestId });
+    return res.status(400).send('Missing clientId. Initiate OAuth via /auth?clientId=<uuid>');
+  }
+
   logger.info('Google OAuth callback received', {
     requestId: req.requestId,
     hasCode: !!code
@@ -136,7 +151,7 @@ app.get('/oauth/callback', async (req, res) => {
       employee = await dbConfig.db.Employee.create({
         name:         userInfo.name,
         email:        userInfo.email,
-        clientId:     clientId || null,
+        clientId,
         refreshToken: tokens.refresh_token || null
       });
       logger.info('New employee record created', {
@@ -161,46 +176,18 @@ app.get('/oauth/callback', async (req, res) => {
   }
 });
 
-// Zoho OAuth Routes
+// Zoho OAuth Routes (admin-only — Zoho CRM is a global integration)
 app.get('/auth/zoho', zohoAuthenticationRedirect);
 app.get('/zoho/oauth/callback', zohoAuthCallbackHandler);
-app.get('/api/zoho/contacts', zohoGetAllContactsHandler);
-// Employee Routes
-app.get('/employees', async (req, res) => {
-  logger.info('Fetching all employees', {
-    requestId: req.requestId
-  });
-  try {
-    const employees = await dbConfig.db.Employee.findAll({
-      attributes: ['id', 'name', 'email', 'createdAt'],
-      order: [['createdAt', 'DESC']]
-    });
-    logger.info('Employees retrieved successfully', {
-      requestId: req.requestId,
-      count: employees.length
-    });
-    res.json({
-      success: true,
-      count: employees.length,
-      employees
-    });
-  } catch (error) {
-    logger.error('Error fetching employees', {
-      requestId: req.requestId,
-      error: error.message,
-      stack: error.stack
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch employees',
-      error: error.message
-    });
-  }
-});
+app.get('/api/zoho/contacts', authenticate, setRLSContext, requireAdmin, zohoGetAllContactsHandler);
+
+// Calendar data — requires auth so clientId is always known
+app.post('/calendar-data', authenticate, setRLSContext, calendarDataHandler);
 
 app.post('/webhook/flutterwave', express.json(), paymentWebhookHandler);
-app.get('/payment-success', successfulPaymentPageHandler);
-app.post('/calendar-data', calendarDataHandler);
+// Register both paths — the reverse proxy may or may not strip the /ai/ prefix
+app.get('/payment-success',     successfulPaymentPageHandler);
+app.get('/ai/payment-success',  successfulPaymentPageHandler);
 
 // Google Sheets legacy sync (protected — admin or authenticated client)
 app.post('/api/sync-services', authenticate, syncServicesHandler);
@@ -234,6 +221,15 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Redirect onboarding links to the React frontend.
+// Generated links use APP_BASE_URL; if it's not set they fall back to the backend
+// host and land here — redirect rather than 404.
+app.get('/onboarding/:token', (req, res) => {
+  const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+  if (base) return res.redirect(`${base}/onboarding/${req.params.token}`);
+  res.status(503).json({ error: 'APP_BASE_URL is not configured. Set it to your frontend URL (e.g. http://localhost:5173).' });
 });
 
 // 404 handler
@@ -273,12 +269,7 @@ app.use((err, req, res, next) => {
     logger.info('Initializing database connection');
     await dbConfig.syncDatabase({ alter: false });
 
-    // Add new columns that don't exist yet without touching existing schema
-    await dbConfig.db.sequelize.query(`
-      ALTER TABLE clients ADD COLUMN IF NOT EXISTS password TEXT;
-    `);
-
-    logger.info('Database synced successfully');
+    logger.info('Database synced and RLS policies applied successfully');
 
     await connectRedis();
 

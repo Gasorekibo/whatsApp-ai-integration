@@ -18,5 +18,13 @@
   "auth_failure_title": "Uthibitishaji Umefeli",
   "auth_failure_info": "Kulikuwa na hitilafu wakati wa uthibitishaji.",
   "auth_failure_retry": "Tafadhali jaribu tena.",
-  "auth_failure_button": "Jaribu tena Uthibitishaji"
+  "auth_failure_button": "Jaribu tena Uthibitishaji",
+  "language_selected_confirmation": "✅ Nimeelewa! Nitajibu kwa *Kiswahili* kwa siku 7 zijazo.",
+  "reply_with_number": "Jibu na *nambari* ya huduma unayopenda.",
+  "invalid_service_number": "⚠️ Tafadhali chagua nambari kati ya *1* na *{{max}}*. Jaribu tena!",
+  "booking_cancelled": "❌ Uhifadhi umefutwa. Ninaweza kukusaidia vipi zaidi?",
+  "booking_failed": "❌ Samahani, hatukuweza kuunda miadi yako kwa sasa. Tafadhali wasiliana nasi moja kwa moja au jaribu tena baadaye.",
+  "booking_payment_failed": "❌ Hatukuweza kuunda kiungo cha malipo kwa sasa. Tafadhali wasiliana nasi moja kwa moja kukamilisha uhifadhi wako.",
+  "rest_booking_failed": "❌ Samahani, hatukuweza kukamilisha uhifadhi wa meza yako. Tafadhali wasiliana nasi moja kwa moja.",
+  "hotel_booking_failed": "❌ Samahani, hatukuweza kukamilisha uhifadhi wa chumba chako. Tafadhali wasiliana nasi moja kwa moja."
 }

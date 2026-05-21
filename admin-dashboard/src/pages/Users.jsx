@@ -8,18 +8,17 @@ import EmptyState from '../components/ui/EmptyState'
 export default function Users() {
   const { data, loading } = useApiData(usersApi.getAll)
   const users = data?.users || []
-  console.log('Fetched users:', users)
 
   return (
     <div>
       <PageHeader
         title="💬 Users"
-        subtitle={`${users.length} WhatsApp session${users.length !== 1 ? 's' : ''}`}
+        subtitle={`${users?.length} WhatsApp session${users?.length !== 1 ? 's' : ''}`}
       />
 
       {loading
         ? <div className="flex justify-center py-16"><Spinner /></div>
-        : users.length === 0
+        : users?.length === 0
           ? <EmptyState icon="💬" message="No user sessions found" />
           : (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -34,22 +33,22 @@ export default function Users() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {users.map(u => (
-                      <tr key={u.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">{u.name || 'N/A'}</td>
+                      <tr key={u?.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-gray-900">{u?.name || 'N/A'}</td>
                         <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                          {u.phone ? `${u.phone.slice(0, 5)}****${u.phone.slice(-2)}` : '—'}
+                          {u?.phone ? `${u.phone.slice(0, 5)}****${u.phone.slice(-2)}` : '—'}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="blue">{u.history?.length || 0} msgs</Badge>
+                          <Badge variant="blue">{u?.history?.length || 0} msgs</Badge>
                         </td>
                         <td className="px-4 py-3">
-                          {u.client
-                            ? <Badge variant="orange">{u.client.company || u.client.name}</Badge>
+                          {u?.Client
+                            ? <Badge variant="orange">{u.Client.name}</Badge>
                             : <span className="text-gray-400 text-xs">—</span>
                           }
                         </td>
                         <td className="px-4 py-3 text-gray-400 text-xs">
-                          {u.lastAccess ? new Date(u.lastAccess).toLocaleString() : '—'}
+                          {u?.lastAccess ? new Date(u.lastAccess).toLocaleString() : '—'}
                         </td>
                       </tr>
                     ))}

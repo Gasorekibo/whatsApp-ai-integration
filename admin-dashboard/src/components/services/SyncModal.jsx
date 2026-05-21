@@ -44,7 +44,7 @@ export default function SyncModal({ open, onClose, clients = [], defaultClientId
               <Select value={clientId} onChange={e => setClientId(e.target.value)}>
                 <option value="">— Select a client —</option>
                 {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </Select>
               <p className="text-xs text-gray-400 mt-1">Each client has an isolated knowledge base (Pinecone namespace).</p>

@@ -25,7 +25,7 @@ export default function CalendarConnectModal({ open, onClose, clients = [], defa
           <Select value={clientId} onChange={e => setClientId(e.target.value)}>
             <option value="">— Select a client —</option>
             {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </Select>
         </FormField>

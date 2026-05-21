@@ -16,7 +16,7 @@ export default function Appointments() {
   const filtered = all.filter(a =>
     [a.service, a.name, a.email, a.phone].some(v => v?.toLowerCase().includes(search.toLowerCase()))
   )
-
+console.log(" appointments:", filtered)
   return (
     <div>
       <PageHeader
@@ -44,25 +44,26 @@ export default function Appointments() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                     <tr>
-                      {['Service', 'Customer', 'Contact', 'Payment', 'Amount', 'Status', 'Date'].map(h => (
+                      {['Service','Client', 'Customer', 'Contact', 'Payment', 'Amount', 'Status', 'Date'].map(h => (
                         <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filtered.map(a => (
-                      <tr key={a.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">{a.service || '—'}</td>
-                        <td className="px-4 py-3 text-gray-700">{a.name || '—'}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{a.email || a.phone || '—'}</td>
+                      <tr key={a?.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-gray-900">{a?.service || '—'}</td>
+                        <td className="px-4 py-3">{a?.Client? <Badge variant="orange">{a?.Client?.name}</Badge>:<span className="text-gray-400 text-xs">—</span>}</td>
+                        <td className="px-4 py-3 text-gray-700">{a?.name || '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{a?.email || a?.phone || '—'}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={STATUS_VARIANT[a.paymentStatus] || 'gray'}>{a.paymentStatus || '—'}</Badge>
+                          <Badge variant={STATUS_VARIANT[a?.paymentStatus] || 'gray'}>{a?.paymentStatus || '—'}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-gray-700">{a.amount ? `${Number(a.amount).toLocaleString()} RWF` : '—'}</td>
+                        <td className="px-4 py-3 text-gray-700">{a?.amount ? `${Number(a?.amount).toLocaleString()} RWF` : '—'}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={a.status === 'confirmed' ? 'green' : 'gray'}>{a.status || '—'}</Badge>
+                          <Badge variant={a?.status === 'confirmed' ? 'green' : 'gray'}>{a?.status || '—'}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">{new Date(a.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">{new Date(a?.createdAt).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>

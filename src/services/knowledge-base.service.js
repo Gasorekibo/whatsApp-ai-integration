@@ -62,7 +62,8 @@ class KnowledgeBaseService {
      */
     async syncServicesFromSheets(clientId = null, namespace = null) {
         try {
-            namespace = namespace || clientId || 'default';
+            namespace = namespace || clientId;
+            if (!namespace) throw new Error('syncServicesFromSheets: namespace or clientId is required');
             logger.info('Syncing services from Google Sheets', { clientId, namespace });
 
             const services = await googleSheets.getAllServices(clientId);
@@ -104,7 +105,8 @@ class KnowledgeBaseService {
      */
     async syncServicesFromMicrosoft(clientId = null, namespace = null) {
         try {
-            namespace = namespace || clientId || 'default';
+            namespace = namespace || clientId;
+            if (!namespace) throw new Error('syncServicesFromMicrosoft: namespace or clientId is required');
             logger.info('Syncing services from Microsoft Excel', { clientId, namespace });
 
             let driveId = null;
@@ -162,13 +164,16 @@ class KnowledgeBaseService {
 
             // Prefer per-client Confluence config stored in DB; fall back to env vars
             let clientConfluenceConfig = null;
+            let clientNamespace        = options.namespace || null;
             if (clientId) {
                 const client = await dbConfig.db.Client.findOne({
                     where: { id: clientId },
-                    attributes: ['confluenceBaseUrl', 'confluenceEmail', 'confluenceApiToken', 'confluenceSpaceKey']
+                    attributes: ['confluenceBaseUrl', 'confluenceEmail', 'confluenceApiToken', 'confluenceSpaceKey', 'pineconeIndex']
                 });
                 clientConfluenceConfig = client?.getConfluenceConfig?.() || null;
+                clientNamespace        = clientNamespace || client?.pineconeIndex || clientId;
             }
+            if (!clientNamespace) throw new Error('syncFromConfluence: namespace or clientId is required');
 
             const confluenceConfig = clientConfluenceConfig || ragConfig.sync.confluence;
 
@@ -176,33 +181,63 @@ class KnowledgeBaseService {
                 throw new Error('Confluence configuration incomplete — set credentials in the client edit form or .env');
             }
 
-            const pages = await confluence.fetchPages(
+            const rawPages = await confluence.fetchPages(
                 options.spaceKey || confluenceConfig.spaceKey,
                 clientConfluenceConfig
             );
 
-            if (!pages || pages.length === 0) {
+            if (!rawPages || rawPages.length === 0) {
                 logger.warn('No pages found in Confluence');
                 return 0;
             }
 
+            // Skip template pages — they add noise and no client-facing knowledge
+            const TEMPLATE_RE = /\btemplate\b/i;
+            const pages = rawPages.filter(p => {
+                if (TEMPLATE_RE.test(p.title || '')) {
+                    logger.debug('Skipping Confluence template page', { pageId: p.id, title: p.title });
+                    return false;
+                }
+                return true;
+            });
+
             logger.info('Retrieved pages from Confluence', {
-                count: pages.length,
+                total: rawPages.length,
+                afterFilter: pages.length,
+                skipped: rawPages.length - pages.length,
                 spaceKey: options.spaceKey || confluenceConfig.spaceKey
             });
 
-            // Process pages in batches
+            if (pages.length === 0) {
+                logger.warn('All pages were filtered out (templates)');
+                return 0;
+            }
+
+            // Process pages in batches.
+            // Before upserting each page's chunks, delete its previous vectors so
+            // removed or renamed sections don't linger in the index.
             const allChunks = [];
-            const batchSize = 10; // Process 10 pages at a time
-            
+            const batchSize = 10;
+
             for (let i = 0; i < pages.length; i += batchSize) {
                 const pageBatch = pages.slice(i, i + batchSize);
-                
+
                 logger.debug(`Processing Confluence batch ${Math.floor(i / batchSize) + 1}`, {
                     pages: pageBatch.length
                 });
 
-                const batchChunks = documentProcessor.batchProcess(pageBatch, 'confluence');
+                // Pre-delete existing vectors for each page in the batch so stale
+                // sections from prior syncs don't remain in Pinecone.
+                await Promise.all(
+                    pageBatch.map(page =>
+                        vectorDBService.deleteByMetadataFilter(
+                            { page_id: { $eq: String(page.id) } },
+                            clientNamespace
+                        )
+                    )
+                );
+
+                const batchChunks = await documentProcessor.batchProcess(pageBatch, 'confluence');
                 allChunks.push(...batchChunks);
 
                 // Progress update
@@ -244,8 +279,7 @@ class KnowledgeBaseService {
             }));
 
             // Upsert to vector DB — scoped to this client's Pinecone namespace
-            const namespace = options.namespace || clientId || 'default';
-            const result = await vectorDBService.upsertDocuments(documents, namespace);
+            const result = await vectorDBService.upsertDocuments(documents, clientNamespace);
 
             this.lastSync.confluence = new Date().toISOString();
 
@@ -310,16 +344,14 @@ class KnowledgeBaseService {
         }
     }
 
-    async upsertServices(services, source, namespace = 'default') {
+    async upsertServices(services, source, namespace) {
         try {
             if (!this.initialized) {
                 await this.initialize();
             }
 
-            logger.info('Processing services for upsert', {
-                count: services.length,
-                source
-            });
+            if (!namespace) throw new Error('upsertServices: namespace is required');
+            logger.info('Processing services for upsert', { count: services.length, source, namespace });
 
             // Process services into chunks
             const chunks = documentProcessor.processServices(services);
@@ -380,15 +412,12 @@ class KnowledgeBaseService {
      * @param {Array} documents - Company info documents [{id, title, content, language}]
      * @returns {Promise<number>} - Number of chunks added
      */
-    async addCompanyInfo(documents) {
+    async addCompanyInfo(documents, namespace) {
         try {
-            if (!this.initialized) {
-                await this.initialize();
-            }
+            if (!namespace) throw new Error('addCompanyInfo: namespace is required');
+            if (!this.initialized) await this.initialize();
 
-            logger.info('Adding company info documents', {
-                count: documents.length
-            });
+            logger.info('Adding company info documents', { count: documents.length, namespace });
 
             const allChunks = [];
 
@@ -431,7 +460,7 @@ class KnowledgeBaseService {
                 }
             }));
 
-            await vectorDBService.upsertDocuments(vectorDocs, 'default');
+            await vectorDBService.upsertDocuments(vectorDocs, namespace);
 
             logger.info('Company info added successfully', {
                 documents: documents.length,
@@ -455,13 +484,12 @@ class KnowledgeBaseService {
      * @param {string} language - Language code
      * @returns {Promise<number>} - Number of FAQs added
      */
-    async addFAQs(faqs, language = 'en') {
+    async addFAQs(faqs, language = 'en', namespace) {
         try {
-            if (!this.initialized) {
-                await this.initialize();
-            }
+            if (!namespace) throw new Error('addFAQs: namespace is required');
+            if (!this.initialized) await this.initialize();
 
-            logger.info('Adding FAQs', { count: faqs.length, language });
+            logger.info('Adding FAQs', { count: faqs.length, language, namespace });
 
             const chunks = documentProcessor.processFAQs(faqs, { language });
 
@@ -488,7 +516,7 @@ class KnowledgeBaseService {
                 }
             }));
 
-            await vectorDBService.upsertDocuments(vectorDocs, 'default');
+            await vectorDBService.upsertDocuments(vectorDocs, namespace);
 
             logger.info('FAQs added successfully', {
                 faqs: faqs.length,
@@ -511,13 +539,12 @@ class KnowledgeBaseService {
      * @param {object} bookingInfo - Booking information
      * @returns {Promise<number>} - Number of rules added
      */
-    async addBookingRules(bookingInfo) {
+    async addBookingRules(bookingInfo, namespace) {
         try {
-            if (!this.initialized) {
-                await this.initialize();
-            }
+            if (!namespace) throw new Error('addBookingRules: namespace is required');
+            if (!this.initialized) await this.initialize();
 
-            logger.info('Adding booking rules');
+            logger.info('Adding booking rules', { namespace });
 
             const chunks = documentProcessor.processBookingRules(bookingInfo);
 
@@ -544,7 +571,7 @@ class KnowledgeBaseService {
                 }
             }));
 
-            await vectorDBService.upsertDocuments(vectorDocs, 'default');
+            await vectorDBService.upsertDocuments(vectorDocs, namespace);
 
             logger.info('Booking rules added successfully', {
                 chunks: vectorDocs.length
@@ -565,13 +592,12 @@ class KnowledgeBaseService {
      * Delete documents by IDs
      * @param {string[]} ids - Document IDs to delete
      */
-    async deleteDocuments(ids) {
+    async deleteDocuments(ids, namespace) {
         try {
-            if (!this.initialized) {
-                await this.initialize();
-            }
+            if (!namespace) throw new Error('deleteDocuments: namespace is required');
+            if (!this.initialized) await this.initialize();
 
-            await vectorDBService.deleteDocuments(ids, 'default');
+            await vectorDBService.deleteDocuments(ids, namespace);
             
             logger.info('Documents deleted', { count: ids.length });
 
@@ -587,15 +613,14 @@ class KnowledgeBaseService {
     /**
      * Clear entire knowledge base
      */
-    async clearKnowledgeBase() {
+    async clearKnowledgeBase(namespace) {
         try {
-            if (!this.initialized) {
-                await this.initialize();
-            }
+            if (!namespace) throw new Error('clearKnowledgeBase: namespace is required');
+            if (!this.initialized) await this.initialize();
 
-            logger.warn('Clearing entire knowledge base');
-            
-            await vectorDBService.deleteNamespace('default');
+            logger.warn('Clearing knowledge base', { namespace });
+
+            await vectorDBService.deleteNamespace(namespace);
             
             // Reset sync timestamps
             this.lastSync = {
@@ -622,11 +647,15 @@ class KnowledgeBaseService {
      */
     async rebuildIndex(options = {}) {
         try {
+            if (!options.namespace && !options.clientId) {
+                throw new Error('rebuildIndex: options.namespace or options.clientId is required');
+            }
             if (this.syncInProgress) {
                 throw new Error('Sync already in progress');
             }
 
             this.syncInProgress = true;
+            const namespace = options.namespace || options.clientId;
 
             logger.info('Starting knowledge base rebuild', { options });
 
@@ -642,7 +671,7 @@ class KnowledgeBaseService {
 
             // Clear existing data unless incremental
             if (!options.incremental) {
-                await this.clearKnowledgeBase();
+                await this.clearKnowledgeBase(namespace);
             }
 
             // Sync from configured sources
@@ -788,6 +817,139 @@ class KnowledgeBaseService {
             lastSync: this.lastSync,
             sources: ragConfig.sync.sources
         };
+    }
+
+    /**
+     * Embed client_general_info (contacts, location, hours, FAQs) into Pinecone.
+     * Uses deterministic IDs so re-syncing overwrites previous entries cleanly.
+     *
+     * @param {string|number} clientId
+     * @param {string}        namespace - Client's Pinecone namespace
+     * @returns {Promise<number>} Number of chunks successfully upserted
+     */
+    async syncGeneralInfo(clientId, namespace) {
+        if (!namespace) throw new Error(`syncGeneralInfo: namespace is required (clientId=${clientId})`);
+        if (!this.initialized) await this.initialize();
+
+        const row = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+        if (!row) {
+            logger.warn('syncGeneralInfo: no general info row found — skipping', { clientId });
+            return 0;
+        }
+
+        const ts     = new Date().toISOString();
+        const chunks = [];
+
+        // ── Contact details chunk ───────────────────────────────────────────
+        const contactLines = [];
+        if (row.businessName) contactLines.push(`Business name: ${row.businessName}`);
+        if (row.industry)     contactLines.push(`Industry: ${row.industry}`);
+        if (row.description)  contactLines.push(`About: ${row.description}`);
+        if (row.phone)        contactLines.push(`Phone: ${row.phone}`);
+        if (row.whatsapp)     contactLines.push(`WhatsApp: ${row.whatsapp}`);
+        if (row.email)        contactLines.push(`Email: ${row.email}`);
+        if (row.website)      contactLines.push(`Website: ${row.website}`);
+
+        if (contactLines.length > 0) {
+            chunks.push({
+                id:      `general-info-${clientId}-contact`,
+                content: contactLines.join('\n'),
+                metadata: { type: 'company_info', source: 'general_info', updated_at: ts }
+            });
+        }
+
+        // ── Location chunk ──────────────────────────────────────────────────
+        const locationLines = [];
+        if (row.address)  locationLines.push(`Address: ${row.address}`);
+        if (row.area)     locationLines.push(`Area: ${row.area}`);
+        if (row.city)     locationLines.push(`City: ${row.city}`);
+        if (row.mapsLink) locationLines.push(`Google Maps: ${row.mapsLink}`);
+
+        if (locationLines.length > 0) {
+            chunks.push({
+                id:      `general-info-${clientId}-location`,
+                content: locationLines.join('\n'),
+                metadata: { type: 'company_info', source: 'general_info', updated_at: ts }
+            });
+        }
+
+        // ── Hours chunk ─────────────────────────────────────────────────────
+        const hoursText = this._formatHoursForEmbed(row.hours);
+        if (hoursText) {
+            chunks.push({
+                id:      `general-info-${clientId}-hours`,
+                content: hoursText,
+                metadata: { type: 'company_info', source: 'general_info', updated_at: ts }
+            });
+        }
+
+        // ── FAQ chunks (one per entry) ──────────────────────────────────────
+        if (Array.isArray(row.faqs)) {
+            row.faqs.forEach((faq, i) => {
+                const q = faq.question || faq.q;
+                const a = faq.answer   || faq.a;
+                if (!q || !a) return;
+                chunks.push({
+                    id:      `general-info-${clientId}-faq-${i}`,
+                    content: `Question: ${q}\nAnswer: ${a}`,
+                    metadata: { type: 'faq', source: 'general_info', question: q, updated_at: ts }
+                });
+            });
+        }
+
+        if (chunks.length === 0) {
+            logger.warn('syncGeneralInfo: nothing to embed', { clientId });
+            return 0;
+        }
+
+        const texts      = chunks.map(c => c.content);
+        const embeddings = await embeddingService.generateBatchEmbeddings(texts, ragConfig.embedding.taskType);
+
+        const documents = chunks.map((chunk, i) => ({
+            id:     chunk.id,
+            values: embeddings[i],
+            metadata: { ...chunk.metadata, content: chunk.content, synced_at: new Date().toISOString() }
+        }));
+
+        const result = await vectorDBService.upsertDocuments(documents, namespace);
+
+        logger.info('syncGeneralInfo complete', { clientId, namespace, upserted: result.success });
+        return result.success;
+    }
+
+    /**
+     * Convert the hours object (admin structured or flat) to a readable text block.
+     * Mirrors the logic in generalInquiryHandler so Pinecone and the DB handler agree.
+     * @private
+     */
+    _formatHoursForEmbed(hours) {
+        if (!hours || typeof hours !== 'object' || Object.keys(hours).length === 0) return null;
+
+        const lines = ['Business hours:'];
+
+        // Flat format: { mon_fri: "9am–5pm", saturday: "Closed", sunday: "Closed" }
+        if (typeof hours.mon_fri === 'string') {
+            const labels = { mon_fri: 'Mon–Fri', saturday: 'Saturday', sunday: 'Sunday' };
+            ['mon_fri', 'saturday', 'sunday'].forEach(k => {
+                if (hours[k]) lines.push(`  ${labels[k]}: ${hours[k]}`);
+            });
+            if (hours.notes) lines.push(`  Note: ${hours.notes}`);
+            return lines.join('\n');
+        }
+
+        // Admin structured format: { monday: { status, from, to }, ... }
+        const entries = Object.entries(hours);
+        if (entries.every(([, d]) => d?.status === '24hrs')) return 'Business hours: Open 24/7';
+
+        entries.forEach(([day, d]) => {
+            const label = day.charAt(0).toUpperCase() + day.slice(1);
+            if (!d || d.status === 'closed')  lines.push(`  ${label}: Closed`);
+            else if (d.status === '24hrs')    lines.push(`  ${label}: Open 24 hours`);
+            else if (d.from && d.to)         lines.push(`  ${label}: ${d.from}–${d.to}`);
+            else                              lines.push(`  ${label}: Open`);
+        });
+
+        return lines.join('\n');
     }
 }
 

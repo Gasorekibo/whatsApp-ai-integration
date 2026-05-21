@@ -18,5 +18,13 @@
   "auth_failure_title": "Authentifizierung fehlgeschlagen",
   "auth_failure_info": "Bei der Authentifizierung ist ein Fehler aufgetreten.",
   "auth_failure_retry": "Bitte versuchen Sie es erneut.",
-  "auth_failure_button": "Authentifizierung erneut versuchen"
+  "auth_failure_button": "Authentifizierung erneut versuchen",
+  "language_selected_confirmation": "✅ Verstanden! Ich werde in den nächsten 7 Tagen auf *Deutsch* antworten.",
+  "reply_with_number": "Antworten Sie mit der *Nummer* des Dienstes, der Sie interessiert.",
+  "invalid_service_number": "⚠️ Bitte wählen Sie eine Nummer zwischen *1* und *{{max}}*. Versuchen Sie es erneut!",
+  "booking_cancelled": "❌ Buchung storniert. Wie kann ich Ihnen sonst helfen?",
+  "booking_failed": "❌ Entschuldigung, wir konnten Ihren Termin gerade nicht erstellen. Bitte kontaktieren Sie uns direkt oder versuchen Sie es später noch einmal.",
+  "booking_payment_failed": "❌ Wir konnten Ihren Zahlungslink gerade nicht erstellen. Bitte kontaktieren Sie uns direkt, um Ihre Buchung abzuschließen.",
+  "rest_booking_failed": "❌ Entschuldigung, wir konnten Ihre Tischreservierung nicht abschließen. Bitte kontaktieren Sie uns direkt.",
+  "hotel_booking_failed": "❌ Entschuldigung, wir konnten Ihre Zimmerreservierung nicht abschließen. Bitte kontaktieren Sie uns direkt."
 }

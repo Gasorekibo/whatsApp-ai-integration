@@ -1,4 +1,5 @@
 import markdownIt from 'markdown-it';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import ragConfig from '../config/rag.config.js';
 import { getLanguageConfig } from '../utils/config-compatibility.helper.js';
 import logger from '../logger/logger.js';
@@ -27,6 +28,10 @@ class DocumentProcessorService {
             chunks: 0,
             errors: 0
         };
+
+        // In-process cache for Gemini heading classifications — avoids redundant API
+        // calls when the same heading appears across multiple pages or sync runs.
+        this._geminiClassifyCache = new Map();
     }
 
     /**
@@ -108,7 +113,7 @@ class DocumentProcessorService {
             id,
             content,
             metadata: {
-                type: 'service',
+                type: 'company_service',
                 service_id: id,
                 service_name: name,
                 category: category || 'general',
@@ -181,21 +186,24 @@ class DocumentProcessorService {
      */
     processMarkdown(markdown, type, metadata = {}) {
         try {
+            // Normalise legacy 'general' type to the canonical 'company_info'
+            const resolvedType = type === 'general' ? 'company_info' : type;
+
             // Parse markdown to HTML then extract text
             const html = this.md.render(markdown);
             const text = this._stripHtml(html);
 
             // Get type-specific config
-            const typeConfig = this.config[type] || {};
+            const typeConfig = this.config[resolvedType] || this.config[type] || {};
 
             // Split into chunks
-            const chunks = this._chunkText(text, type, typeConfig);
+            const chunks = this._chunkText(text, resolvedType, typeConfig);
 
             return chunks.map((chunk, index) => ({
-                id: this._generateId(type, metadata.id || metadata.title, index),
+                id: this._generateId(resolvedType, metadata.id || metadata.title, index),
                 content: chunk,
                 metadata: {
-                    type,
+                    type: resolvedType,
                     chunk_index: index,
                     total_chunks: chunks.length,
                     priority: ragConfig.metadata.priorities[type] || 5,
@@ -355,67 +363,299 @@ class DocumentProcessorService {
     }
 
     /**
-     * Process Confluence page
+     * Process a Confluence page using H1-based semantic chunking.
+     *
+     * Each H1 heading defines a topic boundary. Everything under it — H2s, H3s,
+     * paragraphs, lists, tables — stays together as one chunk so unrelated topics
+     * are never mixed in the same vector.
+     *
+     * Classification is three-tier:
+     *   1. Confluence page label (overrides all sections when a single valid label exists)
+     *   2. Keyword matching on the H1 text
+     *   3. Gemini fallback (only when keywords produce no match)
+     *
      * @param {object} page - Confluence page object
-     * @returns {Array} - Processed chunks
+     * @returns {Promise<Array>} - Processed chunks
      */
-    processConfluencePage(page) {
+    async processConfluencePage(page) {
         try {
-            const title = page.title || 'Untitled';
-            const body = page.body?.storage?.value || '';
-            const version = page.version?.number || 1;
+            const title    = page.title || 'Untitled';
+            const body     = page.body?.storage?.value || '';
+            const version  = page.version?.number || 1;
             const spaceKey = page.space?.key || '';
+            const minWords = this.config.minChunkSize || 10;
+            const confCfg  = this.config.confluence || {};
+            const maxWords = confCfg.maxChunkSize || this.config.maxChunkSize;
 
-            // Convert HTML to text
-            const textContent = this._stripHtml(body);
-
-            if (!textContent || textContent.trim().length < 50) {
-                logger.warn('Confluence page too short or empty', {
-                    pageId: page.id,
-                    title
-                });
+            if (!body || this._stripHtml(body).trim().length < 50) {
+                logger.warn('Confluence page too short or empty', { pageId: page.id, title });
                 return [];
             }
 
-            // Get confluence-specific config
-            const confluenceConfig = this.config.confluence || {};
+            // Tier 1 — page-label override (one call per page, not per section)
+            const labelType = this._classifyByLabel(page);
 
-            // Chunk the text
-            const chunks = this._chunkText(
-                textContent,
-                'confluence',
-                confluenceConfig
-            );
+            // Split HTML on H1 boundaries only
+            const sections  = this._splitByH1(body, title);
+            const chunks    = [];
 
-            return chunks.map((chunk, index) => ({
-                id: `confluence-${page.id}-${index}`,
-                content: confluenceConfig.includePageTitle && index === 0
-                    ? `${title}\n\n${chunk}`
-                    : chunk,
-                metadata: {
-                    type: 'company_info',
-                    source: 'confluence',
-                    page_id: page.id,
-                    title,
-                    version,
-                    space: spaceKey,
-                    chunk_index: index,
-                    total_chunks: chunks.length,
-                    priority: ragConfig.metadata.priorities.confluence ||
-                        ragConfig.metadata.priorities.company_info,
-                    language: 'en',
-                    updated_at: new Date().toISOString()
+            for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+                const section   = sections[sIdx];
+                const cleanText = this._stripHtml(section.html).trim();
+
+                if (!cleanText) continue; // skip genuinely empty sections only
+
+                // Three-tier classification
+                const type = labelType
+                    || this._classifyByKeyword(section.heading)
+                    || await this._classifyWithGemini(section.heading, title);
+
+                // Build priority — respect per-type config if present
+                const priority = ragConfig.metadata.priorities[type]
+                    || ragConfig.metadata.priorities.confluence
+                    || ragConfig.metadata.priorities.company_info
+                    || 5;
+
+                // Extract any H2/H3 sub-headings for richer metadata
+                const subHeadings = this._extractSubHeadings(section.html);
+
+                // Prepend the H1 heading to the content so embedding captures topic context
+                const contentWithHeading = section.heading
+                    ? `${section.heading}\n\n${cleanText}`
+                    : cleanText;
+
+                // Sub-chunk when the section is too long; sub-chunks inherit the same type
+                let subChunks;
+                if (this._countWords(contentWithHeading) > maxWords) {
+                    const pieces = this._chunkText(cleanText, 'confluence', confCfg);
+                    subChunks = pieces.map((piece, i) =>
+                        i === 0 && section.heading ? `${section.heading}\n\n${piece}` : piece
+                    );
+                } else {
+                    subChunks = [contentWithHeading];
                 }
-            }));
+
+                subChunks.forEach((chunk, cIdx) => {
+                    chunks.push({
+                        // Stable ID: consistent across re-syncs so Pinecone overwrites cleanly
+                        id: `confluence-${page.id}-${sIdx}-${cIdx}`,
+                        content: chunk,
+                        metadata: {
+                            type,
+                            source:          'confluence',
+                            page_id:         page.id,
+                            page_title:      title,
+                            section_heading: section.heading || title,
+                            section_index:   sIdx,
+                            chunk_index:     cIdx,
+                            total_chunks:    subChunks.length,
+                            sub_headings:    subHeadings,
+                            version,
+                            space:           spaceKey,
+                            priority,
+                            language:        'en',
+                            updated_at:      new Date().toISOString()
+                        }
+                    });
+                });
+            }
+
+            this.stats.chunks += chunks.length;
+            logger.info('Confluence page processed', {
+                pageId: page.id, title,
+                sections: sections.length, chunks: chunks.length
+            });
+
+            return chunks;
 
         } catch (error) {
             this.stats.errors++;
-            logger.error('Error processing Confluence page', {
-                pageId: page.id,
-                error: error.message
-            });
+            logger.error('Error processing Confluence page', { pageId: page.id, error: error.message });
             return [];
         }
+    }
+
+    /**
+     * Split Confluence HTML on H1 tag boundaries only.
+     * H2/H3 and all other content inside an H1 section stays together.
+     * If no H1 exists, returns a single section using the page title as the heading.
+     * @private
+     */
+    _splitByH1(html, pageTitle) {
+        const h1Re    = /<h1[^>]*>([\s\S]*?)<\/h1>/gi;
+        const h1s     = [];
+        let   match;
+
+        while ((match = h1Re.exec(html)) !== null) {
+            h1s.push({
+                index:    match.index,
+                endIndex: match.index + match[0].length,
+                heading:  this._stripHtml(match[1]).trim()
+            });
+        }
+
+        // No H1s — treat entire page as one section, classified by page title
+        if (h1s.length === 0) return [{ heading: pageTitle, html }];
+
+        const sections = [];
+
+        // Intro content before the first H1 (navigational disclaimers etc.) — attach to page title
+        if (h1s[0].index > 0) {
+            const introHtml = html.slice(0, h1s[0].index);
+            if (this._stripHtml(introHtml).trim()) {
+                sections.push({ heading: pageTitle, html: introHtml });
+            }
+        }
+
+        for (let i = 0; i < h1s.length; i++) {
+            const h         = h1s[i];
+            const nextStart = h1s[i + 1]?.index ?? html.length;
+            sections.push({
+                heading: h.heading,
+                html:    html.slice(h.endIndex, nextStart)
+            });
+        }
+
+        return sections;
+    }
+
+    /**
+     * Tier 1 — check if the page carries a single Confluence label that maps
+     * directly to a valid metadata type. When found, every section on the page
+     * inherits that type (skipping keyword and Gemini classification).
+     * @private
+     */
+    _classifyByLabel(page) {
+        const VALID = new Set(['company_info', 'company_service', 'booking_rule', 'payment_info', 'faq', 'support']);
+        const labels = (page.metadata?.labels?.results || [])
+            .map(l => (l.name || '').toLowerCase().trim())
+            .filter(l => VALID.has(l));
+
+        // Apply only when exactly one valid label is present — avoids ambiguity
+        return labels.length === 1 ? labels[0] : null;
+    }
+
+    /**
+     * Tier 2 — keyword matching on H1 heading text.
+     * Expanded keyword set covers healthcare, IT, and general business domains.
+     * Returns null when nothing matches (caller falls through to Tier 3).
+     * @private
+     */
+    _classifyByKeyword(headingText) {
+        const h = (headingText || '').toLowerCase();
+
+        // More-specific types are checked first so a broad keyword (e.g. "service",
+        // "solution") in a less-specific rule cannot steal headings that clearly belong
+        // to a more-specific category (e.g. "About Us", "How to Access Services").
+        const rules = [
+            ['company_info',    /\babout\b|overview|mission|vision|history|contact|location|team|guideline|visitor|patient info/],
+            ['booking_rule',    /booking|appointment|schedule|reservation|how to book|consultation|availability|\baccess\b|admission|how to access/],
+            ['payment_info',    /payment|pricing|price|cost|fee|invoice|deposit|billing|rates|refund|cancellation|policy/],
+            ['faq',             /faq|frequently asked|question|help|common/],
+            ['support',         /support|troubleshoot|issue|problem|helpdesk|technical/],
+            ['company_service', /service|offer|product|package|solution|what we do|our work|portfolio|department|care|treatment|therapy|surgery|program|unit|clinic/],
+        ];
+
+        for (const [type, regex] of rules) {
+            if (regex.test(h)) return type;
+        }
+        return null;
+    }
+
+    /**
+     * Tier 3 — Gemini fallback for headings that match no keyword.
+     * Results are cached in-process so repeated headings cost only one API call.
+     * Never throws — silently returns 'company_info' on any failure.
+     * @private
+     */
+    async _classifyWithGemini(headingText, pageTitle) {
+        const cacheKey = `${headingText}|||${pageTitle}`;
+        if (this._geminiClassifyCache.has(cacheKey)) {
+            return this._geminiClassifyCache.get(cacheKey);
+        }
+
+        const VALID   = new Set(['company_info', 'company_service', 'booking_rule', 'payment_info', 'faq', 'support']);
+        const fallback = 'company_info';
+
+        try {
+            const apiKey = process.env.GEMINI_API_KEY;
+            if (!apiKey) {
+                logger.debug('_classifyWithGemini: no GEMINI_API_KEY, defaulting to company_info');
+                return fallback;
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({
+                model: 'gemini-2.5-flash-lite',
+                generationConfig: { temperature: 0, maxOutputTokens: 10 }
+            });
+
+            const prompt =
+`Classify this section heading into exactly one category:
+company_info | company_service | booking_rule | payment_info | faq | support
+
+Section heading: "${headingText}"
+Page title: "${pageTitle}"
+
+Reply with one word only.`;
+
+            const result = await model.generateContent(prompt);
+            const raw    = result.response.text().trim().toLowerCase().replace(/[^a-z_]/g, '');
+            const type   = VALID.has(raw) ? raw : fallback;
+
+            this._geminiClassifyCache.set(cacheKey, type);
+            logger.debug('_classifyWithGemini: classified', { headingText, type });
+            return type;
+
+        } catch (err) {
+            logger.debug('_classifyWithGemini: failed, defaulting to company_info', { headingText, error: err.message });
+            this._geminiClassifyCache.set(cacheKey, fallback);
+            return fallback;
+        }
+    }
+
+    /**
+     * Extract sub-section names from a Confluence HTML block.
+     *
+     * Tries multiple extraction strategies in order of precision:
+     * 1. H2/H3 headings — most explicit (standard Confluence page outline)
+     * 2. <li> items that contain an em/en dash — "Service Name — description" lists
+     * 3. <li> items with a <strong>/<b> lead — bolded service names in bullet lists
+     *
+     * @private
+     */
+    _extractSubHeadings(html) {
+        const out = [];
+        const seen = new Set();
+
+        const add = (text) => {
+            const t = text.trim();
+            const key = t.toLowerCase();
+            if (t && t.length < 100 && !seen.has(key)) { seen.add(key); out.push(t); }
+        };
+
+        // Strategy 1: explicit H2/H3 headings
+        const hRe = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
+        let m;
+        while ((m = hRe.exec(html)) !== null) add(this._stripHtml(m[1]));
+
+        if (out.length > 0) return out; // H2/H3 found — no need for fallback strategies
+
+        // Strategy 2: <li> items with em/en dash pattern → text before the dash is the name
+        const liRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+        while ((m = liRe.exec(html)) !== null) {
+            const text = this._stripHtml(m[1]);
+            const dashIdx = text.search(/\s[—–]\s/); // em dash or en dash with spaces
+            if (dashIdx !== -1) {
+                add(text.slice(0, dashIdx));
+            } else {
+                // Strategy 3: <li> with leading <strong>/<b> — take the bold text
+                const boldM = m[1].match(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/i);
+                if (boldM) add(this._stripHtml(boldM[1]));
+            }
+        }
+
+        return out;
     }
 
     /**
@@ -474,12 +714,21 @@ class DocumentProcessorService {
             }
         }
 
-        // Add last chunk if it meets minimum size
-        if (currentChunk.length > 0 && currentWordCount >= minWords) {
-            chunks.push(currentChunk.join(' '));
+        // Flush the final accumulated chunk.
+        // If it's too short to stand alone, merge it into the last chunk so no
+        // content is silently dropped — a short trailing sentence is still useful.
+        if (currentChunk.length > 0) {
+            const tail = currentChunk.join(' ');
+            if (currentWordCount >= minWords || chunks.length === 0) {
+                chunks.push(tail);
+            } else {
+                // Append to the previous chunk rather than discarding
+                chunks[chunks.length - 1] += ' ' + tail;
+            }
         }
 
-        return chunks.filter(chunk => this._countWords(chunk) >= minWords);
+        // Only filter if the chunk is genuinely empty — never discard real content
+        return chunks.filter(chunk => chunk.trim().length > 0);
     }
 
     /**
@@ -487,23 +736,16 @@ class DocumentProcessorService {
      * @private
      */
     _splitIntoSentences(text) {
-        // Enhanced sentence splitting
-        const delimiters = this.config.sentenceDelimiters || ['. ', '! ', '? ', '\n\n'];
-
-        let sentences = [text];
-
-        for (const delimiter of delimiters) {
-            const newSentences = [];
-            for (const sentence of sentences) {
-                newSentences.push(...sentence.split(delimiter));
-            }
-            sentences = newSentences;
-        }
-
-        // Clean and filter
-        return sentences
+        // Split on sentence-ending punctuation followed by whitespace, preserving
+        // the punctuation at the end of each sentence so context is not lost.
+        // Also splits on double-newlines (paragraph breaks).
+        // Uses a lookahead so the delimiter character stays with the preceding sentence.
+        const sentences = text
+            .split(/(?<=[.!?])\s+|\n{2,}/)
             .map(s => s.trim())
             .filter(s => s.length > 0);
+
+        return sentences;
     }
 
     /**
@@ -554,20 +796,36 @@ class DocumentProcessorService {
     }
 
     /**
-     * Strip HTML tags from text
+     * Strip HTML tags and decode all HTML entities from text.
      * @private
      */
     _stripHtml(html) {
+        const namedEntities = {
+            nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+            mdash: '—', ndash: '–', hellip: '…',
+            lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+            copy: '©', reg: '®', trade: '™',
+            eacute: 'é', ecirc: 'ê', egrave: 'è', euml: 'ë',
+            aacute: 'á', acirc: 'â', agrave: 'à', auml: 'ä', atilde: 'ã', aring: 'å',
+            iacute: 'í', icirc: 'î', igrave: 'ì', iuml: 'ï',
+            oacute: 'ó', ocirc: 'ô', ograve: 'ò', ouml: 'ö', otilde: 'õ',
+            uacute: 'ú', ucirc: 'û', ugrave: 'ù', uuml: 'ü',
+            ccedil: 'ç', ntilde: 'ñ', szlig: 'ß',
+            Eacute: 'É', Aacute: 'Á', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú',
+            euro: '€', pound: '£', yen: '¥',
+            frac12: '½', frac14: '¼', frac34: '¾',
+        };
+
         return html
             .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
             .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
             .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
+            // Decode named HTML entities
+            .replace(/&([a-zA-Z]+);/g, (_, name) => namedEntities[name] ?? _)
+            // Decode decimal numeric entities (e.g. &#8211;)
+            .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+            // Decode hex numeric entities (e.g. &#x2014;)
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
             .replace(/\s+/g, ' ')
             .trim();
     }
@@ -639,7 +897,7 @@ class DocumentProcessorService {
      * @param {string} type - Document type
      * @returns {Array} - Processed chunks
      */
-    batchProcess(documents, type) {
+    async batchProcess(documents, type) {
         const allChunks = [];
         const errors = [];
 
@@ -657,7 +915,8 @@ class DocumentProcessorService {
                         break;
 
                     case 'confluence':
-                        chunks = this.processConfluencePage(doc);
+                        // processConfluencePage is async (Gemini fallback classification)
+                        chunks = await this.processConfluencePage(doc);
                         break;
 
                     case 'markdown':

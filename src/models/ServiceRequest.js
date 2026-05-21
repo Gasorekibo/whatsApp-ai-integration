@@ -8,8 +8,10 @@ export default (sequelize) => {
     },
     clientId: {
       type: DataTypes.UUID,
-      allowNull: true,
-      comment: 'Tenant key — links booking/inquiry to the Client that received the WhatsApp message'
+      allowNull: false,
+      references: { model: 'clients', key: 'id' },
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE'
     },
     service: {
       type: DataTypes.STRING,
@@ -21,10 +23,19 @@ export default (sequelize) => {
     },
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        isEmail: true
+        isEmail: {
+          args: true,
+          msg: 'Must be a valid email address'
+        }
       }
+    },
+    bookingType: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'calendar',
+      comment: 'calendar | restaurant | hotel'
     },
     phone: {
       type: DataTypes.STRING,

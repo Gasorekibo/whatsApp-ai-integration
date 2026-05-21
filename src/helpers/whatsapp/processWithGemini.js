@@ -19,15 +19,81 @@ function toDisplay(date, timezone) {
   };
 }
 
-// Intents and keywords that require live calendar data
-const BOOKING_INTENTS  = new Set(['booking', 'payment']);
-const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|when|meet|consultation|reserve|free|time|date|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm))\b/i;
+const MAX_HISTORY_TURNS = 10; // 10 user+assistant pairs = 20 entries
 
-function needsCalendar(intent, message, history = []) {
-  if (BOOKING_INTENTS.has(intent)) return true;
+function getRecentHistory(history = []) {
+  return history.slice(-(MAX_HISTORY_TURNS * 2));
+}
+
+const BOOKING_KEYWORDS = /\b(book|appointment|schedule|slot|available|meet|consultation|reserve|session|tomorrow|today|morning|afternoon|evening|[0-9]+\s*(am|pm)|come|visit|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week)\b/i;
+
+// Returns true only when calendar data is actually needed for this conversation turn.
+// activeIntent/activeOrderType from session state take precedence; keyword heuristics are the fallback.
+function needsCalendar(activeIntent, activeOrderType, ragIntent, message, history = []) {
+  if (activeIntent === 'order' && activeOrderType === 'booking') return true;
+  if (activeIntent === 'general' || activeIntent === 'handoff') return false;
+  if (activeIntent === 'order' && activeOrderType && activeOrderType !== 'booking') return false;
+  if (activeIntent === 'services') return false;
+  // No known intent — fall back to RAG intent and keyword heuristics
+  if (ragIntent === 'booking' || ragIntent === 'payment') return true;
   if (BOOKING_KEYWORDS.test(message)) return true;
-  // If the recent conversation was about booking, keep loading calendar so context isn't lost
   return history.slice(-6).some(h => BOOKING_KEYWORDS.test(h.content));
+}
+
+const SHOW_SERVICES_TOOL = {
+  name: 'show_services',
+  description: 'Show the full list of services to the user. Use ONLY when the user explicitly wants to browse or see all available services — NOT when they have already selected or mentioned a specific service.'
+};
+const INITIATE_PAYMENT_TOOL = {
+  name: 'initiate_payment',
+  description: 'Initiate a payment for a consultation booking.',
+  parameters: {
+    type: 'OBJECT',
+    properties: {
+      service: { type: 'STRING', description: 'The service name' },
+      name:    { type: 'STRING', description: 'Customer name' },
+      email:   { type: 'STRING', description: 'Customer email' },
+      start:   { type: 'STRING', description: 'ISO start time of the slot' },
+      details: { type: 'STRING', description: 'Service specific details' },
+      company: { type: 'STRING', description: 'Company name (optional)' }
+    },
+    required: ['service', 'name', 'email', 'start']
+  }
+};
+const SAVE_INQUIRY_TOOL = {
+  name: 'save_inquiry',
+  description: 'Save an inquiry when a user is interested but not ready to book.',
+  parameters: {
+    type: 'OBJECT',
+    properties: {
+      service:  { type: 'STRING' },
+      name:     { type: 'STRING' },
+      email:    { type: 'STRING' },
+      details:  { type: 'STRING' },
+      timeline: { type: 'STRING' },
+      budget:   { type: 'STRING' }
+    }
+  }
+};
+
+function buildToolDeclarations(activeIntent, activeOrderType, selectedServiceName) {
+  // General inquiry sessions still get show_services so Gemini can proactively
+  // route the user to booking when they express a service need mid-conversation.
+  if (activeIntent === 'general') return [SHOW_SERVICES_TOOL];
+  if (activeIntent === 'handoff') return [];
+  if (activeIntent === 'services') {
+    // User has already selected a specific service → they're likely heading toward booking.
+    // Give them payment tools; show_services would just re-display the list they came from.
+    if (selectedServiceName) return [INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+    return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+  }
+  if (activeIntent === 'order') {
+    if (activeOrderType === 'booking') return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+    if (activeOrderType === 'payment') return [INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
+    return []; // status — just text answers
+  }
+  // No intent set — load all tools as fallback
+  return [SHOW_SERVICES_TOOL, INITIATE_PAYMENT_TOOL, SAVE_INQUIRY_TOOL];
 }
 
 const USE_RAG = process.env.USE_RAG !== 'false';
@@ -39,14 +105,19 @@ export async function processWithGemini(phoneNumber, message, history = [], user
   if (!geminiKey) throw new Error('processWithGemini: client is missing a Gemini API key');
   const genAI              = new GoogleGenerativeAI(geminiKey);
   const timezone           = clientConfig.timezone           || 'Africa/Kigali';
-  const companyName        = clientConfig.companyName        || clientConfig.name || 'Our Company';
+  const botName            = clientConfig.botName            || clientConfig.name || 'Our Company';
   const paymentRedirectUrl = clientConfig.paymentRedirectUrl || '';
   const depositAmount      = clientConfig.depositAmount      || 5000;
   const currency           = clientConfig.currency           || 'RWF';
+  // Per-client Flutterwave key takes precedence over the shared env var
+  const flutterwaveKey     = clientConfig.flutterwaveKey     || process.env.FLW_SECRET_KEY || '';
   const namespace          = clientConfig.pineconeIndex || clientConfig.clientId || 'default';
   const clientId           = clientConfig.clientId           || null;
-  const isNewUser          = clientConfig.isNewUser          || false;
-  const userName           = clientConfig.userName           || null;
+  const activeIntent          = clientConfig.activeIntent          || null;
+  const activeOrderType       = clientConfig.activeOrderType       || null;
+  const isNewUser             = clientConfig.isNewUser             || false;
+  const userName              = clientConfig.userName              || null;
+  const selectedServiceName   = clientConfig.selectedServiceName   || null;
 
   logger.gemini('info', 'Processing request with Gemini from ' + sanitizedPhone, {
     phone: sanitizedPhone, messageLength: message.length,
@@ -108,48 +179,9 @@ export async function processWithGemini(phoneNumber, message, history = [], user
       return _freeSlots;
     };
 
-    // ── Tool definitions ──────────────────────────────────────────────────
-    const tools = [
-      {
-        functionDeclarations: [
-          {
-            name: 'show_services',
-            description: 'Show the list of available services to the user.'
-          },
-          {
-            name: 'initiate_payment',
-            description: 'Initiate a payment for a consultation booking.',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                service: { type: 'STRING', description: 'The service name' },
-                name:    { type: 'STRING', description: 'Customer name' },
-                email:   { type: 'STRING', description: 'Customer email' },
-                start:   { type: 'STRING', description: 'ISO start time of the slot' },
-                details: { type: 'STRING', description: 'Service specific details' },
-                company: { type: 'STRING', description: 'Company name (optional)' }
-              },
-              required: ['service', 'name', 'email', 'start']
-            }
-          },
-          {
-            name: 'save_inquiry',
-            description: 'Save an inquiry when a user is interested but not ready to book.',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                service:  { type: 'STRING' },
-                name:     { type: 'STRING' },
-                email:    { type: 'STRING' },
-                details:  { type: 'STRING' },
-                timeline: { type: 'STRING' },
-                budget:   { type: 'STRING' }
-              }
-            }
-          }
-        ]
-      }
-    ];
+    // ── Tool definitions — scoped to the active intent ────────────────────
+    const toolDeclarations = buildToolDeclarations(activeIntent, activeOrderType, selectedServiceName);
+    const tools = toolDeclarations.length ? [{ functionDeclarations: toolDeclarations }] : [];
 
     // ── Build prompt ──────────────────────────────────────────────────────
     let prompt;
@@ -158,12 +190,12 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
     if (USE_RAG) {
       try {
-        const retrievedData = await ragService.retrieveContext(message, history, null, namespace);
+        const retrievedData = await ragService.retrieveContext(message, history, null, namespace, currentLanguage);
         detectedLanguage    = currentLanguage || retrievedData.language || 'en';
         ragIntent           = retrievedData.intent || 'general';
 
         // Only fetch calendar if this looks like a booking conversation (also checks recent history)
-        const calendarNeeded = needsCalendar(ragIntent, message, history);
+        const calendarNeeded = needsCalendar(activeIntent, activeOrderType, ragIntent, message, history);
         logger.debug('Calendar needed check', { sanitizedPhone, ragIntent, calendarNeeded });
 
         const slots = calendarNeeded ? await loadSlots() : [];
@@ -176,45 +208,49 @@ export async function processWithGemini(phoneNumber, message, history = [], user
           availableSlots: slotDetails,
           currentDate:    now,
           depositInfo: `All consultations require a commitment deposit of ${depositAmount} ${currency} to confirm booking.`,
+          ...(selectedServiceName && {
+            selectedService: `The user has already selected: "${selectedServiceName}". Do NOT call show_services. If they want to book, collect their name and email then use initiate_payment.`
+          }),
+          ...(!calendarNeeded && {
+            noSlotHallucinationRule: 'IMPORTANT: Real-time slot data is not loaded for this message. Do NOT invent, guess, or mention any specific date, day, or time for an appointment. If the user wants to book, ask them to say "book" or "appointment" so you can check availability, or collect their name and email first.'
+          }),
           ...(isNewUser && {
-            welcomeContext: buildWelcomeContext(userName, companyName)
+            welcomeContext: buildWelcomeContext(userName, botName)
           })
         };
 
-        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { companyName });
+        prompt = ragService.buildAugmentedPrompt(retrievedData, message, dynamicData, { botName, language: detectedLanguage });
         logger.info(`RAG retrieved ${retrievedData.relevantDocs} docs, intent=${ragIntent}, calendar=${calendarNeeded}`);
       } catch (ragError) {
         logger.warn('RAG retrieval failed, using fallback', { error: ragError.message });
         detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-        const calendarNeeded = needsCalendar('general', message, history);
+        const calendarNeeded = needsCalendar(activeIntent, activeOrderType, 'general', message, history);
         const slots = calendarNeeded ? await loadSlots() : [];
         const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
         const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
-        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency, isNewUser, userName);
+        prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, botName, depositAmount, currency, isNewUser, userName);
       }
     } else {
       detectedLanguage = currentLanguage || await ragService.detectLanguage(message, history);
-      const calendarNeeded = needsCalendar('general', message, history);
+      const calendarNeeded = needsCalendar(activeIntent, activeOrderType, 'general', message, history);
       const slots = calendarNeeded ? await loadSlots() : [];
       const slotDetails = slots.map((s, i) => `${i + 1}. ${s.dayName}, ${s.date} at ${s.time} (ISO: ${s.isoStart})`).join('\n');
       const now = calendarNeeded ? _currentDate : (() => { const d = toDisplay(new Date(), timezone); return `${d.dayName}, ${d.date} at ${d.time}`; })();
-      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, companyName, depositAmount, currency, isNewUser, userName);
+      prompt = buildFallbackPrompt(slotDetails, now, detectedLanguage, botName, depositAmount, currency, isNewUser, userName);
     }
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', tools });
     const chat  = model.startChat({
       systemInstruction: { parts: [{ text: prompt }] },
-      history: history.map(h => ({
+      history: getRecentHistory(history).map(h => ({
         role:  h.role === 'user' ? 'user' : 'model',
         parts: [{ text: h.content }]
       }))
     });
 
-    const langNames    = { en: 'English', fr: 'French', rw: 'Kinyarwanda', de: 'German', sw: 'Swahili', kis: 'Swahili' };
-    const msgLangName  = langNames[currentLanguage];
-    const messageToSend = msgLangName
-      ? `${message}\n\n[IMPORTANT: This message is in ${msgLangName}. You MUST respond ONLY in ${msgLangName}.]`
-      : message;
+    // Language enforcement is now in the system prompt — do NOT append inline tags to the
+    // user message, as system-prompt instructions carry higher model weight.
+    const messageToSend = message;
 
     let result   = await chat.sendMessage(messageToSend);
     let response = result.response;
@@ -240,22 +276,70 @@ export async function processWithGemini(phoneNumber, message, history = [], user
 
         if (call.name === 'initiate_payment') {
           const data           = call.args;
-          const requestedStart = new Date(data.start);
-          logger.info('initiate_payment tool called', { data });
+          const requestedStart = data.start ? new Date(data.start) : null;
+          const validStart     = requestedStart && !isNaN(requestedStart.getTime()) && requestedStart > new Date();
 
-          // Ensure slots are loaded before matching
-          const freeSlots = await loadSlots().catch(() => []);
-          const matchingSlot = freeSlots.find(slot =>
-            Math.abs(new Date(slot.isoStart) - requestedStart) < 60000
+          logger.info('initiate_payment tool called', {
+            service: data.service, name: data.name, start: data.start, validStart
+          }); 
+          const freeSlots = await loadSlots().catch(err => {
+            logger.warn('initiate_payment: loadSlots failed', { error: err.message });
+            return [];
+          });
+
+          // If AI called payment without a real ISO slot, or the slot it invented
+          // doesn't match any real calendar slot, hand off to the structured booking
+          // flow immediately. This avoids the AI saying "payment could not be processed"
+          // when the real problem is just that no slot was selected yet.
+          if (!validStart) {
+            logger.info('initiate_payment: no valid slot — handing off to booking flow', {
+              service: data.service, name: data.name
+            });
+            return {
+              reply:              null,
+              showServices:       false,
+              showSlots:          false,
+              freeSlots:          [],
+              triggerBookingFlow: true,
+              bookingPrefill: {
+                serviceName: data.service || selectedServiceName || null,
+                name:        data.name    || userName            || null,
+                email:       data.email   || userEmail           || null,
+              }
+            };
+          }
+
+          // Match the chosen slot with 30-minute tolerance (AI may reconstruct ISO
+          // with slight timezone offset). Fall back to same-day if no close match.
+          const SLOT_TOLERANCE_MS = 30 * 60 * 1000;
+          let matchingSlot = freeSlots.find(s =>
+            Math.abs(new Date(s.isoStart) - requestedStart) < SLOT_TOLERANCE_MS
           );
+          if (!matchingSlot) {
+            const reqDay = requestedStart.toDateString();
+            matchingSlot = freeSlots.find(s => new Date(s.isoStart).toDateString() === reqDay);
+          }
 
           if (!matchingSlot) {
-            toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Time slot no longer available.' } } });
-            continue;
+            logger.warn('initiate_payment: slot not found — handing off to booking flow', {
+              start: data.start, freeSlotsCount: freeSlots.length
+            });
+            return {
+              reply:              null,
+              showServices:       false,
+              showSlots:          false,
+              freeSlots:          [],
+              triggerBookingFlow: true,
+              bookingPrefill: {
+                serviceName: data.service || selectedServiceName || null,
+                name:        data.name    || userName            || null,
+                email:       data.email   || userEmail           || null,
+              }
+            };
           }
 
           try {
-            const safePrefix = (companyName || 'deposit').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
+            const safePrefix = (botName || 'deposit').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
             const tx_ref     = `${safePrefix}-${phoneNumber.replace(/\+/g, '')}-${Date.now()}`;
 
             await dbConfig.db.ServiceRequest.create({
@@ -274,16 +358,22 @@ export async function processWithGemini(phoneNumber, message, history = [], user
               status:        'pending_payment'
             });
 
+            if (!flutterwaveKey) {
+              logger.error('initiate_payment: no Flutterwave key available', { clientId });
+              toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment system not configured' } } });
+              continue;
+            }
+
             const paymentRes = await fetch('https://api.flutterwave.com/v3/payments', {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.FLW_SECRET_KEY}`, 'Content-Type': 'application/json' },
+              headers: { 'Authorization': `Bearer ${flutterwaveKey}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 tx_ref,
                 amount:        depositAmount,
                 currency,
                 redirect_url:  paymentRedirectUrl,
                 customer:      { email: data.email || 'customer@example.com', phone_number: phoneNumber.replace('+', ''), name: data.name },
-                customizations:{ title: `${companyName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
+                customizations:{ title: `${botName} Consultation Deposit`, description: `Deposit for ${data.service} consultation` },
                 meta:          { phone: phoneNumber, booking_details: JSON.stringify({ ...data, slotStart: matchingSlot.isoStart, slotEnd: matchingSlot.isoEnd, tx_ref }) }
               })
             });
@@ -294,6 +384,7 @@ export async function processWithGemini(phoneNumber, message, history = [], user
               : { functionResponse: { name: 'initiate_payment', response: { success: false, error: 'Payment gateway error' } } }
             );
           } catch (e) {
+            console.log('Error in initiate_payment tool:', e);
             logger.error('Error in initiate_payment tool', { error: e.message });
             toolResults.push({ functionResponse: { name: 'initiate_payment', response: { success: false, error: e.message } } });
           }
@@ -315,46 +406,113 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     }
 
     const responseText = result.response.text();
-    let parsedResult;
-    try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      parsedResult    = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
-    } catch {
-      parsedResult = { reply: responseText, language: detectedLanguage, showServices: false, showSlots: false };
-    }
+    const { reply: finalReply, language: finalLanguage } = extractReply(responseText, detectedLanguage);
 
     return {
-      reply:        parsedResult.reply || text || null,
-      language:     parsedResult.language || detectedLanguage || 'en',
-      showServices: parsedResult.showServices || false,
-      showSlots:    parsedResult.showSlots    || false,
-      freeSlots:    parsedResult.freeSlots    || []
+      reply:        finalReply,
+      language:     finalLanguage,
+      showServices: false,
+      showSlots:    false,
+      freeSlots:    []
     };
 
   } catch (err) {
     logger.error('Gemini processing error', { phone: sanitizedPhone, error: err.message, stack: err.stack, status: err.status });
     console.log(err)
     if (err.status === 429) return { reply: "🔄 We're experiencing high demand right now. Please try again in a moment or type 'menu' to see our services.", showServices: false, showSlots: false, freeSlots: [] };
-    if (err.status === 503) return { reply: "⚠️ Our AI is currently busy. Please try again in a few seconds.", showServices: false, showSlots: false, freeSlots: [] };
+    if (err.status === 503) return { reply: "⚠️ Sorry, I'm a little busy right now. Please retype your question and I'll get right to it.", showServices: false, showSlots: false, freeSlots: [] };
     return { reply: "I'm having trouble connecting right now. Please try again in a moment!", showServices: false, showSlots: false, freeSlots: [] };
   }
 }
 
-function buildWelcomeContext(userName, companyName) {
+/**
+ * Robustly extract { reply, language } from whatever Gemini returned.
+ * Handles: clean JSON, JSON inside markdown fences, JSON with unescaped
+ * newlines/quotes in the reply value, preamble text before the JSON,
+ * and plain-text responses (when the model ignores the JSON instruction).
+ */
+function extractReply(raw, fallbackLanguage = 'en') {
+  if (!raw) return { reply: '', language: fallbackLanguage };
+
+  // 1. Strip common wrappers
+  let cleaned = raw
+    .replace(/^\s*```json\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .replace(/^\s*\{\{json\.\s*/i, '')
+    .replace(/\}\}\s*$/, '')
+    .trim();
+
+  // 2. Try clean JSON parse (works when Gemini follows the format exactly)
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === 'object') {
+      const reply = parsed.reply ?? parsed.message ?? parsed.text ?? null;
+      if (reply) return { reply: String(reply), language: parsed.language || fallbackLanguage };
+    }
+  } catch { /* continue to fallbacks */ }
+
+  // 3. Find the JSON object by locating the "reply" or "language" key, then
+  //    brace-match to extract the JSON substring (handles preamble text)
+  const keyMatch = cleaned.match(/"(?:reply|language)"\s*:/);
+  if (keyMatch) {
+    const keyPos = cleaned.indexOf(keyMatch[0]);
+    const start  = cleaned.lastIndexOf('{', keyPos);
+    if (start !== -1) {
+      let depth = 0, end = -1;
+      for (let i = start; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') depth++;
+        else if (cleaned[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end !== -1) {
+        try {
+          const parsed = JSON.parse(cleaned.slice(start, end + 1));
+          const reply = parsed.reply ?? parsed.message ?? parsed.text ?? null;
+          if (reply) return { reply: String(reply), language: parsed.language || fallbackLanguage };
+        } catch { /* fall through to regex */ }
+      }
+    }
+  }
+
+  // 4. Regex extraction — handles invalid JSON with unescaped newlines inside the reply value.
+  //    Captures everything between "reply": " and the closing " that is followed by , or }
+  const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)"(?:\s*[,}])/);
+  if (replyMatch) {
+    const langMatch = cleaned.match(/"language"\s*:\s*"([^"]+)"/);
+    const reply = replyMatch[1]
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+    return { reply, language: langMatch?.[1] || fallbackLanguage };
+  }
+
+  // 5. If it still looks like a JSON object we couldn't parse, send a safe fallback
+  //    rather than leaking markup to the user.
+  if (cleaned.startsWith('{')) {
+    logger.warn('extractReply: unrecoverable JSON — sending generic fallback', { preview: cleaned.slice(0, 80) });
+    return { reply: "I'm sorry, I didn't quite catch that. Could you rephrase your question?", language: fallbackLanguage };
+  }
+
+  // 6. Plain text — model ignored the JSON instruction, use as-is
+  return { reply: cleaned, language: fallbackLanguage };
+}
+
+function buildWelcomeContext(userName, botName) {
   const greeting = userName ? `Hello ${userName}` : 'Hello';
   return `FIRST-TIME USER — This is the user's very first message.
 Your response MUST follow this structure:
-1. Start with a warm personal greeting: "${greeting}, Welcome to ${companyName}!"
-2. In 1-2 sentences, briefly describe what ${companyName} offers (draw from the RELEVANT INFORMATION section).
+1. Start with a warm personal greeting: "${greeting}, Welcome to ${botName}!"
+2. In 1-2 sentences, briefly describe what ${botName} offers (draw from the RELEVANT INFORMATION section).
 3. If the user asked a specific question in their message, answer it directly.
 4. Close by inviting them to share how you can help: "How can I assist you today?"
 Keep the entire reply friendly and concise.`;
 }
 
-function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', companyName = 'Our Company', depositAmount = 5000, currency = 'RWF', isNewUser = false, userName = null) {
-  const welcomeSection = isNewUser ? `\n${buildWelcomeContext(userName, companyName)}\n` : '';
+function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', botName = 'Our Company', depositAmount = 5000, currency = 'RWF', isNewUser = false, userName = null) {
+  const welcomeSection = isNewUser ? `\n${buildWelcomeContext(userName, botName)}\n` : '';
   return `
-You are a warm, professional AI assistant for ${companyName}.
+You are a customer-facing representative of ${botName}. You speak AS ${botName} — use "we", "our", and "us" at all times.
+Never describe yourself as an AI, bot, or chatbot. If asked, deflect: "I'm here to help with anything related to ${botName}."
+Never answer factual questions from your training data. If you don't have the information, say so warmly: "I'm sorry, I don't have details on that right now. Feel free to ask something else or contact our team directly! 😊"
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.
@@ -364,16 +522,15 @@ ${welcomeSection}
 CORE BEHAVIOR:
 - Be friendly but brief and to-the-point
 - Keep responses under 3 sentences unless asking follow-up questions
+- PSYCHOLOGICAL INTELLIGENCE — READ BETWEEN THE LINES: You are not a search engine. You are an intelligent assistant whose job is to understand what the user TRULY needs, not just what they literally say. Always ask yourself: "What is this person really trying to do?" Examples: someone asking about location is planning to visit → offer to show services or book; someone mentioning a symptom or pain needs a service → call show_services; someone asking "do you offer X?" is interested in X → call show_services if yes, or explain what you DO offer if no. Recognize the user's trajectory and guide them toward the next step. Never leave a user with only information when an action (show_services, booking) would serve them better.
+- FOLLOW-UP QUESTION RULE: Always end your reply with a warm follow-up question or offer — including when the user sends a short acknowledgment like "okay", "thanks", or "got it". Never end with a dead-end statement like "We are glad we could assist you." Keep the conversation open: "Is there anything else I can help you with?", "Would you like to book an appointment?". Only skip the follow-up when you are actively collecting info from the user (name, email, date, etc.).
 
 ${slotDetails ? `AVAILABLE CONSULTATION SLOTS:\n${slotDetails}\n` : ''}
 Current Date: ${currentDate}
 ${slotDetails ? `Deposit required to confirm booking: ${depositAmount} ${currency}` : ''}
 
 OUTPUT FORMAT:
-ALWAYS return your response in the following JSON format:
-{
-  "language": "iso_code",
-  "reply": "your response text here"
-}
+Return ONLY raw JSON — no markdown, no code fences, no {{json.}} wrappers. Exactly:
+{"language":"iso_code","reply":"your response text here"}
 `;
 }

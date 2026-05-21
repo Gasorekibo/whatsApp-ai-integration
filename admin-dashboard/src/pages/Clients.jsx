@@ -29,7 +29,7 @@ export default function Clients() {
 
   const filtered = clients.filter(c => {
     const q = search.toLowerCase()
-    const matchQ = !q || [c.name, c.email, c.phone, c.company].some(v => v?.toLowerCase().includes(q))
+    const matchQ = !q || [c.name, c.email, c.phone].some(v => v?.toLowerCase().includes(q))
     const matchP = !planF || c.subscriptionPlan === planF
     const matchS = !statF || c.subscriptionStatus === statF
     return matchQ && matchP && matchS
@@ -97,7 +97,6 @@ export default function Clients() {
                         <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">{c.name}</div>
-                            <div className="text-xs text-gray-400">{c.company || '—'}</div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="text-gray-700">{c.email}</div>

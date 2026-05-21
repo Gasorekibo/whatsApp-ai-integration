@@ -1,6 +1,9 @@
 import { DataTypes } from 'sequelize';
 import CryptoJS from 'crypto-js';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export const SUBSCRIPTION_PLANS = {
   MESSAGE_ONLY:       'message_only',
@@ -38,24 +41,16 @@ export default (sequelize) => {
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
       validate: { isEmail: true }
     },
     phone: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+      allowNull: false
     },
-    company: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-
     // ── WhatsApp credentials ──────────────────────────────────────────
     whatsappBusinessId: {
       type: DataTypes.STRING,
       allowNull: true,
-      unique: true,
       comment: 'WhatsApp Cloud API phone_number_id — primary tenant key'
     },
     whatsappToken: {
@@ -72,11 +67,6 @@ export default (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true,
       comment: 'Webhook verify token set in Meta Developer Console'
-    },
-    whatsappToNumber: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Default recipient number for test messages'
     },
 
     // ── AI configuration ─────────────────────────────────────────────
@@ -122,10 +112,10 @@ export default (sequelize) => {
     trialEndDate:          { type: DataTypes.DATE, allowNull: true },
 
     // ── Per-client business configuration ────────────────────────────
-    companyName: {
+    botName: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: 'Display name used in AI prompts; falls back to name'
+      comment: 'Bot display name used in AI prompts and WhatsApp messages; falls back to name'
     },
     timezone: {
       type: DataTypes.STRING,
@@ -136,6 +126,7 @@ export default (sequelize) => {
     paymentRedirectUrl: {
       type: DataTypes.STRING,
       allowNull: true,
+      defaultValue: process.env.FLW_PAYMENT_REDIRECT_URL,
       comment: 'URL users land on after completing payment'
     },
     currency: {
@@ -147,6 +138,18 @@ export default (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: true,
       comment: 'Consultation deposit in the client currency; null = use DEPOSIT_AMOUNT env var'
+    },
+    requireDepositBeforeBooking: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'When true the calendar event is only created after the deposit payment is confirmed'
+    },
+    bookingTypes: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: ['calendar'],
+      comment: 'Booking types this client offers: "calendar" | "restaurant" | "hotel"'
     },
 
     // ── Payments — Flutterwave ────────────────────────────────────────
@@ -263,6 +266,11 @@ export default (sequelize) => {
   }, {
     tableName: 'clients',
     timestamps: true,
+    indexes: [
+      { unique: true, fields: ['email'],                 name: 'clients_email_unique' },
+      { unique: true, fields: ['phone'],                 name: 'clients_phone_unique' },
+      { unique: true, fields: ['whatsapp_business_id'],  name: 'clients_whatsapp_business_id_unique' }
+    ],
     hooks: {
       beforeCreate: (client) => {
         if (client.whatsappToken)         client.whatsappToken         = encrypt(client.whatsappToken);
@@ -302,6 +310,10 @@ export default (sequelize) => {
 
   Client.prototype.getDecryptedGeminiKey = function () {
     return decrypt(this.geminiApiKey);
+  };
+
+  Client.prototype.getDecryptedFlutterwaveKey = function () {
+    return decrypt(this.flutterwaveSecretKey) || process.env.FLW_SECRET_KEY || null;
   };
 
   Client.prototype.getDecryptedConfluenceToken = function () {
@@ -356,6 +368,15 @@ export default (sequelize) => {
   Client.prototype.toJSON = function () {
     const values = Object.assign({}, this.get());
     delete values.password;
+    // Never expose ciphertexts to API consumers — replace with a sentinel so the
+    // frontend knows the field is set without being able to accidentally re-submit
+    // the encrypted string as plaintext (which would cause double-encryption on save).
+    const SENSITIVE = [
+      'whatsappToken', 'geminiApiKey', 'pineconeApiKey',
+      'flutterwaveSecretKey', 'flutterwaveWebhookSecret',
+      'microsoftClientSecret', 'confluenceApiToken',
+    ];
+    SENSITIVE.forEach(f => { if (values[f]) values[f] = '__ENCRYPTED__'; });
     return values;
   };
 

@@ -560,6 +560,38 @@ class VectorDBService {
     }
 
     /**
+     * Delete documents matching a metadata filter (Pinecone paid plans).
+     * Falls back to a no-op with a warning on plans that don't support filter deletion.
+     * @param {object} filter - Pinecone metadata filter, e.g. { page_id: { $eq: '123' } }
+     * @param {string} namespace
+     */
+    async deleteByMetadataFilter(filter, namespace) {
+        try {
+            if (!this.isInitialized) {
+                await this.initialize();
+            }
+
+            logger.info('Deleting documents by metadata filter', { filter, namespace });
+
+            await this.index.namespace(namespace).deleteMany({ filter });
+
+            this.stats.deletes++;
+
+            logger.info('Documents deleted by metadata filter', { namespace });
+
+        } catch (error) {
+            // Metadata filter deletion is not available on all Pinecone plans.
+            // Log a warning but do not throw — subsequent upserts with stable IDs
+            // will overwrite any matching vectors, so this is safe to skip.
+            this.stats.errors++;
+            logger.warn('deleteByMetadataFilter failed — skipping (plan may not support filter deletes)', {
+                error: error.message,
+                namespace
+            });
+        }
+    }
+
+    /**
      * Delete all documents in a namespace
      * @param {string} namespace - Namespace to clear
      */
