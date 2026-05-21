@@ -1,11 +1,11 @@
 import logger from '../../../logger/logger.js';
 
 const HANDOFF_MESSAGES = {
-  en: "✅ I've connected you with our team. A team member will be with you shortly.\n\nIf no one responds within 30 minutes, I'll automatically resume to assist you.\n\nType *menu* or *restart* at any time to return to the main menu.",
-  fr: "✅ Je vous ai mis en contact avec notre équipe. Un membre de l'équipe vous répondra sous peu.\n\nSi personne ne répond dans les 30 minutes, je reprendrai automatiquement pour vous aider.\n\nTapez *menu* ou *retour* à tout moment pour revenir au menu principal.",
-  rw: "✅ Nakuvugishije n'itsinda ryacu. Umuntu w'itsinda azakuganiriza vuba.\n\nNiba ata muntu wasubije mu minota 30, nzakomeza kukugezaho.\n\nAndika *menu* cyangwa *subira* igihe icyo ari cyo cyose.",
-  sw: "✅ Nimekuunganisha na timu yetu. Mwanachama wa timu atakujibu hivi karibuni.\n\nIkiwa hakuna anayejibu ndani ya dakika 30, nitaendelea kukusaidia moja kwa moja.\n\nAndika *menu* au *rudi* wakati wowote kurudi kwenye menyu kuu.",
-  de: "✅ Ich habe Sie mit unserem Team verbunden. Ein Teammitglied wird sich in Kürze bei Ihnen melden.\n\nWenn niemand innerhalb von 30 Minuten antwortet, helfe ich Ihnen automatisch weiter.\n\nGeben Sie jederzeit *menu* oder *neustart* ein, um zum Hauptmenü zurückzukehren."
+  en: "✅ I've notified our team — a team member will reach out to you shortly.\n\nIn the meantime, I'm still here if you have any other questions! 😊",
+  fr: "✅ J'ai informé notre équipe — un membre vous contactera sous peu.\n\nEn attendant, je suis toujours là si vous avez d'autres questions ! 😊",
+  rw: "✅ Natangarije itsinda ryacu — umuntu azakuganiriza vuba.\n\nMuri iki gihe, nkiriho niba ufite andi makuru ushaka kumenya! 😊",
+  sw: "✅ Nimewaarifu timu yetu — mwanachama atakuwasiliana nawe hivi karibuni.\n\nKwa sasa, bado nipo hapa kama una maswali mengine! 😊",
+  de: "✅ Ich habe unser Team benachrichtigt — ein Teammitglied wird sich in Kürze bei Ihnen melden.\n\nIn der Zwischenzeit bin ich noch für weitere Fragen da! 😊"
 };
 
 /**
@@ -22,9 +22,9 @@ export async function handleHumanHandoff(session, client, from, send, transactio
 
   session.state = {
     ...session.state,
-    activeIntent:   'handoff',
-    aiPaused:       true,
-    pausedAt:       new Date().toISOString()
+    activeIntent:   'general',  // Stay active — bot keeps responding while team is notified
+    aiPaused:       false,
+    pausedAt:       null
   };
   session.changed('state', true);
   await session.save({ transaction });

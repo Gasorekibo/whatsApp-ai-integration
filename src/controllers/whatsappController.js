@@ -53,7 +53,10 @@ function hasValidLanguage(session) {
 // ── Quick intent detection (keyword shortcuts bypass the intent list) ─────────
 
 const QUICK_INTENT_MAP = [
-  ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
+  // Handoff keywords must be explicit "I want a human" phrases.
+  // Broad words like "team", "staff", "person" are intentionally excluded —
+  // they appear in normal questions ("contact your team", "your staff hours").
+  ['handoff',  /\b(talk to (?:a |an )?(human|agent|person|someone)|speak to (?:a |an )?(human|agent|person|someone)|connect me to|real (human|agent|person)|live (agent|support|chat)|representative|muntu|umuntu|msaada wa binadamu|menschlich|agente humano)\b/i],
   // order: English + French + Kinyarwanda (gufata, kuza, kwiza, naza, nshaka kuza, ndashaka) + Swahili (miadi, ninataka kuja, nataka) + German
   // NOTE: "pay/payment" intentionally omitted — too ambiguous (e.g. "how much do I pay for a motorbike").
   //       Payment-as-booking intent is handled by the Gemini classifier which has full context.

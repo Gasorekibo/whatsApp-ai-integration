@@ -31,7 +31,7 @@ Classify the customer message below into exactly ONE of these categories:
 general   — ANY question seeking information: FAQs, contact info, location, hours, website, documents required, eligibility, procedures, how something works, what to bring, policies, requirements, or detailed questions about a specific service/treatment/product. Also includes questions about EXTERNAL things not provided by this business (transport costs, taxi/motorbike fares, travel time, directions, nearby landmarks, parking fees charged by others, etc.)
 services  — ONLY when the user explicitly wants to browse or see the full list of services/products (e.g. "show me your services", "what do you offer?", "list your packages", "what treatments are available?")
 order     — wanting to book, schedule, or confirm an appointment WITH THIS BUSINESS; expressing intent to visit or come ("I'll come tomorrow", "I want to come on Thursday", "I'd like to visit", "book this service", "can I come", "I want that service"); paying for THIS BUSINESS's service; or checking booking/order status
-handoff   — wanting to speak with a real human, agent, or staff member
+handoff   — explicitly wanting to speak with a real human/agent/person RIGHT NOW (e.g. "talk to a human", "connect me to an agent", "I want to speak to someone"). NOT included: asking for contact info ("how do I contact you?", "what's your phone number?", "how can I reach your team?") — those are "general".
 unknown   — cannot clearly determine what the customer wants
 
 Key rules:
