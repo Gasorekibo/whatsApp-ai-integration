@@ -11,8 +11,7 @@ const LANGUAGE_ROWS = [
 
 // Multilingual header/body — shown before we know the user's language
 const HEADER_TEXT = "Choose your language";
-const BODY_TEXT = `Before I can assist you, I would like to know your preferred language.
-The language you select will be used for all our interactions, including providing responses.`;
+const BODY_TEXT = `Before I can assist you, I would like to know your preferred language of conversation.`;
 const FOOTER_TEXT  = 'English is recommended ⭐';
 const BUTTON_LABEL = 'Select Language';
 const SECTION_TITLE = 'Available Languages';

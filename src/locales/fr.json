@@ -24,5 +24,7 @@
   "invalid_service_number": "⚠️ Veuillez choisir un numéro entre *1* et *{{max}}*. Réessayez !",
   "booking_cancelled": "❌ Réservation annulée. Comment puis-je vous aider autrement ?",
   "booking_failed": "❌ Désolé, nous n'avons pas pu créer votre rendez-vous pour le moment. Veuillez nous contacter directement ou réessayer plus tard.",
-  "booking_payment_failed": "❌ Nous n'avons pas pu générer votre lien de paiement pour le moment. Veuillez nous contacter directement pour finaliser votre réservation."
+  "booking_payment_failed": "❌ Nous n'avons pas pu générer votre lien de paiement pour le moment. Veuillez nous contacter directement pour finaliser votre réservation.",
+  "rest_booking_failed": "❌ Désolé, nous n'avons pas pu finaliser votre réservation de table. Veuillez nous contacter directement.",
+  "hotel_booking_failed": "❌ Désolé, nous n'avons pas pu finaliser votre réservation de chambre. Veuillez nous contacter directement."
 }

@@ -125,24 +125,36 @@ export async function handleOrderRouting(to, client, language = 'en') {
 }
 
 /**
- * Sends the booking type sub-menu (calendar / restaurant / hotel).
+ * Returns the booking types this client offers (defaults to ['calendar']).
+ */
+export function getClientBookingTypes(client) {
+  const types = client?.bookingTypes;
+  if (Array.isArray(types) && types.length > 0) return types;
+  return ['calendar'];
+}
+
+/**
+ * Sends the booking type sub-menu filtered to the types this client offers.
+ * Callers should only call this when the client offers 2+ booking types.
  */
 export async function handleBookingTypeRouting(to, client, language = 'en') {
-  const l = (LABELS[language] || LABELS.en).bookingType;
+  const l    = (LABELS[language] || LABELS.en).bookingType;
+  const types = getClientBookingTypes(client);
 
-  logger.whatsapp('info', 'Sending booking type sub-menu', { to: `***${String(to).slice(-4)}`, language });
+  logger.whatsapp('info', 'Sending booking type sub-menu', { to: `***${String(to).slice(-4)}`, language, types });
+
+  const rows = types
+    .filter(type => l[type])
+    .map(type => ({
+      id:          `${BOOKING_TYPE_PREFIX}${type}`,
+      title:       l[type].title.slice(0, 24),
+      description: l[type].description.slice(0, 72),
+    }));
 
   return sendWhatsAppInteractiveList(to, client, {
     header:   client?.botName || 'Booking',
     body:     l.body,
     button:   l.button,
-    sections: [{
-      title: l.section,
-      rows: [
-        { id: `${BOOKING_TYPE_PREFIX}calendar`,   title: l.calendar.title.slice(0, 24),   description: l.calendar.description.slice(0, 72) },
-        { id: `${BOOKING_TYPE_PREFIX}restaurant`, title: l.restaurant.title.slice(0, 24), description: l.restaurant.description.slice(0, 72) },
-        { id: `${BOOKING_TYPE_PREFIX}hotel`,      title: l.hotel.title.slice(0, 24),      description: l.hotel.description.slice(0, 72) },
-      ]
-    }]
+    sections: [{ title: l.section, rows }]
   });
 }

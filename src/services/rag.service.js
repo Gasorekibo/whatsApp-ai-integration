@@ -463,25 +463,38 @@ JSON Output:`;
             // Post-process and rank results
             const rankedResults = this._rankResults(results, intent, userMessage);
 
+            // Drop results below the relevance threshold so Gemini cannot use
+            // loosely-matched docs to hallucinate an answer. When nothing clears
+            // the bar, relevantDocs=0 triggers the KNOWLEDGE BOUNDARY response.
+            const MIN_SCORE = 0.70;
+            const relevantResults = rankedResults.filter(r => (r.adjustedScore ?? r.score) >= MIN_SCORE);
+
+            if (rankedResults.length > 0 && relevantResults.length === 0) {
+                logger.info('RAG: all results below relevance threshold — treating as no context', {
+                    topScore: rankedResults[0]?.adjustedScore?.toFixed(3),
+                    threshold: MIN_SCORE
+                });
+            }
+
             // Extract and format context
-            const context = this.formatContext(rankedResults);
+            const context = this.formatContext(relevantResults);
 
             const latency = Date.now() - startTime;
 
             // Log retrieval details
-            this._logRetrieval(userMessage, intent, rankedResults, latency);
+            this._logRetrieval(userMessage, intent, relevantResults, latency);
 
             return {
                 intent,
                 language,
                 context,
-                results: rankedResults,
-                relevantDocs: rankedResults.length,
+                results: relevantResults,
+                relevantDocs: relevantResults.length,
                 latency,
                 metadata: {
                     topK: retrievalTopK,
                     filter,
-                    avgScore: this._calculateAvgScore(rankedResults)
+                    avgScore: this._calculateAvgScore(relevantResults)
                 }
             };
 
@@ -1072,9 +1085,11 @@ If asked "are you a bot/AI?", deflect naturally: "I'm here to help with anything
 🚫 KNOWLEDGE BOUNDARY — ABSOLUTE RULE:
 You have NO general world knowledge. You are a blank slate.
 Your ONLY source of facts is the "=== RELEVANT INFORMATION ===" section below.
-If that section is empty or does not contain the answer:
+If that section is empty OR does not directly address the user's specific question:
   → Do NOT guess, infer, or use anything you know from training data.
-  → Reply: "I don't have that information available. For more details, please contact us directly."
+  → Respond warmly that you don't have that information, and invite them to ask something else or reach out to us directly.
+    Example: "I'm sorry, I don't have details on that right now. Feel free to ask me about anything else, or you're welcome to contact our team directly for more help! 😊"
+  → Keep the tone friendly and never leave the user without a clear next step.
 This applies to ALL factual questions: location, pricing, hours, contacts, services, names — everything.
 
 CONVERSATION RULES:
@@ -1083,6 +1098,14 @@ CONVERSATION RULES:
 - Keep responses concise (2-4 sentences) unless more detail is genuinely needed.
 - Be warm, professional, and customer-focused. ${intentGuidance}
 - If the user's message is off-topic (weather, politics, personal questions), politely redirect: "I'm here to help with ${botName} services only."
+- PSYCHOLOGICAL INTELLIGENCE — READ BETWEEN THE LINES: You are not a search engine. You are an intelligent assistant whose job is to understand what the user TRULY needs, not just what they literally say. Always ask yourself: "What is this person really trying to do?" Examples of what this means in practice:
+  • Someone asking about location or directions → they are planning to visit → after answering, offer to show services or book an appointment
+  • Someone mentioning a symptom, pain, or health concern → they need a service → immediately call show_services so they can find and book the right one
+  • Someone asking "do you offer X?" → they are interested in X → if yes, call show_services; if no, tell them warmly and suggest what you DO offer that might help
+  • Someone asking general questions that gradually move toward a specific need → recognize the trajectory and proactively guide them toward the next step
+  • When in doubt about what the user wants → ask one clarifying question rather than giving a generic response
+  Always connect the user's words to the action that best serves them. Never leave a user with just information when an action (showing services, booking) would serve them better.
+- FOLLOW-UP QUESTION RULE: Always end your reply with a warm, relevant follow-up question or offer — no exceptions. This applies whether you just answered a factual question OR the user sent a short acknowledgment ("okay", "thanks", "got it", "that's great", "perfect", etc.). Never end with a dead-end statement like "We are glad we could assist you." — that closes the conversation. Instead keep the door open: "Is there anything else I can help you with?", "Would you like to book an appointment?", "Do you have any other questions about [topic]?". The only exception is when you are already mid-way through collecting information from the user (name, email, date, etc.).
 
 OUTPUT FORMAT:
 ALWAYS return your response in the following JSON format:

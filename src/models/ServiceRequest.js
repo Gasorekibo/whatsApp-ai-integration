@@ -23,10 +23,19 @@ export default (sequelize) => {
     },
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       validate: {
-        isEmail: true
+        isEmail: {
+          args: true,
+          msg: 'Must be a valid email address'
+        }
       }
+    },
+    bookingType: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'calendar',
+      comment: 'calendar | restaurant | hotel'
     },
     phone: {
       type: DataTypes.STRING,

@@ -24,5 +24,7 @@
   "invalid_service_number": "⚠️ Hitamo umubare uri hagati ya *1* na *{{max}}*. Ongera ugerageze!",
   "booking_cancelled": "❌ Kubika byahagaritswe. Ni iki kindi nshobora kukugirira ngo?",
   "booking_failed": "❌ Bihangane, ntabashije gufata gahunda yawe ubu. Mwaduhamagara mu buryo butaziguye cyangwa mugerageze nyuma.",
-  "booking_payment_failed": "❌ Ntabashije gukora urunigi rwo kwishyura ubu. Mwaduhamagara mu buryo butaziguye kugira ngo murangize kubika."
+  "booking_payment_failed": "❌ Ntabashije gukora urunigi rwo kwishyura ubu. Mwaduhamagara mu buryo butaziguye kugira ngo murangize kubika.",
+  "rest_booking_failed": "❌ Bihangane, ntabashije kurangiza kubika ameza. Mwaduhamagara mu buryo butaziguye.",
+  "hotel_booking_failed": "❌ Bihangane, ntabashije kurangiza kubika icyumba. Mwaduhamagara mu buryo butaziguye."
 }

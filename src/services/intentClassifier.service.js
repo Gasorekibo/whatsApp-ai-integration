@@ -28,15 +28,20 @@ export async function classifyIntent(message, client) {
     const prompt = `You are an intent classifier for a WhatsApp business assistant.
 Classify the customer message below into exactly ONE of these categories:
 
-general   — ANY question seeking information: FAQs, contact info, location, hours, website, documents required, eligibility, procedures, how something works, what to bring, policies, requirements, or detailed questions about a specific service/treatment/product
+general   — ANY question seeking information: FAQs, contact info, location, hours, website, documents required, eligibility, procedures, how something works, what to bring, policies, requirements, or detailed questions about a specific service/treatment/product. Also includes questions about EXTERNAL things not provided by this business (transport costs, taxi/motorbike fares, travel time, directions, nearby landmarks, parking fees charged by others, etc.)
 services  — ONLY when the user explicitly wants to browse or see the full list of services/products (e.g. "show me your services", "what do you offer?", "list your packages", "what treatments are available?")
-order     — wanting to book, schedule, or confirm an appointment; expressing intent to visit or come ("I'll come tomorrow", "I want to come on Thursday", "I'd like to visit", "book this service", "can I come", "I want that service"); making a payment; or checking booking/order status
-handoff   — wanting to speak with a real human, agent, or staff member
+order     — wanting to book, schedule, or confirm an appointment WITH THIS BUSINESS; expressing intent to visit or come ("I'll come tomorrow", "I want to come on Thursday", "I'd like to visit", "book this service", "can I come", "I want that service"); paying for THIS BUSINESS's service; or checking booking/order status
+handoff   — explicitly wanting to speak with a real human/agent/person RIGHT NOW (e.g. "talk to a human", "connect me to an agent", "I want to speak to someone"). NOT included: asking for contact info ("how do I contact you?", "what's your phone number?", "how can I reach your team?") — those are "general".
 unknown   — cannot clearly determine what the customer wants
 
 Key rules:
-- If the message is a specific question (starts with what, which, how, who, when, why, can, is, are, do, does) → prefer "general" over "services" unless the user is explicitly asking to see/browse a list.
+- Think about what the user TRULY needs, not just what they literally said. Read between the lines.
+- If the message is a specific question (starts with what, which, how, who, when, why, can, is, are, do, does) → prefer "general" UNLESS the question reveals they want to use a service (e.g. "can I come for a check-up?", "do you treat stomach pain?", "what do I need to bring for an appointment?") → those are "order".
+- Any mention of a personal symptom, health problem, or desire for a treatment/check-up/consultation → "order".
 - Expressions of intent to visit, come, or book ("I'll come", "I want to come", "I'd like to visit", "I want that service", "book for me") → always "order".
+- Questions about external costs or logistics (motorbike fare, taxi price, travel time, bus routes, directions from a location) → always "general", never "order".
+- Mentions of "pay" or "payment" alone do NOT mean "order" — only classify as "order" if the user is clearly paying for or booking this business's service.
+- When in doubt between "general" and "order" — if the user seems to be moving toward using the business, lean toward "order".
 
 Reply with ONLY the single word (no punctuation, no explanation).
 

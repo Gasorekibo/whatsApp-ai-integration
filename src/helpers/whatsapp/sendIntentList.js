@@ -6,25 +6,25 @@ export const VALID_INTENTS  = ['general', 'services', 'order', 'handoff'];
 
 const LABELS = {
   en: {
-    body:     'Please select one Service that best matches your needs:',
+    body:     'Please select one Category that best matches your needs:',
     button:   'Choose',
     section:  'Options',
-    general:  { title: '💬 General inquiries',    description: 'Contact info, hours, location' },
+    general:  { title: '💬 General inquiries',    description: 'Contact info, hours, location,...' },
     services: { title: '🛠️ Services & products',  description: 'Explore what we offer' },
     order:    { title: '📋 Order / Booking',       description: 'Book, pay or check status' },
     handoff:  { title: '🙋 Talk to a person',      description: 'Connect with our team' }
   },
   fr: {
-    body:     'Comment puis-je vous aider?',
+    body:     'Veuillez sélectionner une catégorie qui correspond le mieux à vos besoins :',
     button:   'Choisir',
     section:  'Options',
-    general:  { title: '💬 Renseignements',        description: 'Contact, horaires, localisation' },
+    general:  { title: '💬 Renseignements',        description: 'Contact, horaires, localisation,...' },
     services: { title: '🛠️ Services et produits',  description: 'Découvrez nos offres' },
     order:    { title: '📋 Commande / Réservation', description: 'Réserver, payer ou vérifier' },
     handoff:  { title: '🙋 Parler à quelqu\'un',   description: 'Contacter notre équipe' }
   },
   rw: {
-    body:     'Dutanga Serivisi zitandukanye, Hitamo serivisi wumva ushaka ko tugufasha?',
+    body:     'Nyamuneka hitamo icyiciro kimwe gihuye neza n’ibyo ukeneye:',
     button:   'Hitamo',
     section:  'Amahitamo',
     general:  { title: '💬 Ibibazo rusange',        description: 'Telefoni, amasaha, aho tuba' },
@@ -33,7 +33,7 @@ const LABELS = {
     handoff:  { title: '🙋 Vugana n\'umuntu',       description: 'Vugana n\'itsinda ryacu' }
   },
   sw: {
-    body:     'Naweza kukusaidiaje leo?',
+    body:     'Tafadhali chagua kundi moja linaloendana vyema na mahitaji yako:',
     button:   'Chagua',
     section:  'Chaguo',
     general:  { title: '💬 Maswali ya jumla',       description: 'Mawasiliano, saa, mahali' },
@@ -42,7 +42,7 @@ const LABELS = {
     handoff:  { title: '🙋 Zungumza na mtu',         description: 'Unganishwa na timu yetu' }
   },
   de: {
-    body:     'Wie kann ich Ihnen heute helfen?',
+    body:     'Bitte wählen Sie eine Kategorie aus, die Ihren Bedürfnissen am besten entspricht:',
     button:   'Wählen',
     section:  'Optionen',
     general:  { title: '💬 Allgemeine Anfragen',    description: 'Kontakt, Öffnungszeiten, Standort' },

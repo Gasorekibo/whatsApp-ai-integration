@@ -3,13 +3,17 @@ import getCalendarData from '../../../utils/getCalendarData.js';
 import { bookingService } from '../../../services/booking.service.js';
 import dbConfig from '../../../models/index.js';
 import { sendWhatsAppInteractiveList } from '../sendWhatsAppInteractiveList.js';
+import { sendWhatsAppButtons }         from '../sendWhatsAppButtons.js';
 import logger from '../../../logger/logger.js';
 import { redisGet, redisSet, redisDel } from '../../../utils/redis.js';
 import i18next from '../../../config/i18n.js';
 import ragService from '../../../services/rag.service.js';
 
-export const SLOT_PREFIX = 'slot:';
-export const DAY_PREFIX  = 'day:';
+export const SLOT_PREFIX        = 'slot:';
+export const DAY_PREFIX         = 'day:';
+export const BOOKING_SVC_PREFIX = 'bsvc:';
+export const BOOKING_CONFIRM_BTN = 'bk_confirm';
+export const BOOKING_CANCEL_BTN  = 'bk_cancel';
 
 const SLOTS_CACHE_TTL    = 10 * 60; // 10 minutes
 const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
@@ -33,13 +37,31 @@ async function getClientServices(clientId, namespace) {
   return services || [];
 }
 
-// Sends a numbered plain-text list (no interactive) so replies come back as
-// regular text and are handled inside the booking flow (not the interactive handler).
-async function sendServiceOptionsForBooking(from, send, services, introText) {
+// ≤ 10 services → interactive list (tappable, bsvc:N IDs routed by controller).
+// > 10 services → numbered plain-text list (user types number or service name).
+async function sendBookingServiceList(from, client, services, introText) {
+  const INTERACTIVE_LIMIT = 10;
+
+  if (services.length <= INTERACTIVE_LIMIT) {
+    const rows = services.map((s, i) => ({
+      id:          `${BOOKING_SVC_PREFIX}${i}`,
+      title:       (s.short || s.name).slice(0, 24),
+      description: (s.details?.trim() || '').slice(0, 72) || undefined,
+    }));
+    return sendWhatsAppInteractiveList(from, client, {
+      header:   '📋 Select a Service',
+      body:     introText,
+      button:   'Choose',
+      sections: [{ title: 'Available services', rows }],
+    });
+  }
+
+  // Fallback: plain-text numbered list
   let msg = introText + '\n\n';
   services.forEach((s, i) => { msg += `${i + 1}. ${s.name}\n`; });
-  msg += '\nReply by *Copying* the service name you want to book.';
-  await send(from, msg);
+  msg += '\nReply with the *number* of the service you want to book.';
+  // send() is injected via the caller for the text path
+  return { _textFallback: msg };
 }
 
 // Case-insensitive fuzzy match: exact first, then starts-with, then contains.
@@ -58,6 +80,7 @@ function slotsKey(clientId, from) { return `bslots:${clientId}:${from}`; }
 
 function initBooking(session, from) {
   return {
+    bookingType:   'calendar',
     step:          'await_day',
     serviceName:   session.state.selectedServiceName || null,
     slotStart:     null,
@@ -69,7 +92,66 @@ function initBooking(session, from) {
   };
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+function initRestaurantBooking(session, from) {
+  return {
+    bookingType:     'restaurant',
+    step:            'await_rest_date',
+    name:            session.name || null,
+    phone:           from,
+    date:            null,
+    time:            null,
+    guests:          null,
+    specialRequests: null,
+  };
+}
+
+function initHotelBooking(session, from) {
+  return {
+    bookingType: 'hotel',
+    step:        'await_hotel_checkin',
+    name:        session.name || null,
+    email:       session.state.email || null,
+    phone:       from,
+    checkIn:     null,
+    checkOut:    null,
+    roomType:    null,
+    guests:      null,
+  };
+}
+
+// ── Entry points ──────────────────────────────────────────────────────────────
+
+export async function startRestaurantBookingFlow(from, client, session, locale, send, saveSession) {
+  if (!session.state.booking) {
+    session.state.booking = initRestaurantBooking(session, from);
+  } else {
+    session.state.booking.bookingType = 'restaurant';
+    session.state.booking.step        = 'await_rest_date';
+  }
+  session.changed('state', true);
+  await saveSession();
+  await send(from,
+    '🍽️ *Restaurant Table Reservation*\n\n' +
+    '📅 What date would you like to reserve a table?\n' +
+    '_(e.g. January 15, tomorrow, or 2024-01-15)_'
+  );
+}
+
+export async function startHotelBookingFlow(from, client, session, locale, send, saveSession) {
+  if (!session.state.booking) {
+    session.state.booking = initHotelBooking(session, from);
+  } else {
+    session.state.booking.bookingType = 'hotel';
+    session.state.booking.step        = 'await_hotel_checkin';
+  }
+  session.changed('state', true);
+  await saveSession();
+  await send(from,
+    '🏨 *Hotel Room Reservation*\n\n' +
+    '📅 What is your check-in date?\n' +
+    '_(e.g. January 15 or 2024-01-15)_'
+  );
+}
 
 export async function startBookingFlow(from, client, session, locale, send, saveSession) {
   if (!session.state.booking) {
@@ -102,10 +184,9 @@ export async function startBookingFlow(from, client, session, locale, send, save
 
     const services = await getClientServices(clientId, namespace);
     if (services.length > 0) {
-      await sendServiceOptionsForBooking(
-        from, send, services,
-        '📋 Which service would you like to book an appointment for?'
-      );
+      const intro  = '📋 Which service would you like to book an appointment for?';
+      const result = await sendBookingServiceList(from, client, services, intro);
+      if (result?._textFallback) await send(from, result._textFallback);
     } else {
       await send(from,
         '📋 Which service would you like to book an appointment for?\n\n' +
@@ -282,7 +363,7 @@ export async function handleSlotSelection(from, client, session, slotIndex, loca
   b.slotFormatted = slot.formatted;
   session.changed('state', true);
 
-  await promptNextField(from, session, locale, send, saveSession);
+  await promptNextField(from, client, session, locale, send, saveSession);
 }
 
 // ── Handles text messages while booking is active ────────────────────────────
@@ -297,7 +378,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
   if (['no', 'cancel', 'stop', 'back', 'quit', 'oya', 'hapana', 'non', 'nein', 'reka', 'harakabura'].includes(lower)) {
     session.state.booking         = null;
     session.state.activeOrderType = null;
-    session.state.activeIntent    = null;
+    session.state.activeIntent    = 'general';
     session.changed('state', true);
     await saveSession();
     const t = i18next.getFixedT(locale);
@@ -338,7 +419,8 @@ export async function handleBookingTextReply(from, client, session, text, locale
           return true;
         }
         await send(from, `Please reply with a number between 1 and ${services.length}.`);
-        await sendServiceOptionsForBooking(from, send, services, 'Here are our available services:');
+        const r1 = await sendBookingServiceList(from, client, services, 'Here are our available services:');
+        if (r1?._textFallback) await send(from, r1._textFallback);
         return true;
       }
 
@@ -354,10 +436,8 @@ export async function handleBookingTextReply(from, client, session, text, locale
 
       // No match — show the list again
       await send(from, `❌ We don't currently offer "*${text.trim()}*".`);
-      await sendServiceOptionsForBooking(
-        from, send, services,
-        'Here are the services you can book an appointment for:'
-      );
+      const r2 = await sendBookingServiceList(from, client, services, 'Here are the services you can book an appointment for:');
+      if (r2?._textFallback) await send(from, r2._textFallback);
       return true;
     }
 
@@ -379,7 +459,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
       b.name = text.trim();
       session.changed('state', true);
       await saveSession();
-      await promptNextField(from, session, locale, send, saveSession);
+      await promptNextField(from, client, session, locale, send, saveSession);
       return true;
     }
 
@@ -394,27 +474,212 @@ export async function handleBookingTextReply(from, client, session, text, locale
       b.email = text.trim().toLowerCase();
       session.changed('state', true);
       await saveSession();
-      await sendConfirmationSummary(from, session, locale, send, saveSession);
+      await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       return true;
     }
 
     case 'await_confirm': {
       const CONFIRM_YES = new Set(['yes', 'oui', 'yego', 'ndio', 'ndiyo', 'ja', 'confirm', 'ok', 'okay', 'neza', 'sawa', 'sure', 'si']);
       const CONFIRM_NO  = new Set(['no', 'non', 'oya', 'hapana', 'nein', 'cancel', 'stop', 'back']);
-      if (CONFIRM_YES.has(lower)) {
+      // Match on the full message OR just the first meaningful word ("yes please", "yes!", "no thanks")
+      const firstWord = lower.split(/[\s,!.?;:]+/)[0];
+      if (CONFIRM_YES.has(lower) || CONFIRM_YES.has(firstWord)) {
         await finalizeBooking(from, client, session, locale, send, saveSession);
-      } else if (CONFIRM_NO.has(lower)) {
+      } else if (CONFIRM_NO.has(lower) || CONFIRM_NO.has(firstWord)) {
         session.state.booking         = null;
         session.state.activeOrderType = null;
-        session.state.activeIntent    = null;
+        session.state.activeIntent    = 'general';
         session.changed('state', true);
         await saveSession();
         const t_i = i18next.getFixedT(locale);
         await send(from, t_i('booking_cancelled') || '❌ Booking cancelled. How else can I help you?');
       } else {
         // Re-show summary so user knows what they're confirming
-        await sendConfirmationSummary(from, session, locale, send, saveSession);
+        await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       }
+      return true;
+    }
+
+    // ── Restaurant steps ──────────────────────────────────────────────────────
+
+    case 'await_rest_date': {
+      const dateText = text.trim();
+      if (dateText.length < 2) {
+        await send(from, '📅 Please enter a valid date (e.g. *January 15*, *tomorrow*, or *2024-01-15*).');
+        return true;
+      }
+      b.date = dateText;
+      b.step = 'await_rest_time';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '🕐 What time would you like to arrive?\n_(e.g. 7:00 PM or 19:00)_');
+      return true;
+    }
+
+    case 'await_rest_time': {
+      const timeText = text.trim();
+      if (timeText.length < 2) {
+        await send(from, '🕐 Please enter a valid time (e.g. *7:00 PM* or *19:00*).');
+        return true;
+      }
+      b.time = timeText;
+      b.step = 'await_rest_guests';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '👥 How many guests will be dining?');
+      return true;
+    }
+
+    case 'await_rest_guests': {
+      const guestN = parseInt(text.trim(), 10);
+      if (!guestN || guestN < 1 || guestN > 100) {
+        await send(from, '👥 Please enter a valid number of guests (e.g. *2*).');
+        return true;
+      }
+      b.guests = guestN;
+      if (!b.name) {
+        b.step = 'await_rest_name';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, '👤 What name should the reservation be under?');
+      } else {
+        b.step = 'await_rest_special';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, '✏️ Any special requests?\n_(dietary needs, occasion, seating preference — reply *none* to skip)_');
+      }
+      return true;
+    }
+
+    case 'await_rest_name': {
+      if (text.trim().length < 2) {
+        await send(from, '👤 Please enter a valid name for the reservation.');
+        return true;
+      }
+      b.name = text.trim();
+      b.step = 'await_rest_special';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '✏️ Any special requests?\n_(dietary needs, occasion, seating preference — reply *none* to skip)_');
+      return true;
+    }
+
+    case 'await_rest_special': {
+      const SKIP_WORDS = new Set(['none', 'no', 'oya', 'hapana', 'non', 'nein', 'nta', 'ntacyo', 'skip', 'n/a', '-']);
+      b.specialRequests = SKIP_WORDS.has(lower) ? null : text.trim();
+      session.changed('state', true);
+      await saveSession();
+      await sendConfirmationSummary(from, client, session, locale, send, saveSession);
+      return true;
+    }
+
+    // ── Hotel steps ───────────────────────────────────────────────────────────
+
+    case 'await_hotel_checkin': {
+      const ci = text.trim();
+      if (ci.length < 2) {
+        await send(from, '📅 Please enter a valid check-in date (e.g. *January 15* or *2024-01-15*).');
+        return true;
+      }
+      b.checkIn = ci;
+      b.step    = 'await_hotel_checkout';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '📅 What is your check-out date?');
+      return true;
+    }
+
+    case 'await_hotel_checkout': {
+      const co = text.trim();
+      if (co.length < 2) {
+        await send(from, '📅 Please enter a valid check-out date (e.g. *January 17* or *2024-01-17*).');
+        return true;
+      }
+      b.checkOut = co;
+      b.step     = 'await_hotel_room_type';
+      session.changed('state', true);
+      await saveSession();
+      await send(from,
+        '🛏️ What type of room would you like?\n\n' +
+        '1. Standard\n' +
+        '2. Deluxe\n' +
+        '3. Suite\n\n' +
+        'Reply with *1*, *2*, or *3*.'
+      );
+      return true;
+    }
+
+    case 'await_hotel_room_type': {
+      const ROOM_MAP = { '1': 'Standard', '2': 'Deluxe', '3': 'Suite', 'standard': 'Standard', 'deluxe': 'Deluxe', 'suite': 'Suite' };
+      const roomType = ROOM_MAP[lower] || ROOM_MAP[text.trim().toLowerCase()];
+      if (!roomType) {
+        await send(from, '🛏️ Please choose: reply *1* for Standard, *2* for Deluxe, or *3* for Suite.');
+        return true;
+      }
+      b.roomType = roomType;
+      b.step     = 'await_hotel_guests';
+      session.changed('state', true);
+      await saveSession();
+      await send(from, '👥 How many guests will be staying?');
+      return true;
+    }
+
+    case 'await_hotel_guests': {
+      const hotelN = parseInt(text.trim(), 10);
+      if (!hotelN || hotelN < 1 || hotelN > 50) {
+        await send(from, '👥 Please enter a valid number of guests (e.g. *2*).');
+        return true;
+      }
+      b.guests = hotelN;
+      if (!b.name) {
+        b.step = 'await_hotel_name';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, '👤 What is your full name for the booking?');
+      } else if (!b.email) {
+        b.step = 'await_hotel_email';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, "📧 What is your email address?\nWe'll send your booking confirmation there.");
+      } else {
+        session.changed('state', true);
+        await saveSession();
+        await sendConfirmationSummary(from, client, session, locale, send, saveSession);
+      }
+      return true;
+    }
+
+    case 'await_hotel_name': {
+      if (text.trim().length < 2) {
+        await send(from, '👤 Please enter your full name.');
+        return true;
+      }
+      b.name = text.trim();
+      if (!b.email) {
+        b.step = 'await_hotel_email';
+        session.changed('state', true);
+        await saveSession();
+        await send(from, "📧 What is your email address?\nWe'll send your booking confirmation there.");
+      } else {
+        session.changed('state', true);
+        await saveSession();
+        await sendConfirmationSummary(from, client, session, locale, send, saveSession);
+      }
+      return true;
+    }
+
+    case 'await_hotel_email': {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim())) {
+        await send(from,
+          "❌ That doesn't look like a valid email address.\n" +
+          'Please enter a valid email (e.g. *name@example.com*).'
+        );
+        return true;
+      }
+      b.email = text.trim().toLowerCase();
+      session.changed('state', true);
+      await saveSession();
+      await sendConfirmationSummary(from, client, session, locale, send, saveSession);
       return true;
     }
 
@@ -425,7 +690,7 @@ export async function handleBookingTextReply(from, client, session, text, locale
 
 // ── Ask for the next missing piece of info ────────────────────────────────────
 
-async function promptNextField(from, session, locale, send, saveSession) {
+async function promptNextField(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
 
   if (!b.name) {
@@ -444,15 +709,20 @@ async function promptNextField(from, session, locale, send, saveSession) {
     return;
   }
 
-  await sendConfirmationSummary(from, session, locale, send, saveSession);
+  await sendConfirmationSummary(from, client, session, locale, send, saveSession);
 }
 
-// ── Show booking summary and ask user to confirm ──────────────────────────────
+// ── Confirmation summaries (with reply buttons) ───────────────────────────────
 
-async function sendConfirmationSummary(from, session, locale, send, saveSession) {
+const CONFIRM_BUTTONS = [
+  { id: BOOKING_CONFIRM_BTN, title: '✅ Confirm' },
+  { id: BOOKING_CANCEL_BTN,  title: '❌ Cancel'  },
+];
+
+async function sendCalendarConfirmationSummary(from, client, session, locale, send, saveSession) {
   const b = session.state.booking;
 
-  const summary = [
+  const body = [
     '📋 *Booking Summary*',
     '',
     `Service:    ${b.serviceName}`,
@@ -460,27 +730,209 @@ async function sendConfirmationSummary(from, session, locale, send, saveSession)
     `Name:       ${b.name}`,
     `Email:      ${b.email}`,
     `Phone:      ${b.phone}`,
-    '',
-    'Reply *Yes* to confirm or *No* to cancel.',
   ].join('\n');
 
   b.step = 'await_confirm';
   session.changed('state', true);
   await saveSession();
-  await send(from, summary);
+  await sendWhatsAppButtons(from, client, { body, footer: 'Tap a button to confirm or cancel', buttons: CONFIRM_BUTTONS });
 }
 
-// ── Create the Google Calendar event and ServiceRequest record ────────────────
+async function sendRestaurantConfirmationSummary(from, client, session, locale, send, saveSession) {
+  const b = session.state.booking;
+
+  const lines = [
+    '📋 *Reservation Summary*',
+    '',
+    '🍽️ Type:    Restaurant Table',
+    `📅 Date:    ${b.date}`,
+    `🕐 Time:    ${b.time}`,
+    `👥 Guests:  ${b.guests}`,
+    `👤 Name:    ${b.name}`,
+    `📞 Phone:   ${b.phone}`,
+  ];
+  if (b.specialRequests) lines.push(`✏️ Notes:   ${b.specialRequests}`);
+
+  b.step = 'await_confirm';
+  session.changed('state', true);
+  await saveSession();
+  await sendWhatsAppButtons(from, client, { body: lines.join('\n'), footer: 'Tap a button to confirm or cancel', buttons: CONFIRM_BUTTONS });
+}
+
+async function sendHotelConfirmationSummary(from, client, session, locale, send, saveSession) {
+  const b = session.state.booking;
+
+  const lines = [
+    '📋 *Reservation Summary*',
+    '',
+    '🏨 Type:      Hotel Room',
+    `📅 Check-in:  ${b.checkIn}`,
+    `📅 Check-out: ${b.checkOut}`,
+    `🛏️ Room:      ${b.roomType}`,
+    `👥 Guests:    ${b.guests}`,
+    `👤 Name:      ${b.name}`,
+    `📞 Phone:     ${b.phone}`,
+  ];
+  if (b.email) lines.push(`📧 Email:     ${b.email}`);
+
+  b.step = 'await_confirm';
+  session.changed('state', true);
+  await saveSession();
+  await sendWhatsAppButtons(from, client, { body: lines.join('\n'), footer: 'Tap a button to confirm or cancel', buttons: CONFIRM_BUTTONS });
+}
+
+async function sendConfirmationSummary(from, client, session, locale, send, saveSession) {
+  const b = session.state.booking;
+  if (b.bookingType === 'restaurant') return sendRestaurantConfirmationSummary(from, client, session, locale, send, saveSession);
+  if (b.bookingType === 'hotel')      return sendHotelConfirmationSummary(from, client, session, locale, send, saveSession);
+  return sendCalendarConfirmationSummary(from, client, session, locale, send, saveSession);
+}
+
+// ── Finalization dispatcher ───────────────────────────────────────────────────
 
 async function finalizeBooking(from, client, session, locale, send, saveSession) {
-  const b        = session.state.booking;
-  const clientId = client?.id;
-
+  const b = session.state.booking;
+  if (b.bookingType === 'restaurant') return finalizeRestaurantBooking(from, client, session, locale, send, saveSession);
+  if (b.bookingType === 'hotel')      return finalizeHotelBooking(from, client, session, locale, send, saveSession);
+  // calendar
   if (client?.requireDepositBeforeBooking) {
     await finalizeWithPayment(from, client, session, locale, send, saveSession);
   } else {
     await finalizeDirectly(from, client, session, locale, send, saveSession);
   }
+}
+
+// ── Restaurant finalization ───────────────────────────────────────────────────
+
+async function finalizeRestaurantBooking(from, client, session, locale, send, saveSession) {
+  const b        = session.state.booking;
+  const clientId = client?.id;
+  const t        = i18next.getFixedT(locale);
+
+  try {
+    await dbConfig.db.ServiceRequest.create({
+      clientId,
+      service:       'Restaurant Table',
+      bookingType:   'restaurant',
+      name:          b.name,
+      phone:         b.phone,
+      email:         null,
+      details: [
+        `Date: ${b.date}`,
+        `Time: ${b.time}`,
+        `Guests: ${b.guests}`,
+        b.specialRequests ? `Special requests: ${b.specialRequests}` : null,
+      ].filter(Boolean).join('\n'),
+      timeline:      `${b.date} at ${b.time}`,
+      participants:  b.guests,
+      status:        'confirmed',
+      paymentStatus: 'not_required',
+    });
+  } catch (err) {
+    logger.error('finalizeRestaurantBooking: ServiceRequest.create failed', { error: err.message, clientId });
+    session.state.booking         = null;
+    session.state.activeOrderType = null;
+    session.state.activeIntent    = 'general';
+    session.changed('state', true);
+    await saveSession();
+    await send(from, t('rest_booking_failed') || '❌ Sorry, we could not complete your reservation. Please contact us directly.');
+    return;
+  }
+
+  session.state.booking         = null;
+  session.state.activeOrderType = null;
+  session.state.activeIntent    = 'general';
+  session.changed('state', true);
+  await saveSession();
+
+  const lines = [
+    '✅ *Table Reserved!*',
+    '',
+    '🍽️ Restaurant Reservation',
+    `📅 Date:    ${b.date}`,
+    `🕐 Time:    ${b.time}`,
+    `👥 Guests:  ${b.guests}`,
+    `👤 Name:    ${b.name}`,
+    `📞 Phone:   ${b.phone}`,
+  ];
+  if (b.specialRequests) lines.push(`✏️ Notes:   ${b.specialRequests}`);
+  lines.push('', 'We look forward to seeing you! 😊');
+
+  const confirmMsg = lines.join('\n');
+  await send(from, confirmMsg);
+
+  pushHistory(session, locale,
+    `I'd like to reserve a table for ${b.guests} on ${b.date} at ${b.time} under ${b.name}.`,
+    confirmMsg
+  );
+  await saveSession();
+}
+
+// ── Hotel finalization ────────────────────────────────────────────────────────
+
+async function finalizeHotelBooking(from, client, session, locale, send, saveSession) {
+  const b        = session.state.booking;
+  const clientId = client?.id;
+  const t        = i18next.getFixedT(locale);
+
+  try {
+    await dbConfig.db.ServiceRequest.create({
+      clientId,
+      service:       'Hotel Room',
+      bookingType:   'hotel',
+      name:          b.name,
+      phone:         b.phone,
+      email:         b.email || null,
+      details: [
+        `Check-in: ${b.checkIn}`,
+        `Check-out: ${b.checkOut}`,
+        `Room type: ${b.roomType}`,
+        `Guests: ${b.guests}`,
+      ].join('\n'),
+      timeline:      `Check-in: ${b.checkIn}, Check-out: ${b.checkOut}`,
+      participants:  b.guests,
+      status:        'confirmed',
+      paymentStatus: 'not_required',
+    });
+  } catch (err) {
+    logger.error('finalizeHotelBooking: ServiceRequest.create failed', { error: err.message, clientId });
+    session.state.booking         = null;
+    session.state.activeOrderType = null;
+    session.state.activeIntent    = 'general';
+    session.changed('state', true);
+    await saveSession();
+    await send(from, t('hotel_booking_failed') || '❌ Sorry, we could not complete your reservation. Please contact us directly.');
+    return;
+  }
+
+  session.state.booking         = null;
+  session.state.activeOrderType = null;
+  session.state.activeIntent    = 'general';
+  session.changed('state', true);
+  await saveSession();
+
+  const lines = [
+    '✅ *Room Reserved!*',
+    '',
+    '🏨 Hotel Room Reservation',
+    `📅 Check-in:  ${b.checkIn}`,
+    `📅 Check-out: ${b.checkOut}`,
+    `🛏️ Room:      ${b.roomType}`,
+    `👥 Guests:    ${b.guests}`,
+    `👤 Name:      ${b.name}`,
+    `📞 Phone:     ${b.phone}`,
+  ];
+  if (b.email) lines.push(`📧 Email:     ${b.email}`);
+  lines.push('', 'We look forward to welcoming you! 😊');
+
+  const confirmMsg = lines.join('\n');
+  await send(from, confirmMsg);
+
+  pushHistory(session, locale,
+    `I'd like to book a ${b.roomType} room from ${b.checkIn} to ${b.checkOut} for ${b.guests} guest(s) under ${b.name}.`,
+    confirmMsg
+  );
+  await saveSession();
 }
 
 // Path A — payment required first ─────────────────────────────────────────────
@@ -567,7 +1019,7 @@ async function finalizeWithPayment(from, client, session, locale, send, saveSess
   session.state.selectedService     = null;
   session.state.selectedServiceName = null;
   session.state.activeOrderType     = null;
-  session.state.activeIntent        = null;
+  session.state.activeIntent        = 'general';
   session.changed('state', true);
   await saveSession();
 
@@ -657,7 +1109,7 @@ async function finalizeDirectly(from, client, session, locale, send, saveSession
   session.state.selectedService     = null;
   session.state.selectedServiceName = null;
   session.state.activeOrderType     = null;
-  session.state.activeIntent        = null;
+  session.state.activeIntent        = 'general';
   session.changed('state', true);
   await saveSession();
 

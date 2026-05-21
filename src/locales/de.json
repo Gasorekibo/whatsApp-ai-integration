@@ -24,5 +24,7 @@
   "invalid_service_number": "⚠️ Bitte wählen Sie eine Nummer zwischen *1* und *{{max}}*. Versuchen Sie es erneut!",
   "booking_cancelled": "❌ Buchung storniert. Wie kann ich Ihnen sonst helfen?",
   "booking_failed": "❌ Entschuldigung, wir konnten Ihren Termin gerade nicht erstellen. Bitte kontaktieren Sie uns direkt oder versuchen Sie es später noch einmal.",
-  "booking_payment_failed": "❌ Wir konnten Ihren Zahlungslink gerade nicht erstellen. Bitte kontaktieren Sie uns direkt, um Ihre Buchung abzuschließen."
+  "booking_payment_failed": "❌ Wir konnten Ihren Zahlungslink gerade nicht erstellen. Bitte kontaktieren Sie uns direkt, um Ihre Buchung abzuschließen.",
+  "rest_booking_failed": "❌ Entschuldigung, wir konnten Ihre Tischreservierung nicht abschließen. Bitte kontaktieren Sie uns direkt.",
+  "hotel_booking_failed": "❌ Entschuldigung, wir konnten Ihre Zimmerreservierung nicht abschließen. Bitte kontaktieren Sie uns direkt."
 }

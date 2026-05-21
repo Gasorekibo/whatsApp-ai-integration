@@ -145,6 +145,12 @@ export default (sequelize) => {
       defaultValue: false,
       comment: 'When true the calendar event is only created after the deposit payment is confirmed'
     },
+    bookingTypes: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: ['calendar'],
+      comment: 'Booking types this client offers: "calendar" | "restaurant" | "hotel"'
+    },
 
     // ── Payments — Flutterwave ────────────────────────────────────────
     flutterwaveSecretKey: {

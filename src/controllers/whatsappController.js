@@ -21,17 +21,19 @@ import {
 } from '../helpers/whatsapp/sendLanguageSelectionList.js';
 import { sendIntentList, INTENT_PREFIX, VALID_INTENTS } from '../helpers/whatsapp/sendIntentList.js';
 import {
-  handleOrderRouting, handleBookingTypeRouting,
+  handleOrderRouting, handleBookingTypeRouting, getClientBookingTypes,
   ORDER_PREFIX, BOOKING_TYPE_PREFIX,
   VALID_ORDER_TYPES, VALID_BOOKING_TYPES,
-  BOOKING_TYPE_PLACEHOLDERS,
 } from '../helpers/whatsapp/handlers/orderHandler.js';
 import { handleHumanHandoff } from '../helpers/whatsapp/handlers/humanHandoffHandler.js';
 import { handleGeneralInquiry } from '../helpers/whatsapp/handlers/generalInquiryHandler.js';
 import { classifyIntent } from '../services/intentClassifier.service.js';
 import {
-  startBookingFlow, handleDaySelection, handleSlotSelection, handleBookingTextReply,
-  DAY_PREFIX, SLOT_PREFIX
+  startBookingFlow, startRestaurantBookingFlow, startHotelBookingFlow,
+  handleDaySelection, handleSlotSelection, handleBookingTextReply,
+  showAvailableDays,
+  DAY_PREFIX, SLOT_PREFIX, BOOKING_SVC_PREFIX,
+  BOOKING_CONFIRM_BTN, BOOKING_CANCEL_BTN,
 } from '../helpers/whatsapp/handlers/bookingHandler.js';
 
 dotenv.config();
@@ -51,9 +53,14 @@ function hasValidLanguage(session) {
 // ── Quick intent detection (keyword shortcuts bypass the intent list) ─────────
 
 const QUICK_INTENT_MAP = [
-  ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
+  // Handoff keywords must be explicit "I want a human" phrases.
+  // Broad words like "team", "staff", "person" are intentionally excluded —
+  // they appear in normal questions ("contact your team", "your staff hours").
+  ['handoff',  /\b(talk to (?:a |an )?(human|agent|person|someone)|speak to (?:a |an )?(human|agent|person|someone)|connect me to|real (human|agent|person)|live (agent|support|chat)|representative|muntu|umuntu|msaada wa binadamu|menschlich|agente humano)\b/i],
   // order: English + French + Kinyarwanda (gufata, kuza, kwiza, naza, nshaka kuza, ndashaka) + Swahili (miadi, ninataka kuja, nataka) + German
-  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|come in|i('ll| will) come|want to come|i'd like to visit|gufata|kuza|kwiza|nshaka kuza|ndashaka kuza|rendez-vous|paiement|je veux venir|miadi|malipo|ninataka kuja|nataka kuja|termin|ich möchte kommen)\b/i],
+  // NOTE: "pay/payment" intentionally omitted — too ambiguous (e.g. "how much do I pay for a motorbike").
+  //       Payment-as-booking intent is handled by the Gemini classifier which has full context.
+  ['order',    /\b(books?|appointments?|schedule|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|come in|i('ll| will) come|want to come|i'd like to visit|gufata|kuza|kwiza|nshaka kuza|ndashaka kuza|rendez-vous|je veux venir|miadi|ninataka kuja|nataka kuja|termin|ich möchte kommen)\b/i],
   ['services', /\b(services?|products?|pric(?:e|ing)|costs?|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
   ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close|aho|amasaha|où|horaires|mahali|saa|standort|öffnungszeiten)\b/i],
 ];
@@ -249,6 +256,15 @@ const handleWebhook = async (req, res) => {
             ? Date.now() - new Date(session.languageSetAt).getTime() >= LANGUAGE_TTL_MS
             : false
         });
+        // Greet new users before asking language preference
+        if (isNewUser) {
+          const userName   = contact?.profile?.name || session.name || 'there';
+          const botName    = client?.botName || 'AI Assistant';
+          const clientName = client?.name    || '';
+          const greeting   = `Hello ${userName}! 👋\n\nI'm *${botName}*${clientName ? `, an AI assistant for *${clientName}*` : ''}.\nI'm glad to have you and ready to help! 🙂`;
+          await send(from, greeting);
+        }
+
         // Ignore the triggering message — intent list shown after language selection
         // gives the user a clean, structured starting point.
         session.state = { ...session.state, awaitingLanguage: true };
@@ -281,6 +297,28 @@ const handleWebhook = async (req, res) => {
         const t_lang = i18next.getFixedT(langCode);
         await send(from, t_lang('language_selected_confirmation'));
         await sendIntentList(from, client, langCode);
+
+      } else if (msg.type === 'interactive' && msg.interactive?.type === 'button_reply') {
+        // ── Reply-button tap (booking confirm / cancel) ─────────────────────
+        const buttonId = msg.interactive.button_reply?.id;
+        const locale   = session.language;
+
+        logger.whatsapp('info', 'Button reply received', { requestId, from: `***${from.slice(-4)}`, buttonId });
+
+        if (buttonId === BOOKING_CONFIRM_BTN || buttonId === BOOKING_CANCEL_BTN) {
+          const activeOrderType = session.state.activeOrderType || null;
+          const booking         = session.state.booking;
+
+          if (activeOrderType === 'booking' && booking?.step === 'await_confirm') {
+            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+            // Reuse the text handler — 'yes'/'no' are in the CONFIRM_YES/NO sets
+            const syntheticText = buttonId === BOOKING_CONFIRM_BTN ? 'yes' : 'no';
+            await handleBookingTextReply(from, client, session, syntheticText, locale, send, saveSession);
+            await session.save({ transaction: t });
+          } else {
+            logger.whatsapp('warn', 'Booking button tapped outside confirm step — ignored', { requestId, buttonId });
+          }
+        }
 
       } else if (msg.type === 'interactive' && msg.interactive?.type === 'list_reply') {
         // ── Interactive list reply ──────────────────────────────────────────
@@ -337,19 +375,19 @@ const handleWebhook = async (req, res) => {
 
           logger.whatsapp('info', 'Booking type selected', { requestId, bookingType, from: `***${from.slice(-4)}` });
 
-          if (bookingType === 'calendar') {
-            session.state = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
-            session.changed('state', true);
-            await session.save({ transaction: t });
-            const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
-            await startBookingFlow(from, client, session, locale, send, saveSession);
-            await session.save({ transaction: t });
+          session.state = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
+          session.changed('state', true);
+          await session.save({ transaction: t });
+          const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+
+          if (bookingType === 'restaurant') {
+            await startRestaurantBookingFlow(from, client, session, locale, send, saveSession);
+          } else if (bookingType === 'hotel') {
+            await startHotelBookingFlow(from, client, session, locale, send, saveSession);
           } else {
-            // Restaurant / hotel — placeholder until integration is built
-            const msg = BOOKING_TYPE_PLACEHOLDERS[bookingType]?.[locale]
-                     || BOOKING_TYPE_PLACEHOLDERS[bookingType]?.en;
-            await send(from, msg);
+            await startBookingFlow(from, client, session, locale, send, saveSession);
           }
+          await session.save({ transaction: t });
 
         } else if (selectedId.startsWith(ORDER_PREFIX)) {
           // ── Order sub-type selection ──────────────────────────────────────
@@ -366,9 +404,27 @@ const handleWebhook = async (req, res) => {
           await session.save({ transaction: t });
 
           if (orderType === 'booking') {
-            // Show booking type sub-menu instead of jumping straight to the calendar flow
-            await handleBookingTypeRouting(from, client, locale);
-            await session.save({ transaction: t });
+            const bookingTypes = getClientBookingTypes(client);
+            if (bookingTypes.length === 1) {
+              // Auto-select the only type — no sub-menu needed
+              const singleType  = bookingTypes[0];
+              session.state     = { ...session.state, activeIntent: 'order', activeOrderType: 'booking' };
+              session.changed('state', true);
+              await session.save({ transaction: t });
+              const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+              if (singleType === 'restaurant') {
+                await startRestaurantBookingFlow(from, client, session, locale, send, saveSession);
+              } else if (singleType === 'hotel') {
+                await startHotelBookingFlow(from, client, session, locale, send, saveSession);
+              } else {
+                await startBookingFlow(from, client, session, locale, send, saveSession);
+              }
+              await session.save({ transaction: t });
+            } else {
+              // Multiple types — show filtered sub-menu
+              await handleBookingTypeRouting(from, client, locale);
+              await session.save({ transaction: t });
+            }
           } else {
             const triggerMsg = ORDER_TRIGGER[orderType]?.[locale] || ORDER_TRIGGER[orderType]?.en;
             const userEmail  = session.state.email || null;
@@ -400,6 +456,38 @@ const handleWebhook = async (req, res) => {
           const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
           await handleSlotSelection(from, client, session, slotIndex, locale, send, saveSession);
           await session.save({ transaction: t });
+
+        } else if (selectedId.startsWith(BOOKING_SVC_PREFIX)) {
+          // ── Booking-flow service selection (interactive list, ≤ 10 services) ──
+          const svcIndex  = parseInt(selectedId.slice(BOOKING_SVC_PREFIX.length), 10);
+          const svcKey    = `services:${clientId}`;
+          let   services  = await redisGet(svcKey);
+          if (!services?.length) {
+            const namespace = client?.pineconeIndex || clientId || 'default';
+            services = await ragService.getServicesFromIndex(namespace);
+            if (services?.length) await redisSet(svcKey, services, SERVICES_CACHE_TTL);
+          }
+          const pickedSvc = services?.[svcIndex];
+          if (!pickedSvc) {
+            logger.whatsapp('warn', 'bsvc index out of range', { requestId, svcIndex });
+            await startBookingFlow(from, client, session, locale, send,
+              async () => { session.changed('state', true); await session.save({ transaction: t }); });
+            await session.save({ transaction: t });
+          } else {
+            const b = session.state.booking;
+            if (b && session.state.activeOrderType === 'booking') {
+              b.serviceName = pickedSvc.name;
+              b.step        = 'await_day';
+              session.changed('state', true);
+              await session.save({ transaction: t });
+              const saveSession = async () => { session.changed('state', true); await session.save({ transaction: t }); };
+              await showAvailableDays(from, client, session, locale, send, saveSession);
+              await session.save({ transaction: t });
+            } else {
+              // Stale tap outside booking flow — ignore
+              logger.whatsapp('warn', 'bsvc tap ignored: not in booking flow', { requestId });
+            }
+          }
 
         } else {
           // ── Service list selection (existing logic) ───────────────────────
@@ -565,12 +653,14 @@ const handleWebhook = async (req, res) => {
         // Layer 1: fast English keyword detection
         const quickIntent = continuation ? null : detectQuickIntent(originalText);
 
-        // Layer 2: Gemini classifier — runs whenever keyword detection found nothing
-        // and the message is not a continuation. Works in any language and is the
-        // only way to detect intent shifts mid-conversation (e.g. user was in
-        // 'general' and now wants to book). Flash-Lite cost is negligible.
+        // Layer 2: Gemini classifier — runs when keyword detection found nothing,
+        // the message is not a continuation, AND the session has no active intent.
+        // Skipped mid-conversation (activeIntent set) so post-booking follow-ups
+        // don't get falsely re-classified as 'order' and show the sub-menu again.
+        // Genuine intent shifts mid-conversation are still caught by the keyword
+        // layer (layer 1), which covers all supported languages.
         let classifiedIntent = null;
-        if (!continuation && !quickIntent) {
+        if (!continuation && !quickIntent && !activeIntent) {
           classifiedIntent = await classifyIntent(originalText, client);
         }
 
@@ -605,6 +695,7 @@ const handleWebhook = async (req, res) => {
             if (session.state.selectedServiceName) {
               session.state.activeOrderType = 'booking';
               session.state.booking = {
+                bookingType:   'calendar',
                 step:          'await_day',
                 serviceName:   session.state.selectedServiceName,
                 name:          session.name || null,
@@ -682,6 +773,7 @@ const handleWebhook = async (req, res) => {
           // Pre-populate state and hand off to the structured booking handler.
           const prefill = response.bookingPrefill || {};
           session.state.booking = {
+            bookingType:   'calendar',
             step:          'await_day',
             serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
             name:          prefill.name        || session.name                      || null,
@@ -765,6 +857,7 @@ const handleWebhook = async (req, res) => {
         if (response.triggerBookingFlow) {
           const prefill = response.bookingPrefill || {};
           session.state.booking = {
+            bookingType:   'calendar',
             step:          'await_day',
             serviceName:   prefill.serviceName || session.state.selectedServiceName || null,
             name:          prefill.name        || session.name                      || null,
