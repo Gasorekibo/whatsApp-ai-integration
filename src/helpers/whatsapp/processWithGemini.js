@@ -77,7 +77,10 @@ const SAVE_INQUIRY_TOOL = {
 };
 
 function buildToolDeclarations(activeIntent, activeOrderType, selectedServiceName) {
-  if (activeIntent === 'general' || activeIntent === 'handoff') return [];
+  // General inquiry sessions still get show_services so Gemini can proactively
+  // route the user to booking when they express a service need mid-conversation.
+  if (activeIntent === 'general') return [SHOW_SERVICES_TOOL];
+  if (activeIntent === 'handoff') return [];
   if (activeIntent === 'services') {
     // User has already selected a specific service → they're likely heading toward booking.
     // Give them payment tools; show_services would just re-display the list they came from.
@@ -403,46 +406,14 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     }
 
     const responseText = result.response.text();
-    let parsedResult;
-    try {
-      // Strip Gemini's {{json. ... }} or ```json ... ``` wrapper when present
-      const cleaned = responseText
-        .replace(/^\s*\{\{json\.\s*/i, '')
-        .replace(/\}\}\s*$/, '')
-        .replace(/^\s*```json\s*/i, '')
-        .replace(/\s*```\s*$/, '')
-        .trim();
-
-      // Find the outermost JSON object by locating the "language" or "reply" key
-      // rather than blindly taking first { to last } (which breaks on nested braces).
-      let jsonStr = cleaned;
-      const keyMatch = cleaned.match(/"(?:language|reply)"\s*:/);
-      if (keyMatch) {
-        // Walk backwards from the key to find the opening brace of the object
-        const keyPos = cleaned.indexOf(keyMatch[0]);
-        const start  = cleaned.lastIndexOf('{', keyPos);
-        if (start !== -1) {
-          // Find the matching closing brace
-          let depth = 0, end = -1;
-          for (let i = start; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') depth++;
-            else if (cleaned[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
-          }
-          if (end !== -1) jsonStr = cleaned.slice(start, end + 1);
-        }
-      }
-      parsedResult = JSON.parse(jsonStr);
-    } catch {
-      // Last resort: treat whole text as plain reply
-      parsedResult = { reply: responseText, language: detectedLanguage, showServices: false, showSlots: false };
-    }
+    const { reply: finalReply, language: finalLanguage } = extractReply(responseText, detectedLanguage);
 
     return {
-      reply:        parsedResult.reply || text || null,
-      language:     parsedResult.language || detectedLanguage || 'en',
-      showServices: parsedResult.showServices || false,
-      showSlots:    parsedResult.showSlots    || false,
-      freeSlots:    parsedResult.freeSlots    || []
+      reply:        finalReply,
+      language:     finalLanguage,
+      showServices: false,
+      showSlots:    false,
+      freeSlots:    []
     };
 
   } catch (err) {
@@ -452,6 +423,77 @@ export async function processWithGemini(phoneNumber, message, history = [], user
     if (err.status === 503) return { reply: "⚠️ Sorry, I'm a little busy right now. Please retype your question and I'll get right to it.", showServices: false, showSlots: false, freeSlots: [] };
     return { reply: "I'm having trouble connecting right now. Please try again in a moment!", showServices: false, showSlots: false, freeSlots: [] };
   }
+}
+
+/**
+ * Robustly extract { reply, language } from whatever Gemini returned.
+ * Handles: clean JSON, JSON inside markdown fences, JSON with unescaped
+ * newlines/quotes in the reply value, preamble text before the JSON,
+ * and plain-text responses (when the model ignores the JSON instruction).
+ */
+function extractReply(raw, fallbackLanguage = 'en') {
+  if (!raw) return { reply: '', language: fallbackLanguage };
+
+  // 1. Strip common wrappers
+  let cleaned = raw
+    .replace(/^\s*```json\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .replace(/^\s*\{\{json\.\s*/i, '')
+    .replace(/\}\}\s*$/, '')
+    .trim();
+
+  // 2. Try clean JSON parse (works when Gemini follows the format exactly)
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === 'object') {
+      const reply = parsed.reply ?? parsed.message ?? parsed.text ?? null;
+      if (reply) return { reply: String(reply), language: parsed.language || fallbackLanguage };
+    }
+  } catch { /* continue to fallbacks */ }
+
+  // 3. Find the JSON object by locating the "reply" or "language" key, then
+  //    brace-match to extract the JSON substring (handles preamble text)
+  const keyMatch = cleaned.match(/"(?:reply|language)"\s*:/);
+  if (keyMatch) {
+    const keyPos = cleaned.indexOf(keyMatch[0]);
+    const start  = cleaned.lastIndexOf('{', keyPos);
+    if (start !== -1) {
+      let depth = 0, end = -1;
+      for (let i = start; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') depth++;
+        else if (cleaned[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end !== -1) {
+        try {
+          const parsed = JSON.parse(cleaned.slice(start, end + 1));
+          const reply = parsed.reply ?? parsed.message ?? parsed.text ?? null;
+          if (reply) return { reply: String(reply), language: parsed.language || fallbackLanguage };
+        } catch { /* fall through to regex */ }
+      }
+    }
+  }
+
+  // 4. Regex extraction — handles invalid JSON with unescaped newlines inside the reply value.
+  //    Captures everything between "reply": " and the closing " that is followed by , or }
+  const replyMatch = cleaned.match(/"reply"\s*:\s*"([\s\S]*?)"(?:\s*[,}])/);
+  if (replyMatch) {
+    const langMatch = cleaned.match(/"language"\s*:\s*"([^"]+)"/);
+    const reply = replyMatch[1]
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+    return { reply, language: langMatch?.[1] || fallbackLanguage };
+  }
+
+  // 5. If it still looks like a JSON object we couldn't parse, send a safe fallback
+  //    rather than leaking markup to the user.
+  if (cleaned.startsWith('{')) {
+    logger.warn('extractReply: unrecoverable JSON — sending generic fallback', { preview: cleaned.slice(0, 80) });
+    return { reply: "I'm sorry, I didn't quite catch that. Could you rephrase your question?", language: fallbackLanguage };
+  }
+
+  // 6. Plain text — model ignored the JSON instruction, use as-is
+  return { reply: cleaned, language: fallbackLanguage };
 }
 
 function buildWelcomeContext(userName, botName) {
@@ -470,6 +512,7 @@ function buildFallbackPrompt(slotDetails, currentDate, locale = 'en', botName = 
   return `
 You are a customer-facing representative of ${botName}. You speak AS ${botName} — use "we", "our", and "us" at all times.
 Never describe yourself as an AI, bot, or chatbot. If asked, deflect: "I'm here to help with anything related to ${botName}."
+Never answer factual questions from your training data. If you don't have the information, say so warmly: "I'm sorry, I don't have details on that right now. Feel free to ask something else or contact our team directly! 😊"
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS respond in the SAME language as the user's CURRENT message.
@@ -479,7 +522,8 @@ ${welcomeSection}
 CORE BEHAVIOR:
 - Be friendly but brief and to-the-point
 - Keep responses under 3 sentences unless asking follow-up questions
-- FOLLOW-UP QUESTION RULE: Whenever you answer a factual question or provide information, always end your reply with a relevant follow-up question (e.g., "Would you like to book an appointment?", "Is there anything else you'd like to know about [topic]?"). Do NOT add a follow-up question when you are already collecting information from the user.
+- PSYCHOLOGICAL INTELLIGENCE — READ BETWEEN THE LINES: You are not a search engine. You are an intelligent assistant whose job is to understand what the user TRULY needs, not just what they literally say. Always ask yourself: "What is this person really trying to do?" Examples: someone asking about location is planning to visit → offer to show services or book; someone mentioning a symptom or pain needs a service → call show_services; someone asking "do you offer X?" is interested in X → call show_services if yes, or explain what you DO offer if no. Recognize the user's trajectory and guide them toward the next step. Never leave a user with only information when an action (show_services, booking) would serve them better.
+- FOLLOW-UP QUESTION RULE: Always end your reply with a warm follow-up question or offer — including when the user sends a short acknowledgment like "okay", "thanks", or "got it". Never end with a dead-end statement like "We are glad we could assist you." Keep the conversation open: "Is there anything else I can help you with?", "Would you like to book an appointment?". Only skip the follow-up when you are actively collecting info from the user (name, email, date, etc.).
 
 ${slotDetails ? `AVAILABLE CONSULTATION SLOTS:\n${slotDetails}\n` : ''}
 Current Date: ${currentDate}

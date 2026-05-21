@@ -55,7 +55,9 @@ function hasValidLanguage(session) {
 const QUICK_INTENT_MAP = [
   ['handoff',  /\b(human|agent|person|staff|team|talk to|speak to|representative|muntu|umuntu|msaada wa binadamu|menschlich)\b/i],
   // order: English + French + Kinyarwanda (gufata, kuza, kwiza, naza, nshaka kuza, ndashaka) + Swahili (miadi, ninataka kuja, nataka) + German
-  ['order',    /\b(books?|appointments?|schedule|pay(?:ment)?|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|come in|i('ll| will) come|want to come|i'd like to visit|gufata|kuza|kwiza|nshaka kuza|ndashaka kuza|rendez-vous|paiement|je veux venir|miadi|malipo|ninataka kuja|nataka kuja|termin|ich möchte kommen)\b/i],
+  // NOTE: "pay/payment" intentionally omitted — too ambiguous (e.g. "how much do I pay for a motorbike").
+  //       Payment-as-booking intent is handled by the Gemini classifier which has full context.
+  ['order',    /\b(books?|appointments?|schedule|orders?|status|track|reservations?|slots?|consult(?:ation)?s?|come in|i('ll| will) come|want to come|i'd like to visit|gufata|kuza|kwiza|nshaka kuza|ndashaka kuza|rendez-vous|je veux venir|miadi|ninataka kuja|nataka kuja|termin|ich möchte kommen)\b/i],
   ['services', /\b(services?|products?|pric(?:e|ing)|costs?|offer|provide|serivisi|ubuvuzi|prix|huduma|leistung)\b/i],
   ['general',  /\b(contact|phone|email|address|location|hours|website|where are you|when are you|open|close|aho|amasaha|où|horaires|mahali|saa|standort|öffnungszeiten)\b/i],
 ];
