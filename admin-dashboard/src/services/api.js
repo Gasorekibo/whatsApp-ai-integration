@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+const api = axios.create({ baseURL: '/ai/api' })
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('authToken')
@@ -13,7 +13,7 @@ api.interceptors.response.use(
   err => {
     if (err.response?.status === 401) {
       localStorage.removeItem('authToken')
-      window.location.href = '/login'
+      window.location.href = '/ai/admin/login'
     }
     return Promise.reject(err)
   }

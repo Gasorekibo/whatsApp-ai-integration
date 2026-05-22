@@ -15,7 +15,7 @@ export default function Login() {
     setLoading(true)
     try {
       const u = await login(email, password)
-      navigate(u.role === 'client' ? '/services' : '/', { replace: true })
+      window.location.href = u.role === 'client' ? '/ai/admin/services' : '/ai/admin/'
     } catch (err) {
       toast.error(err.response?.data?.error || 'Login failed')
     } finally {

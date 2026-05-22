@@ -52,7 +52,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/ai/admin">
         <AppRoutes />
         <Toaster
           position="top-right"
