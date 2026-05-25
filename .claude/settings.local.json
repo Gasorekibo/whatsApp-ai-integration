@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(node scripts/migrate-client-credentials.js --fresh)",
-      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\gasor\\\\OneDrive\\\\Desktop\\\\Moyo-tech\\\\Nodejs\\\\whatsapp-ai\" -Force)"
-    ]
-  }
-}
