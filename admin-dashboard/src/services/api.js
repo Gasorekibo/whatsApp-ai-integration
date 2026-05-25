@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/ai/api' })
+const api = axios.create({ baseURL: '/api' })
+const publicApi = axios.create({ baseURL: '/api' })
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('authToken')
@@ -20,7 +21,7 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
-  login:          (email, password)              => api.post('/auth/login', { email, password }),
+  login:          (email, password)              => publicApi.post('/auth/login', { email, password }),
   changePassword: (currentPassword, newPassword) => api.put('/auth/change-password', { currentPassword, newPassword }),
 }
 
@@ -60,8 +61,8 @@ export const generalInfoApi = {
 }
 
 export const onboardingApi = {
-  get:    (token)        => api.get(`/onboarding/${token}`),
-  submit: (token, data)  => api.post(`/onboarding/${token}`, data),
+  get:    (token)        => publicApi.get(`/onboarding/${token}`),
+  submit: (token, data)  => publicApi.post(`/onboarding/${token}`, data),
 }
 
 export const monitoringApi = {

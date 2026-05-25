@@ -10,6 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production';
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('Login attempt:', email, password);
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
     // Admin check (credentials from environment variables)

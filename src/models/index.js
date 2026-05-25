@@ -83,22 +83,7 @@ Object.keys(db).forEach(modelName => {
   }
 });
 
-// ── Database sync + RLS bootstrap ────────────────────────────────────────────
-const syncDatabase = async (options = {}) => {
-  try {
-    await sequelize.authenticate();
-    logger.info('Database connection established successfully');
-
-    await sequelize.sync(options);
-    logger.info('Database synchronized successfully');
-
-    await applyRLSPolicies();
-  } catch (error) {
-    logger.error('Unable to connect to the database', { error: error.message });
-    throw error;
-  }
-};
-
+// ── RLS bootstrap ─────────────────────────────────────────────────────────────
 const applyRLSPolicies = async () => {
   try {
     const sql = readFileSync(
@@ -113,4 +98,35 @@ const applyRLSPolicies = async () => {
   }
 };
 
-export default { db, syncDatabase };
+// Used at runtime: verifies the connection and applies RLS policies.
+// Schema changes are handled exclusively by sequelize-cli migrations
+// (run once before the app starts via the docker-compose entrypoint),
+// so calling sequelize.sync() here is intentionally omitted — it would
+// race against other instances starting in parallel.
+const connectDatabase = async () => {
+  try {
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
+    await applyRLSPolicies();
+  } catch (error) {
+    logger.error('Unable to connect to the database', { error: error.message });
+    throw error;
+  }
+};
+
+// Kept for local development / one-off use only. Never call this in production
+// when multiple instances may start simultaneously.
+const syncDatabase = async (options = {}) => {
+  try {
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
+    await sequelize.sync(options);
+    logger.info('Database synchronized successfully');
+    await applyRLSPolicies();
+  } catch (error) {
+    logger.error('Unable to connect to the database', { error: error.message });
+    throw error;
+  }
+};
+
+export default { db, connectDatabase, syncDatabase };

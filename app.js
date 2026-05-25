@@ -267,9 +267,9 @@ app.use((err, req, res, next) => {
 (async () => {
   try {
     logger.info('Initializing database connection');
-    await dbConfig.syncDatabase({ alter: false });
+    await dbConfig.connectDatabase();
 
-    logger.info('Database synced and RLS policies applied successfully');
+    logger.info('Database connected and RLS policies applied successfully');
 
     await connectRedis();
 
