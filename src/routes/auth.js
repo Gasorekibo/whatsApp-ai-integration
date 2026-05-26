@@ -25,11 +25,11 @@ router.post('/login', async (req, res) => {
       const valid = await bcrypt.compare(password, client.password);
       if (valid) {
         const token = jwt.sign(
-          { role: 'client', clientId: client.id, email, name: client.name },
+          { role: 'client', tenantId: client.id, email, name: client.name },
           JWT_SECRET,
           { expiresIn: '24h' }
         );
-        return res.json({ token, role: 'client', clientId: client.id, name: client.name });
+        return res.json({ token, role: 'client', tenantId: client.id, name: client.name });
       }
     }
 
@@ -47,7 +47,7 @@ router.put('/change-password', authenticate, async (req, res) => {
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword are required' });
     if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
 
-    const client = await dbConfig.db.Client?.findByPk(req.user.clientId);
+    const client = await dbConfig.db.Client?.findByPk(req.user.tenantId);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     const valid = await bcrypt.compare(currentPassword, client.password || '');

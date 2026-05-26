@@ -13,7 +13,7 @@ export function AuthProvider({ children }) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]))
         if (payload.exp > Date.now() / 1000) {
-          setUser({ token, role: payload.role, clientId: payload.clientId, name: payload.name, email: payload.email })
+          setUser({ token, role: payload.role, tenantId: payload.tenantId, name: payload.name, email: payload.email })
         } else {
           localStorage.removeItem('authToken')
         }
@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
     const { data } = await authApi.login(email, password)
     localStorage.setItem('authToken', data.token)
     const payload = JSON.parse(atob(data.token.split('.')[1]))
-    const u = { token: data.token, role: payload.role, clientId: payload.clientId, name: payload.name, email: payload.email }
+    const u = { token: data.token, role: payload.role, tenantId: payload.tenantId, name: payload.name, email: payload.email }
     setUser(u)
     return u
   }

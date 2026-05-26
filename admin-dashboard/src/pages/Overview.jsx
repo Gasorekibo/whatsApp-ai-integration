@@ -109,7 +109,7 @@ function ClientOverview() {
   const { user } = useAuth()
   const { data: clientsData, loading: lC } = useApiData(clientsApi.getAll)
   const { data: aptsData,    loading: lA } = useApiData(appointmentsApi.getAll)
-  const { data: svcData,     loading: lS } = useApiData(() => servicesApi.getAll(user?.clientId))
+  const { data: svcData,     loading: lS } = useApiData(() => servicesApi.getAll())
 
   const me           = clientsData?.clients?.[0]
   const appointments = aptsData?.appointments || []

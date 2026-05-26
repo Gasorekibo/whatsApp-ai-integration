@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import dbConfig from '../models/index.js';
 import googleSheet from '../utils/googlesheets.js';
 import logger from '../logger/logger.js';
-import { redisDel } from '../utils/redis.js';
+import { redisDel, rkey } from '../utils/redis.js';
 dotenv.config();
 
 async function googleSheetsWebhookHandler(req, res) {
@@ -35,7 +35,7 @@ async function googleSheetsWebhookHandler(req, res) {
 
     const result = await googleSheet.syncServicesFromSheet(sheetId, token, clientId);
 
-    await redisDel(`services:${clientId}`);
+    await redisDel(rkey('services'));
 
     res.json(result);
   } catch (error) {

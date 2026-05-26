@@ -5,7 +5,7 @@ import dbConfig from '../../../models/index.js';
 import { sendWhatsAppInteractiveList } from '../sendWhatsAppInteractiveList.js';
 import { sendWhatsAppButtons }         from '../sendWhatsAppButtons.js';
 import logger from '../../../logger/logger.js';
-import { redisGet, redisSet, redisDel } from '../../../utils/redis.js';
+import { redisGet, redisSet, redisDel, rkey } from '../../../utils/redis.js';
 import i18next from '../../../config/i18n.js';
 import ragService from '../../../services/rag.service.js';
 
@@ -28,7 +28,7 @@ function pushHistory(session, locale, userContent, modelContent) {
 // ── Service helpers ───────────────────────────────────────────────────────────
 
 async function getClientServices(clientId, namespace) {
-  const key      = `services:${clientId}`;
+  const key      = rkey('services');
   let   services = await redisGet(key);
   if (!services?.length) {
     services = await ragService.getServicesFromIndex(namespace).catch(() => []);

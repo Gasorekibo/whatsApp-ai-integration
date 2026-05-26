@@ -4,12 +4,12 @@ import { Op } from 'sequelize';
 import dotenv from 'dotenv';
 import logger from '../logger/logger.js';
 import ragService from '../services/rag.service.js';
-import { redisSetNx, redisGet, redisSet } from '../utils/redis.js';
+import { redisSetNx, redisGet, redisSet, rkey } from '../utils/redis.js';
 
 const SERVICES_CACHE_TTL = 60 * 60;
 
 import { extractWebhookPayload } from '../utils/extractors.js';
-import { resolveClient } from '../services/clientService.js';
+import { getTenant } from '../services/clientService.js';
 import { sendMessage, transcribeAudio } from '../services/whatsappService.js';
 import { processAI } from '../services/aiService.js';
 import { sendServiceList } from '../helpers/whatsapp/sendServiceList.js';
@@ -157,19 +157,20 @@ const handleWebhook = async (req, res) => {
       contactName: contact?.profile?.name
     });
 
-    client = await resolveClient(phoneNumberId);
+    // Container identity — TENANT_ID is fixed at startup, never changes.
+    const tenantId = process.env.TENANT_ID;
+    client = await getTenant();
 
     if (client) {
-      logger.whatsapp('debug', 'Client resolved', {
+      logger.whatsapp('debug', 'Tenant resolved', {
         requestId,
-        clientId: client.id,
+        tenantId,
         subscriptionPlan:   client.subscriptionPlan,
         subscriptionStatus: client.subscriptionStatus
       });
     }
 
-    const clientId = client?.id || null;
-    const dedupKey = `msgdedup:${messageId}:${clientId ?? 'null'}`;
+    const dedupKey  = rkey('msgdedup', messageId);
     const redisDedup = await redisSetNx(dedupKey, '1', 300);
     if (redisDedup === false) {
       logger.whatsapp('info', 'Deduplication: message already processed (Redis)', { requestId, messageId });
@@ -183,8 +184,8 @@ const handleWebhook = async (req, res) => {
       // 1. DB deduplication
       try {
         const [, created] = await dbConfig.db.ProcessedMessage.findOrCreate({
-          where:    { messageId, clientId },
-          defaults: { messageId, clientId, processedAt: new Date() },
+          where:    { messageId, tenantId },
+          defaults: { messageId, tenantId, processedAt: new Date() },
           transaction: t
         });
         if (!created) {
@@ -201,11 +202,11 @@ const handleWebhook = async (req, res) => {
 
       // 2. Find or create session
       let [session, isNewUser] = await dbConfig.db.UserSession.findOrCreate({
-        where:    { phone: from, clientId },
+        where:    { phone: from, tenantId },
         defaults: {
           name:       contact?.profile?.name || 'Client',
           phone:      from,
-          clientId,
+          tenantId,
           history:    [],
           state:      { selectedService: null },
           lastAccess: new Date()
@@ -460,7 +461,7 @@ const handleWebhook = async (req, res) => {
         } else if (selectedId.startsWith(BOOKING_SVC_PREFIX)) {
           // ── Booking-flow service selection (interactive list, ≤ 10 services) ──
           const svcIndex  = parseInt(selectedId.slice(BOOKING_SVC_PREFIX.length), 10);
-          const svcKey    = `services:${clientId}`;
+          const svcKey    = rkey('services');
           let   services  = await redisGet(svcKey);
           if (!services?.length) {
             const namespace = client?.pineconeIndex || clientId || 'default';
@@ -491,7 +492,7 @@ const handleWebhook = async (req, res) => {
 
         } else {
           // ── Service list selection (existing logic) ───────────────────────
-          const svcKey   = `services:${clientId}`;
+          const svcKey   = rkey('services');
           let   services = await redisGet(svcKey);
           if (!services?.length) {
             const namespace = client?.pineconeIndex || clientId || 'default';
@@ -586,7 +587,7 @@ const handleWebhook = async (req, res) => {
         // numbers are just part of a normal conversation (e.g. "I'll come at 9").
         const numericMatch = /^\s*(\d{1,2})\s*$/.exec(originalText);
         if (numericMatch && activeIntent === 'services') {
-          const svcKey   = `services:${clientId}`;
+          const svcKey   = rkey('services');
           let   services = await redisGet(svcKey);
           if (!services?.length) {
             const namespace = client?.pineconeIndex || clientId || 'default';
@@ -901,7 +902,7 @@ const handleWebhook = async (req, res) => {
 
 // Cleanup old sessions hourly — distributed lock prevents duplicate work across instances
 setInterval(async () => {
-  const lockAcquired = await redisSetNx('lock:session-cleanup', '1', 120);
+  const lockAcquired = await redisSetNx(rkey('lock', 'session-cleanup'), '1', 120);
   if (lockAcquired === false) {
     logger.info('Session cleanup skipped: another instance is running it');
     return;

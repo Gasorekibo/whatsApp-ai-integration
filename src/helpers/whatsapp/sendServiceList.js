@@ -4,25 +4,26 @@ import logger from '../../logger/logger.js';
 dotenv.config();
 import i18next from '../../config/i18n.js';
 import translationService from '../../services/translation.service.js';
-import { redisGet, redisSet } from '../../utils/redis.js';
+import { redisGet, redisSet, rkey } from '../../utils/redis.js';
 import ragService from '../../services/rag.service.js';
 
 const SERVICES_CACHE_TTL = 60 * 60; // 1 hour
 
 export async function sendServiceList(to, locale = 'en', client = null) {
-  const clientId      = client?.id || null;
-  const botName   = client?.botName || client?.name || 'Our Services';
-  const phoneNumberId = client?.whatsappBusinessId;
-  const token         = client?.getDecryptedWhatsappToken?.();
+  const botName       = client?.botName || client?.name || 'Our Services';
+  // Credentials come from env vars (per-container) — DB fields are a fallback
+  // for backwards compatibility during the migration period.
+  const phoneNumberId = process.env.WHATSAPP_PHONE_ID || client?.whatsappBusinessId;
+  const token         = process.env.WHATSAPP_TOKEN    || client?.getDecryptedWhatsappToken?.();
 
   if (!phoneNumberId || !token) {
-    logger.error('sendServiceList: missing client credentials', { clientId });
-    throw new Error('Client WhatsApp credentials are not configured');
+    logger.error('sendServiceList: missing WhatsApp credentials (set WHATSAPP_PHONE_ID and WHATSAPP_TOKEN)');
+    throw new Error('WhatsApp credentials are not configured');
   }
 
   // RAG (Pinecone) is the single source of truth — no Content table dependency
   const namespace  = client?.pineconeIndex || clientId || 'default';
-  const servicesKey = `services:${clientId}`;
+  const servicesKey = rkey('services');
 
   let services = await redisGet(servicesKey);
   if (!services?.length) {

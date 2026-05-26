@@ -16,36 +16,37 @@ const CURRENCIES = [
   ['UGX','UGX — Ugandan Shilling'],['TZS','TZS — Tanzanian Shilling'],
   ['NGN','NGN — Nigerian Naira'],['ZAR','ZAR — South African Rand'],
 ]
+const BOOKING_TYPE_OPTIONS = [
+  { value: 'calendar',   label: '📅 Calendar',           desc: 'Standard appointment booking with employee calendar' },
+  { value: 'restaurant', label: '🍽️ Restaurant / Table', desc: 'Table reservations with time slots' },
+  { value: 'hotel',      label: '🏨 Hotel / Room',        desc: 'Multi-night room bookings' },
+]
 
 const EMPTY = {
   name:'', email:'', phone:'',
   botName:'', timezone:'Africa/Kigali', currency:'RWF',
-  depositAmount:'',
+  depositAmount:'', requireDepositBeforeBooking: false,
+  bookingTypes: ['calendar'],
   subscriptionPlan:'message_only', maxMonthlyMessages:'',
   subscriptionStatus:'trial', subscriptionEndDate:'', isActive:true,
   password:'',
-  whatsappBusinessId:'', whatsappToken:'', whatsappAccountId:'',
-  whatsappWebhookVerifyToken:'',
+  whatsappBusinessId:'', whatsappToken:'',
   geminiApiKey:'',
-  pineconeIndex:'', pineconeApiKey:'', pineconeIndexName:'', pineconeEnvironment:'',
-  flutterwaveSecretKey:'', flutterwaveWebhookSecret:'',
+  pineconeIndex:'', pineconeApiKey:'', pineconeIndexName:'',
+  flutterwaveSecretKey:'', flutterwaveWebhookSecret:'', paymentRedirectUrl:'',
   googleSheetId:'', googleSheetsWebhookToken:'',
-  microsoftClientId:'', microsoftObjectId:'', microsoftTenantId:'',
+  microsoftClientId:'', microsoftTenantId:'',
   microsoftClientSecret:'', microsoftUserEmail:'', microsoftDriveId:'', microsoftItemId:'',
   confluenceBaseUrl:'', confluenceEmail:'', confluenceApiToken:'', confluenceSpaceKey:'',
 }
 
 // Fields that MUST be provided when creating a new client.
-// Without these the system either cannot route WhatsApp messages,
-// cannot send replies, or cannot isolate the client's knowledge base.
 const CREATE_REQUIRED = {
-  name:               'Contact Name',
-  email:              'Email',
-  phone:              'Phone',
-  password:           'Portal Password',
-  whatsappBusinessId: 'WhatsApp Phone Number ID',
-  whatsappToken:      'WhatsApp Permanent Token',
-  pineconeIndex:      'Pinecone Namespace',
+  name:          'Contact Name',
+  email:         'Email',
+  phone:         'Phone',
+  password:      'Portal Password',
+  pineconeIndex: 'Pinecone Namespace',
 }
 
 function validate(form, isEdit) {
@@ -80,6 +81,8 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
         maxMonthlyMessages: client.maxMonthlyMessages ?? '',
         subscriptionEndDate: client.subscriptionEndDate ? client.subscriptionEndDate.slice(0, 10) : '',
         isActive: client.isActive ?? true,
+        requireDepositBeforeBooking: client.requireDepositBeforeBooking ?? false,
+        bookingTypes: client.bookingTypes ?? ['calendar'],
       })
     } else {
       setForm(EMPTY)
@@ -90,23 +93,33 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
   const set    = k => e => { setForm(f => ({ ...f, [k]: e.target.value })); setErrors(e => ({ ...e, [k]: undefined })) }
   const setChk = k => e => setForm(f => ({ ...f, [k]: e.target.checked }))
 
+  const toggleBookingType = (value) => {
+    setForm(f => {
+      const current = f.bookingTypes || []
+      return {
+        ...f,
+        bookingTypes: current.includes(value)
+          ? current.filter(t => t !== value)
+          : [...current, value],
+      }
+    })
+  }
+
   const handleSubmit = async e => {
     e.preventDefault()
 
-    // Client-side validation for new clients
     const validationErrors = validate(form, isEdit)
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
-      const firstMsg = Object.values(validationErrors)[0]
-      toast.error(firstMsg)
+      toast.error(Object.values(validationErrors)[0])
       return
     }
 
     setLoading(true)
     try {
       const payload = { ...form }
-      if (!payload.password)           delete payload.password
-      if (payload.depositAmount === '') delete payload.depositAmount
+      if (!payload.password)                 delete payload.password
+      if (payload.depositAmount === '')      delete payload.depositAmount
       if (payload.maxMonthlyMessages === '') delete payload.maxMonthlyMessages
       if (payload.subscriptionEndDate === '') delete payload.subscriptionEndDate
 
@@ -116,7 +129,6 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
     } catch (err) {
       const data = err.response?.data
 
-      // Map server field errors back to inline highlights
       if (err.response?.status === 400 && data?.missing?.length) {
         const serverErrors = {}
         data.missing.forEach(({ field, message }) => { serverErrors[field] = message })
@@ -147,7 +159,6 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
     } finally { setResetting(false) }
   }
 
-  // Field helper — passes error state down so FormField can show red border + message
   const fld = (k, label, opts = {}) => (
     <FormField key={k} label={label} required={opts.required} hint={opts.hint} error={errors[k]}>
       <Input type={opts.type || 'text'} value={form[k]} onChange={set(k)}
@@ -156,7 +167,6 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
     </FormField>
   )
 
-  // Secret/password field helper
   const secret = (k, label, hint, opts = {}) => (
     <FormField key={k} label={label} hint={hint} required={opts.required} error={errors[k]}>
       <RevealInput value={form[k]} onChange={set(k)}
@@ -181,38 +191,6 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
           {fld('phone', 'Phone', { required: true, placeholder: '+250780000000' })}
         </FormSection>
 
-        {/* ── WhatsApp Configuration ── */}
-        <FormSection title="WhatsApp Configuration">
-          {fld('whatsappBusinessId', 'Phone Number ID', {
-            required: !isEdit,
-            placeholder: '908772575669393',
-            hint: 'Meta → WhatsApp → API Setup → Phone Number ID'
-          })}
-          {fld('whatsappAccountId', 'Business Account ID (WABA)', { placeholder: '8634596238303983' })}
-          {secret('whatsappToken', 'Permanent Token',
-            'Meta Business Suite → System Users → Generate Token (not the temporary test token)',
-            { required: !isEdit, placeholder: 'EAAxxxxxxx…' }
-          )}
-          {fld('whatsappWebhookVerifyToken', 'Webhook Verify Token', { placeholder: 'my_secret_verify_token' })}
-        </FormSection>
-
-        {/* ── Knowledge Base Namespace (required — not collapsible) ── */}
-        <FormSection title="Knowledge Base Namespace">
-          <div className="col-span-2 text-xs text-gray-500 -mt-1 mb-1">
-            Each client must have a unique namespace. This isolates their AI knowledge from all other clients.
-          </div>
-          {fld('pineconeIndex', 'Pinecone Namespace', {
-            required: !isEdit,
-            placeholder: 'client-name-slug',
-            hint: 'Unique lowercase slug (e.g. kigali-hospital). Required — every client must have a different value.'
-          })}
-          {fld('pineconeIndexName', 'Index Name', {
-            placeholder: 'moyo-tech-chatbot',
-            value: form.pineconeIndexName || '',
-            hint: 'The shared index that holds all namespaces. Blank = server default.'
-          })}
-        </FormSection>
-
         {/* ── Portal Access ── */}
         <FormSection title="Portal Access">
           <FormField
@@ -224,6 +202,38 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
               placeholder={isEdit ? 'Leave blank to keep existing' : 'Min 6 characters'}
               className={errors.password ? 'border-red-400 bg-red-50' : ''} />
           </FormField>
+        </FormSection>
+
+        {/* ── Knowledge Base Namespace (required) ── */}
+        <FormSection title="Knowledge Base Namespace">
+          <div className="col-span-2 text-xs text-gray-500 -mt-1 mb-1">
+            Each client must have a unique namespace that isolates their AI knowledge from all others.
+          </div>
+          {fld('pineconeIndex', 'Pinecone Namespace', {
+            required: !isEdit,
+            placeholder: 'client-name-slug',
+            hint: 'Unique lowercase slug (e.g. kigali-hospital). Required.'
+          })}
+          {fld('pineconeIndexName', 'Index Name', {
+            placeholder: 'moyo-tech-chatbot',
+            hint: 'Shared index that holds all namespaces. Blank = server default.'
+          })}
+        </FormSection>
+
+        {/* ── WhatsApp Configuration ── */}
+        <FormSection title="WhatsApp Configuration">
+          <div className="col-span-2 text-xs text-gray-500 -mt-1 mb-1">
+            These values are optional here — each tenant container reads them from environment variables.
+            Provide them to override the env defaults for this specific client.
+          </div>
+          {fld('whatsappBusinessId', 'Phone Number ID', {
+            placeholder: '908772575669393',
+            hint: 'Meta → WhatsApp → API Setup → Phone Number ID'
+          })}
+          {secret('whatsappToken', 'Permanent Token',
+            'Meta Business Suite → System Users → Generate Token (not the temporary test token)',
+            { placeholder: 'EAAxxxxxxx…' }
+          )}
         </FormSection>
 
         {/* ── Bot Branding & Business Config ── */}
@@ -239,8 +249,38 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
               {CURRENCIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </FormField>
-          {fld('depositAmount',      'Consultation Deposit', { type: 'number', placeholder: '5000', hint: 'Amount required to confirm a booking. Blank = server default.' })}
+          {fld('depositAmount', 'Consultation Deposit', { type: 'number', placeholder: '5000', hint: 'Amount required to confirm a booking. Blank = none.' })}
+          <FormField label="">
+            <label className="flex items-center gap-2 cursor-pointer mt-4">
+              <input type="checkbox" checked={form.requireDepositBeforeBooking} onChange={setChk('requireDepositBeforeBooking')}
+                className="accent-brand-500 w-4 h-4" />
+              <span className="text-sm text-gray-700">Require deposit before confirming booking</span>
+            </label>
+          </FormField>
         </FormSection>
+
+        {/* ── Booking Types ── */}
+        <div className="border border-gray-200 rounded-lg p-4 mt-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Booking Types</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {BOOKING_TYPE_OPTIONS.map(opt => {
+              const checked = (form.bookingTypes || []).includes(opt.value)
+              return (
+                <label key={opt.value}
+                  className={`flex flex-col gap-1 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    checked ? 'border-brand-400 bg-brand-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                  }`}>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={checked} onChange={() => toggleBookingType(opt.value)}
+                      className="accent-brand-500 w-4 h-4 shrink-0" />
+                    <span className="text-sm font-medium text-gray-800">{opt.label}</span>
+                  </div>
+                  <span className="text-xs text-gray-500 pl-6">{opt.desc}</span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
 
         {/* ── Subscription ── */}
         <FormSection title="Subscription">
@@ -274,7 +314,7 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
         {/* ── AI — collapsible ── */}
         <details className="border border-gray-200 rounded-lg overflow-hidden mt-3">
           <summary className="px-4 py-3 bg-gray-50 cursor-pointer text-sm font-semibold text-gray-700 select-none hover:bg-gray-100 transition-colors">
-            🤖 AI Configuration <span className="text-gray-400 font-normal text-xs ml-1">(falls back to server defaults if blank)</span>
+            🤖 AI Configuration <span className="text-gray-400 font-normal text-xs ml-1">(optional — falls back to server defaults)</span>
           </summary>
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {secret('geminiApiKey', 'Gemini API Key', 'Get from aistudio.google.com. Blank = shared server key.')}
@@ -284,15 +324,16 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
         {/* ── Payments — collapsible ── */}
         <details className="border border-gray-200 rounded-lg overflow-hidden mt-2">
           <summary className="px-4 py-3 bg-gray-50 cursor-pointer text-sm font-semibold text-gray-700 select-none hover:bg-gray-100 transition-colors">
-            💳 Payments (Flutterwave) <span className="text-gray-400 font-normal text-xs ml-1">(falls back to server defaults if blank)</span>
+            💳 Payments (Flutterwave) <span className="text-gray-400 font-normal text-xs ml-1">(optional — falls back to server defaults)</span>
           </summary>
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {secret('flutterwaveSecretKey',    'Secret Key',    'Flutterwave Dashboard → Settings → API Keys → Secret Key')}
             {secret('flutterwaveWebhookSecret','Webhook Secret','Flutterwave Dashboard → Settings → Webhooks → Secret Hash')}
+            {fld('paymentRedirectUrl', 'Payment Redirect URL', { type: 'url', placeholder: 'https://example.com/payment-success' })}
           </div>
         </details>
 
-        {/* ── Knowledge Base optional credentials — collapsible ── */}
+        {/* ── Knowledge Base Credentials — collapsible ── */}
         <details className="border border-gray-200 rounded-lg overflow-hidden mt-2">
           <summary className="px-4 py-3 bg-gray-50 cursor-pointer text-sm font-semibold text-gray-700 select-none hover:bg-gray-100 transition-colors">
             📦 Knowledge Base Credentials <span className="text-gray-400 font-normal text-xs ml-1">(optional — link external data sources)</span>
@@ -307,23 +348,18 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
               ))}
             </div>
 
-            {/* Pinecone — optional API key only; namespace is set above */}
             {kbTab === 'pinecone' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <p className="col-span-2 text-xs text-gray-500">Namespace and Index Name are configured in the required section above. Add a per-client API key here only if this client uses a different Pinecone project.</p>
-              {secret('pineconeApiKey',   'API Key',     'Blank = uses server PINECONE_API_KEY')}
-              {fld('pineconeEnvironment', 'Environment', { placeholder: 'us-east-1-aws' })}
+              <p className="col-span-2 text-xs text-gray-500">Namespace and Index Name are set above. Add a per-client API key only if this client uses a different Pinecone project.</p>
+              {secret('pineconeApiKey', 'API Key', 'Blank = uses server PINECONE_API_KEY')}
             </div>}
 
-            {/* Google Sheets */}
             {kbTab === 'sheets' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {fld('googleSheetId',            'Spreadsheet ID',      { placeholder: '1BxiMVs0XRA5nFMdK…', hint: 'From the URL: /spreadsheets/d/[ID]/edit' })}
               {fld('googleSheetsWebhookToken', 'Sheets Webhook Token', { placeholder: 'superdupersecret123' })}
             </div>}
 
-            {/* Microsoft */}
             {kbTab === 'microsoft' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {fld('microsoftClientId',  'Azure App (Client) ID', { placeholder: '2bfc96b6-1353-…' })}
-              {fld('microsoftObjectId',  'Object ID',             { placeholder: '18c4ecd8-5344-…' })}
               {fld('microsoftTenantId',  'Tenant (Directory) ID', { placeholder: 'bdc996a3-5320-…' })}
               {fld('microsoftUserEmail', 'User Email',            { type: 'email', placeholder: 'hello@company.com' })}
               {secret('microsoftClientSecret', 'Client Secret')}
@@ -331,7 +367,6 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
               {fld('microsoftItemId',    'Excel File Item ID',    { placeholder: '3C0B812E-67B5-…' })}
             </div>}
 
-            {/* Confluence */}
             {kbTab === 'confluence' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {fld('confluenceBaseUrl',  'Base URL',         { type: 'url', placeholder: 'https://yourcompany.atlassian.net/wiki' })}
               {fld('confluenceEmail',    'Atlassian Email',  { type: 'email' })}

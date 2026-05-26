@@ -11,7 +11,7 @@ import toast from 'react-hot-toast'
 
 // ── Shareable link panel ───────────────────────────────────────────────────────
 
-function ShareLinkPanel({ clientId }) {
+function ShareLinkPanel({ tenantId }) {
   const [link,        setLink]        = useState(null)
   const [expiresAt,   setExpiresAt]   = useState(null)
   const [generating,  setGenerating]  = useState(false)
@@ -20,7 +20,7 @@ function ShareLinkPanel({ clientId }) {
   const generate = async () => {
     setGenerating(true)
     try {
-      const res = await clientsApi.generateFormToken(clientId)
+      const res = await clientsApi.generateFormToken(tenantId)
       setLink(res.data.url)
       setExpiresAt(res.data.expiresAt)
       toast.success('Link ready — share it with the client')
@@ -114,7 +114,7 @@ function fromApi(info, client) {
 export default function GeneralInfo() {
   const { user, isAdmin } = useAuth()
   const [clients,  setClients]  = useState([])
-  const [clientId, setClientId] = useState(user?.clientId || '')
+  const [tenantId, setTenantId] = useState(user?.tenantId || '')
   const [form,     setForm]     = useState(BLANK)
   const [loading,  setLoading]  = useState(false)
   const [saving,   setSaving]   = useState(false)
@@ -126,15 +126,14 @@ export default function GeneralInfo() {
   }, [isAdmin])
 
   useEffect(() => {
-    if (!clientId) return
-    const client = clients.find(c => c.id === clientId) || null
+    if (!tenantId) return
+    const client = clients.find(c => c.id === tenantId) || null
     setLoading(true)
-    generalInfoApi.get(isAdmin ? clientId : undefined)
+    generalInfoApi.get()
       .then(res => setForm(fromApi(res.data?.info, client)))
       .catch(() => toast.error('Failed to load general info'))
       .finally(() => setLoading(false))
-  // clients is a dep so auto-fill fires once the client list is available
-  }, [clientId, isAdmin, clients])
+  }, [tenantId, isAdmin, clients])
 
   const set  = (field, val) => setForm(f => ({ ...f, [field]: val }))
 
@@ -143,7 +142,7 @@ export default function GeneralInfo() {
     setSaving(true)
     try {
       const payload = { ...form }
-      if (isAdmin) payload.clientId = clientId
+      if (isAdmin) payload.tenantId = tenantId
       await generalInfoApi.update(payload)
       toast.success('General info saved')
     } catch (err) {
@@ -165,7 +164,7 @@ export default function GeneralInfo() {
       {isAdmin && (
         <div className="mb-6 max-w-xs">
           <FormField label="Client">
-            <Select value={clientId} onChange={e => setClientId(e.target.value)}>
+            <Select value={tenantId} onChange={e => setTenantId(e.target.value)}>
               <option value="">— Select a client —</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
@@ -173,17 +172,17 @@ export default function GeneralInfo() {
         </div>
       )}
 
-      {!clientId && isAdmin && (
+      {!tenantId && isAdmin && (
         <p className="text-gray-400 text-sm">Select a client to view or edit their general info.</p>
       )}
 
-      {clientId && isAdmin && <ShareLinkPanel clientId={clientId} />}
+      {tenantId && isAdmin && <ShareLinkPanel tenantId={tenantId} />}
 
-      {clientId && loading && (
+      {tenantId && loading && (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
       )}
 
-      {clientId && !loading && (
+      {tenantId && !loading && (
         <form onSubmit={save} className="space-y-5">
 
           {/* Top two-column grid */}

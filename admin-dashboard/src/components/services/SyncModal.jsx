@@ -1,25 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { kbApi } from '../../services/api'
-import { useAuth } from '../../context/AuthContext'
 import Modal from '../ui/Modal'
 import Button from '../ui/Button'
-import FormField, { Select } from '../ui/FormField'
 
-export default function SyncModal({ open, onClose, clients = [], defaultClientId = '' }) {
-  const { user, isClient } = useAuth()
-  const [clientId, setClientId] = useState(defaultClientId)
-  const [syncing, setSyncing]   = useState(null)
-
-  useEffect(() => { setClientId(defaultClientId) }, [defaultClientId, open]) // 'confluence' | 'sheets' | 'microsoft'
-  const [results, setResults]   = useState({})
-
-  const resolvedId = isClient ? user.clientId : (clientId || null)
+export default function SyncModal({ open, onClose }) {
+  const [syncing, setSyncing] = useState(null)
+  const [results, setResults] = useState({})
 
   const run = async (key, fn) => {
     setSyncing(key)
     try {
-      const { data } = await fn(resolvedId)
+      const { data } = await fn()
       setResults(r => ({ ...r, [key]: { ok: true, msg: data.message } }))
       toast.success(`${key.charAt(0).toUpperCase() + key.slice(1)} sync complete`)
     } catch (err) {
@@ -37,20 +29,6 @@ export default function SyncModal({ open, onClose, clients = [], defaultClientId
     <Modal open={open} onClose={onClose} title="🔄 Sync Knowledge Base" size="lg">
       <div className="space-y-5">
         <p className="text-sm text-gray-500">Pull the latest data from any connected source into the AI knowledge base.</p>
-
-        {!isClient && clients.length > 0 && (
-          <FormField label="Sync for Client" required>
-            <>
-              <Select value={clientId} onChange={e => setClientId(e.target.value)}>
-                <option value="">— Select a client —</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </Select>
-              <p className="text-xs text-gray-400 mt-1">Each client has an isolated knowledge base (Pinecone namespace).</p>
-            </>
-          </FormField>
-        )}
 
         {/* Confluence — featured */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 flex flex-col sm:flex-row gap-4">

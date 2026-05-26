@@ -24,83 +24,48 @@ export const requireAdmin = (req, res, next) => {
 };
 
 // =============================================================================
-// rls_middleware.js
+// RLS middleware
 //
-// Two middleware functions that work together to enforce tenant isolation:
+// setRLSContext — Tells PostgreSQL which tenant this container serves so that
+//   Row Level Security policies filter DB rows automatically. The tenant is
+//   always process.env.TENANT_ID — fixed at container startup, never changes.
 //
-//  1. setRLSContext      — Tells PostgreSQL which tenant owns this request so
-//                          Row Level Security (RLS) policies can filter DB rows
-//                          automatically, even if application code forgets to.
-//
-//  2. enforceClientScope — Application-layer guard that stops a client from
-//                          even attempting to access another tenant's data,
-//                          and injects the trusted clientId into req.body.
-//
-// Why two layers?
-//   - enforceClientScope catches and rejects bad requests early (fast 403).
-//   - setRLSContext / RLS is the safety net: even if a bug in a route forgets
-//     to filter by clientId, Postgres enforces isolation at the DB level.
-//   Both would have to fail simultaneously for a cross-tenant data leak.
+// enforceClientScope — Application-layer guard that prevents JWT tokens from
+//   one tenant being used against another tenant's admin routes.
 // =============================================================================
 
 
 // -----------------------------------------------------------------------------
 // setRLSContext
 //
-// Sets PostgreSQL session variables (app.current_client_id, app.current_role)
-// so that RLS policies on every table automatically filter rows to the current
-// tenant — no manual WHERE client_id = ? needed in every query.
-//
-// Why a transaction?
-//   set_config(..., true) makes the variables transaction-local: they disappear
-//   when the transaction ends.  This is critical for connection pooling — a
-//   recycled connection cannot carry the previous tenant's identity into the
-//   next request.
+// Sets app.tenant_id on the PostgreSQL connection so RLS policies activate.
+// Because TENANT_ID is constant for the lifetime of this container, we still
+// use a transaction-scoped SET so that pooled connections are always clean —
+// a recycled connection from the pool cannot carry a stale value.
 // -----------------------------------------------------------------------------
 export const setRLSContext = async (req, res, next) => {
 
-  // No authenticated user on this request (e.g. public route) — skip RLS setup.
   if (!req.user) return next();
 
   const { sequelize } = dbConfig.db;
+  const tenantId = process.env.TENANT_ID;
 
-  // Admins get an empty clientId so the RLS policy's NULLIF(..., '') turns it
-  // into NULL, making the client_id check fail.  The policy still lets admins
-  // through because it checks current_role = 'admin' first.
-  const isAdmin  = req.user.role === 'admin';
-  const clientId = isAdmin ? '' : (req.user.clientId ?? '');
-  const role     = req.user.role ?? 'client';
-
-  let t; // transaction handle — declared here so the catch block can roll it back
+  let t;
   try {
-    // Open a transaction that will live for the entire HTTP request lifecycle.
-    // All subsequent Sequelize queries on this request should be passed this
-    // transaction so they share the same Postgres connection and therefore
-    // see the RLS variables we set below.
     t = await sequelize.transaction();
 
-    // set_config(name, value, is_local):
-    //   is_local = true → value is scoped to this transaction only.
-    //   When the transaction commits or rolls back, these variables are cleared,
-    //   which keeps pooled connections clean for the next request.
     await sequelize.query(
-      `SELECT
-         set_config('app.current_client_id', :clientId, true),
-         set_config('app.current_role',       :role,     true)`,
+      `SELECT set_config('app.tenant_id', :tenantId, true)`,
       {
-        replacements: { clientId, role },
+        replacements: { tenantId },
         type: 'SELECT',
-        transaction: t, // must run inside the same transaction
+        transaction: t,
       }
     );
 
   } catch (err) {
-    // RLS setup itself failed (e.g. DB connection error).
-    // Log and continue — downstream code still has its own auth checks.
-    // NOTE: the request proceeds WITHOUT RLS context set, so make sure
-    //       enforceClientScope and route-level checks are in place.
     logger.error('RLS context setup failed', { error: err.message });
-    if (t) await t.rollback().catch(() => {}); // clean up the failed transaction
+    if (t) await t.rollback().catch(() => {});
     return next();
   }
 
@@ -179,58 +144,28 @@ export const setRLSContext = async (req, res, next) => {
 // -----------------------------------------------------------------------------
 // enforceClientScope
 //
-// Application-layer guard that runs BEFORE any DB query.  Its job is:
-//   1. Reject requests where a client tries to act on another client's data.
-//   2. Inject the trusted, server-verified clientId into req.body so route
-//      handlers can safely use req.body.clientId without trusting user input.
-//
-// Why do we need this if RLS already protects us?
-//   RLS would silently return empty data or reject the write, but the HTTP
-//   response would be ambiguous (200 with empty results vs 403 Forbidden).
-//   This middleware gives a clear, early 403 and avoids unnecessary DB round
-//   trips for obviously-invalid requests.
+// Ensures the authenticated user belongs to this container's tenant.
+// With one container per tenant, cross-tenant requests are already impossible
+// at the network level (wrong subdomain → wrong container), but we keep this
+// as a defence-in-depth check against stolen JWTs from other tenants.
 // -----------------------------------------------------------------------------
 export const enforceClientScope = (req, res, next) => {
 
-  // No user at all — authentication hasn't happened or token is invalid.
   if (!req.user) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  // Admins can access any client's data — let them through immediately.
+  // Admin role bypasses tenant scope check — admin manages this tenant's data.
   if (req.user.role === 'admin') return next();
 
-
-  // ── Cross-tenant access check ─────────────────────────────────────────────
-  //
-  // A client might try to pass a different clientId in the request body, query
-  // string, or URL params to access another tenant's data.  We check all three
-  // locations and reject if any of them doesn't match the authenticated user.
-  //
-  // Example attack: POST /api/orders { clientId: "other-tenant-uuid" }
-  //   Without this check the route might query orders for the wrong tenant.
-  const requestedClientId =
-    req.body?.clientId   ||  // from JSON body
-    req.query?.clientId  ||  // from ?clientId=... in the URL
-    req.params?.clientId;    // from /resource/:clientId route param
-
-  if (requestedClientId && requestedClientId !== req.user.clientId) {
-    // The client is explicitly trying to access a different tenant — deny it.
-    return res.status(403).json({ error: 'Access denied: cannot access another client\'s data' });
+  // Reject if the JWT's tenantId doesn't match this container's TENANT_ID.
+  if (req.user.tenantId && req.user.tenantId !== process.env.TENANT_ID) {
+    return res.status(403).json({ error: 'Token is not valid for this tenant' });
   }
 
-
-  // ── Inject trusted clientId ───────────────────────────────────────────────
-  //
-  // Overwrite whatever clientId the client sent (or didn't send) with the
-  // server-verified value from the JWT / session.
-  //
-  // This means every route handler can safely do:
-  //   const { clientId } = req.body;  // always the real, authenticated value
-  //
-  // Without this, a route that forgot to check would silently use a
-  // client-supplied (untrusted) clientId.
-  if (req.body) req.body.clientId = req.user.clientId;
+  // Inject the trusted tenantId into req.body so route handlers don't need
+  // to read from the JWT directly.
+  if (req.body) req.body.tenantId = process.env.TENANT_ID;
 
   next();
 };

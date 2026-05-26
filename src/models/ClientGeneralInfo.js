@@ -7,7 +7,7 @@ export default (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
-    clientId: {
+    tenantId: {
       type: DataTypes.UUID,
       allowNull: false,
       references: { model: 'clients', key: 'id' },

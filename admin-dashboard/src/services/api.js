@@ -42,7 +42,7 @@ export const appointmentsApi = {
 }
 
 export const servicesApi = {
-  getAll: (clientId) => api.get('/outreach/services', { params: clientId ? { clientId } : {} }),
+  getAll: () => api.get('/outreach/services'),
 }
 
 export const employeesApi = {
@@ -50,14 +50,14 @@ export const employeesApi = {
 }
 
 export const kbApi = {
-  syncSheets:    (clientId) => api.post('/kb/sync/sheets',     { clientId }),
-  syncMicrosoft: (clientId) => api.post('/kb/sync/microsoft',  { clientId }),
-  syncConfluence:(clientId) => api.post('/kb/sync/confluence', { clientId }),
+  syncSheets:    () => api.post('/kb/sync/sheets'),
+  syncMicrosoft: () => api.post('/kb/sync/microsoft'),
+  syncConfluence:() => api.post('/kb/sync/confluence'),
 }
 
 export const generalInfoApi = {
-  get:    (clientId) => api.get('/outreach/general-info', { params: clientId ? { clientId } : {} }),
-  update: (data)     => api.put('/outreach/general-info', data),
+  get:    () => api.get('/outreach/general-info'),
+  update: (data) => api.put('/outreach/general-info', data),
 }
 
 export const onboardingApi = {

@@ -1,0 +1,16 @@
+{
+  "tenants": [
+    {
+      "name": "clinic",
+      "phoneNumberId": "908772575661941",
+      "verifyToken": "moyo_tech_secret_2025",
+      "port": 3001
+    },
+    {
+      "name": "resto",
+      "phoneNumberId": "1070375439487837",
+      "verifyToken": "moyo_tech_secret_2025",
+      "port": 3002
+    }
+  ]
+}
