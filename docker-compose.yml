@@ -38,3 +38,21 @@ services:
       retries: 3
       start_period: 40s
     command: sh -c "node scripts/migrate.js && node app.js"
+
+  yayah-telecom-demo:
+    image: yayah:latest
+    container_name: yayah-telecom-demo
+    restart: always
+    networks:
+      - app_yaya-dev
+    ports:
+      - "127.0.0.1:3003:3000"
+    env_file:
+      - .env.telecom
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: sh -c "node scripts/migrate.js && node app.js"
