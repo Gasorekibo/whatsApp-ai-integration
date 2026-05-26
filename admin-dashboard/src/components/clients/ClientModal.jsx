@@ -30,7 +30,7 @@ const EMPTY = {
   subscriptionPlan:'message_only', maxMonthlyMessages:'',
   subscriptionStatus:'trial', subscriptionEndDate:'', isActive:true,
   password:'',
-  whatsappBusinessId:'', whatsappToken:'',
+  whatsappBusinessId:'', whatsappToken:'', whatsappAccountId:'', whatsappWebhookVerifyToken:'',
   geminiApiKey:'',
   pineconeIndex:'', pineconeApiKey:'', pineconeIndexName:'',
   flutterwaveSecretKey:'', flutterwaveWebhookSecret:'', paymentRedirectUrl:'',
@@ -222,9 +222,8 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
 
         {/* ── WhatsApp Configuration ── */}
         <FormSection title="WhatsApp Configuration">
-          <div className="col-span-2 text-xs text-gray-500 -mt-1 mb-1">
-            These values are optional here — each tenant container reads them from environment variables.
-            Provide them to override the env defaults for this specific client.
+          <div className="col-span-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 -mt-1 mb-1">
+            ⚠️ Phone Number ID and Token are required for the bot to send messages. The container reads these from the database — there is no fallback.
           </div>
           {fld('whatsappBusinessId', 'Phone Number ID', {
             placeholder: '908772575669393',
@@ -234,6 +233,14 @@ export default function ClientModal({ open, onClose, client, onSaved }) {
             'Meta Business Suite → System Users → Generate Token (not the temporary test token)',
             { placeholder: 'EAAxxxxxxx…' }
           )}
+          {fld('whatsappAccountId', 'Business Account ID (WABA)', {
+            placeholder: '863459623353177',
+            hint: 'Meta → WhatsApp → API Setup → WhatsApp Business Account ID'
+          })}
+          {fld('whatsappWebhookVerifyToken', 'Webhook Verify Token', {
+            placeholder: 'my_secret_token_2025',
+            hint: 'Must match exactly what you enter in Meta Developer Console → Webhook → Verify Token'
+          })}
         </FormSection>
 
         {/* ── Bot Branding & Business Config ── */}

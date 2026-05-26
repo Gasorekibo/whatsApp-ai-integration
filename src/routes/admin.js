@@ -119,11 +119,14 @@ router.post('/clients', requireAdmin, async (req, res) => {
     }
 
     // ── Uniqueness pre-checks (return clean errors before DB constraint fires) ──
-    const [existingEmail, existingPhone, existingWaId] = await Promise.all([
+    const checks = await Promise.all([
       dbConfig.db.Client.findOne({ where: { email } }),
       dbConfig.db.Client.findOne({ where: { phone } }),
-      dbConfig.db.Client.findOne({ where: { whatsappBusinessId } })
+      whatsappBusinessId
+        ? dbConfig.db.Client.findOne({ where: { whatsappBusinessId } })
+        : Promise.resolve(null),
     ]);
+    const [existingEmail, existingPhone, existingWaId] = checks;
 
     const conflicts = [];
     if (existingEmail) conflicts.push({ field: 'email',              message: `Email '${email}' is already registered to another client` });
