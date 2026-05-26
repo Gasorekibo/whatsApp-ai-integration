@@ -87,7 +87,6 @@ export default function Employees() {
       <CalendarConnectModal
         open={calOpen}
         onClose={() => setCalOpen(false)}
-        clients={clients}
       />
     </div>
   )

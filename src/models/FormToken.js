@@ -12,7 +12,7 @@ export default (sequelize) => {
       allowNull: false,
       unique: true,
     },
-    clientId: {
+    tenantId: {
       type: DataTypes.UUID,
       allowNull: false,
       references: { model: 'clients', key: 'id' },

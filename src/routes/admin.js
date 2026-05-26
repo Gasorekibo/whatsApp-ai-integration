@@ -3,18 +3,18 @@ import crypto from 'crypto';
 const router = express.Router();
 import dbConfig from '../models/index.js';
 import logger from '../logger/logger.js';
-import { invalidateClient } from '../services/clientService.js';
+import { getTenant } from '../services/clientService.js';
 import { requireAdmin } from '../middlewares/auth.js';
 import { invalidateGeneralInfoCache } from '../services/generalInfo.service.js';
 
 // GET /services — authenticated users; clients see only their own services
 router.get('/services', async (req, res) => {
   try {
+    // RLS already filters by tenant_id via app.tenant_id session variable —
+    // this WHERE is a belt-and-suspenders guard for non-RLS queries.
     const where = {};
     if (req.user.role === 'client') {
-      where.clientId = req.user.clientId;
-    } else if (req.query.clientId) {
-      where.clientId = req.query.clientId;
+      where.tenantId = req.user.tenantId;
     }
     const services = await dbConfig.db.Content?.findAll({ where });
     res.json(services || []);
@@ -41,7 +41,7 @@ router.get('/users', requireAdmin, async (req, res) => {
 
 router.get('/appointments', async (req, res) => {
   try {
-    const where = req.user.role === 'client' ? { clientId: req.user.clientId } : {};
+    const where = req.user.role === 'client' ? { tenantId: req.user.tenantId } : {};
     const appointments = await dbConfig.db.ServiceRequest?.findAll({ where, include: [{
         model: dbConfig.db.Client,
         attributes: ['name'],
@@ -58,7 +58,7 @@ router.get('/appointments', async (req, res) => {
 router.get('/clients', async (req, res) => {
   try {
     if (req.user.role === 'client') {
-      const client = await dbConfig.db.Client?.findByPk(req.user.clientId);
+      const client = await dbConfig.db.Client?.findByPk(req.user.tenantId);
       return res.json({ clients: client ? [client] : [] });
     }
     const clients = await dbConfig.db.Client?.findAll({ order: [['createdAt', 'DESC']] });
@@ -85,6 +85,7 @@ router.post('/clients', requireAdmin, async (req, res) => {
       geminiApiKey, pineconeApiKey, pineconeIndexName, pineconeEnvironment,
       // ── Optional subscription & config ───────────────────────────────
       subscriptionPlan, timezone, currency, depositAmount, paymentRedirectUrl,
+      requireDepositBeforeBooking, bookingTypes,
       // ── Optional payments ────────────────────────────────────────────
       flutterwaveSecretKey, flutterwaveWebhookSecret,
       // ── Optional knowledge base integrations ─────────────────────────
@@ -109,38 +110,23 @@ router.post('/clients', requireAdmin, async (req, res) => {
     if (!password?.trim())
       missing.push({ field: 'password', message: 'Password is required so the client can log into the portal' });
 
-    // ── WhatsApp ──────────────────────────────────────────────────────────
-    if (!whatsappBusinessId?.trim())
-      missing.push({ field: 'whatsappBusinessId', message: 'WhatsApp phone_number_id is required — without it incoming messages cannot be routed to this client' });
-    if (!whatsappToken?.trim())
-      missing.push({ field: 'whatsappToken',      message: 'WhatsApp Cloud API token is required — without it the bot cannot send any messages' });
-
-    // ── AI ────────────────────────────────────────────────────────────────
-    if (!geminiApiKey?.trim())
-      missing.push({ field: 'geminiApiKey', message: 'Gemini API key is required — the AI engine throws immediately without it and no conversation can proceed' });
-
     // ── Knowledge base ────────────────────────────────────────────────────
     if (!pineconeIndex?.trim())
       missing.push({ field: 'pineconeIndex', message: 'Pinecone namespace is required to isolate this client\'s knowledge base from other clients' });
-
-    // ── Localisation & subscription ───────────────────────────────────────
-    if (!timezone?.trim())
-      missing.push({ field: 'timezone', message: 'Timezone is required — booking slots and business hours are displayed in this timezone (e.g. Africa/Kigali, Europe/Paris)' });
-    if (!currency?.trim())
-      missing.push({ field: 'currency', message: 'Currency is required — deposit amounts and payment messages use this currency code (e.g. RWF, USD, EUR)' });
-    if (!subscriptionPlan?.trim())
-      missing.push({ field: 'subscriptionPlan', message: 'Subscription plan is required — choose message_only or message_and_voice' });
 
     if (missing.length > 0) {
       return res.status(400).json({ error: 'Missing required fields', missing });
     }
 
     // ── Uniqueness pre-checks (return clean errors before DB constraint fires) ──
-    const [existingEmail, existingPhone, existingWaId] = await Promise.all([
+    const checks = await Promise.all([
       dbConfig.db.Client.findOne({ where: { email } }),
       dbConfig.db.Client.findOne({ where: { phone } }),
-      dbConfig.db.Client.findOne({ where: { whatsappBusinessId } })
+      whatsappBusinessId
+        ? dbConfig.db.Client.findOne({ where: { whatsappBusinessId } })
+        : Promise.resolve(null),
     ]);
+    const [existingEmail, existingPhone, existingWaId] = checks;
 
     const conflicts = [];
     if (existingEmail) conflicts.push({ field: 'email',              message: `Email '${email}' is already registered to another client` });
@@ -174,6 +160,8 @@ router.post('/clients', requireAdmin, async (req, res) => {
       // ── Optional: booking & payment ──────────────────────────────────
       depositAmount:              depositAmount              || null,
       paymentRedirectUrl:         paymentRedirectUrl         || null,
+      requireDepositBeforeBooking: requireDepositBeforeBooking ?? false,
+      bookingTypes:               bookingTypes               || ['calendar'],
       flutterwaveSecretKey:       flutterwaveSecretKey       || null,
       flutterwaveWebhookSecret:   flutterwaveWebhookSecret   || null,
       // ── Optional: knowledge base integrations ────────────────────────
@@ -244,7 +232,7 @@ router.put('/clients/:id', requireAdmin, async (req, res) => {
 
     await client.save();
 
-    if (client.whatsappBusinessId) await invalidateClient(client.whatsappBusinessId);
+    // No cache to invalidate — per-tenant containers read TENANT_ID from env.
 
     res.json({ client });
   } catch (error) {
@@ -254,10 +242,10 @@ router.put('/clients/:id', requireAdmin, async (req, res) => {
 
 router.get('/employees', requireAdmin, async (req, res) => {
   try {
-    const where = req.query.clientId ? { clientId: req.query.clientId } : {};
+    const where = {};
     const employees = await dbConfig.db.Employee?.findAll({
       where,
-      attributes: ['id', 'clientId', 'name', 'email', 'createdAt'],
+      attributes: ['id', 'tenantId', 'name', 'email', 'createdAt'],
       include: [{ model: dbConfig.db.Client, attributes: ['name'], required: false }],
       order: [['createdAt', 'DESC']]
     });
@@ -271,10 +259,10 @@ router.get('/employees', requireAdmin, async (req, res) => {
 
 router.get('/general-info', async (req, res) => {
   try {
-    const clientId = req.user.role === 'client' ? req.user.clientId : (req.query.clientId || null);
-    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+    const tenantId = req.user.role === 'client' ? req.user.tenantId : (req.query.tenantId || process.env.TENANT_ID);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
-    const info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+    const info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { tenantId } });
     res.json({ info: info || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -283,22 +271,21 @@ router.get('/general-info', async (req, res) => {
 
 router.put('/general-info', async (req, res) => {
   try {
-    const clientId = req.user.role === 'client' ? req.user.clientId : (req.body.clientId || null);
-    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+    const tenantId = req.user.role === 'client' ? req.user.tenantId : (req.body.tenantId || process.env.TENANT_ID);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
 
     const allowed = ['businessName', 'industry', 'description', 'phone', 'email',
                      'website', 'address', 'area', 'city', 'mapsLink', 'hours', 'faqs'];
     const updates = {};
     allowed.forEach(field => { if (req.body[field] !== undefined) updates[field] = req.body[field]; });
 
-    // findOne + update/create guarantees we never create a duplicate row
-    let info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { clientId } });
+    let info = await dbConfig.db.ClientGeneralInfo.findOne({ where: { tenantId } });
     if (info) {
       await info.update(updates);
     } else {
-      info = await dbConfig.db.ClientGeneralInfo.create({ clientId, ...updates });
+      info = await dbConfig.db.ClientGeneralInfo.create({ tenantId, ...updates });
     }
-    await invalidateGeneralInfoCache(clientId);
+    await invalidateGeneralInfoCache(tenantId);
 
     res.json({ info });
   } catch (err) {
@@ -308,16 +295,16 @@ router.put('/general-info', async (req, res) => {
 
 // ── Onboarding form token (generate / reuse) ──────────────────────────────────
 
-router.post('/clients/:clientId/form-token', requireAdmin, async (req, res) => {
+router.post('/clients/:tenantId/form-token', requireAdmin, async (req, res) => {
   try {
-    const { clientId } = req.params;
+    const { tenantId } = req.params;
 
-    const client = await dbConfig.db.Client?.findByPk(clientId);
+    const client = await dbConfig.db.Client?.findByPk(tenantId);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     // Reuse an existing token that hasn't expired yet
     const existing = await dbConfig.db.FormToken.findOne({
-      where: { clientId, expiresAt: { [dbConfig.db.Sequelize.Op.gt]: new Date() } },
+      where: { tenantId, expiresAt: { [dbConfig.db.Sequelize.Op.gt]: new Date() } },
       order: [['createdAt', 'DESC']],
     });
 
@@ -326,15 +313,14 @@ router.post('/clients/:clientId/form-token', requireAdmin, async (req, res) => {
       return res.json({ token: existing.token, url: `${baseUrl}/onboarding/${existing.token}`, expiresAt: existing.expiresAt });
     }
 
-    // Expire all old tokens for this client before issuing a new one
-    await dbConfig.db.FormToken.destroy({ where: { clientId } });
+    await dbConfig.db.FormToken.destroy({ where: { tenantId } });
 
-    const token     = crypto.randomBytes(32).toString('hex'); // 64 hex chars
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await dbConfig.db.FormToken.create({ token, clientId, expiresAt });
+    const token     = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await dbConfig.db.FormToken.create({ token, tenantId, expiresAt });
 
     const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
-    logger.info('Form token generated', { clientId, expiresAt });
+    logger.info('Form token generated', { tenantId, expiresAt });
     res.status(201).json({ token, url: `${baseUrl}/onboarding/${token}`, expiresAt });
   } catch (err) {
     res.status(500).json({ error: err.message });

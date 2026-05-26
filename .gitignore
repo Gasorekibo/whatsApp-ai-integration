@@ -1,12 +1,12 @@
 # Logs
 logs
 *.log
+.claude/
 createClient.http
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
-scripts
 terminal-chat.js
 verify-tools.js
 # Diagnostic reports (https://nodejs.org/api/report.html)

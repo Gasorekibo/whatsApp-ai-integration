@@ -11,14 +11,11 @@ import SyncModal from '../components/services/SyncModal'
 
 export default function Services() {
   const { user, isClient, isAdmin } = useAuth()
-  const [selectedClient, setSelectedClient] = useState(isClient ? user.clientId : '')
+  const [selectedClient, setSelectedClient] = useState(isClient ? user.tenantId : '')
   const [syncOpen, setSyncOpen] = useState(false)
 
   const { data: clientsData } = useApiData(clientsApi.getAll)
-  const { data, loading, refetch } = useApiData(
-    () => servicesApi.getAll(selectedClient || null),
-    [selectedClient]
-  )
+  const { data, loading, refetch } = useApiData(() => servicesApi.getAll())
 
   const clients  = clientsData?.clients || []
   const services = data || []
@@ -80,8 +77,6 @@ export default function Services() {
       <SyncModal
         open={syncOpen}
         onClose={() => { setSyncOpen(false); refetch() }}
-        clients={clients}
-        defaultClientId={selectedClient}
       />
     </div>
   )

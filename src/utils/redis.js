@@ -54,6 +54,13 @@ function isReady() {
   return client?.status === 'ready';
 }
 
+// ── Key namespacing ───────────────────────────────────────────────────────────
+//
+// Every Redis key must be prefixed with REDIS_PREFIX so keys from different
+// tenant containers never collide on the shared Redis instance.
+// Usage: rkey('msgdedup', messageId)  →  "resto-demo:msgdedup:abc123"
+export const rkey = (...parts) => `${process.env.REDIS_PREFIX}:${parts.join(':')}`;
+
 // ── Helpers (all swallow Redis errors — never crash the app) ──────────────────
 
 export async function redisGet(key) {

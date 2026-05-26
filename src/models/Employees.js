@@ -8,7 +8,7 @@ export default (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
-    clientId: {
+    tenantId: {
       type: DataTypes.UUID,
       allowNull: false,
       references: { model: 'clients', key: 'id' },
@@ -33,7 +33,7 @@ export default (sequelize) => {
     tableName: 'employees',
     timestamps: true,
     indexes: [
-      { unique: true, fields: ['client_id', 'email'], name: 'idx_employees_client_email' }
+      { unique: true, fields: ['tenant_id', 'email'], name: 'idx_employees_tenant_email' }
     ],
     hooks: {
       beforeCreate: (employee) => {

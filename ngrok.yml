@@ -1,0 +1,9 @@
+version: "2"
+authtoken: 36Q7j111QcZGoxgQvfVmOYJ9BSK_wsZhWyXPEUiqCutyj81w
+tunnels:
+  clinic:
+    proto: http
+    addr: 3001
+  resto:
+    proto: http
+    addr: 3002

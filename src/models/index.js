@@ -29,7 +29,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const node_env = process.env.NODE_ENV || 'development';
 const dbConfig = config[node_env];
 
-const sequelize = new Sequelize(process.env.PG_DATABASE_URL, {
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: dbConfig.dialect,
   logging: dbConfig.logging,
   pool: dbConfig.pool,
@@ -55,26 +55,26 @@ const db = {
 // Every child table has a mandatory FK to clients.id; CASCADE on delete so
 // removing a client wipes all its data atomically.
 
-db.Client.hasMany(db.UserSession,      { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.UserSession.belongsTo(db.Client,    { foreignKey: 'clientId' });
+db.Client.hasMany(db.UserSession,      { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.UserSession.belongsTo(db.Client,    { foreignKey: 'tenantId' });
 
-db.Client.hasOne(db.Content,           { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.Content.belongsTo(db.Client,        { foreignKey: 'clientId' });
+db.Client.hasOne(db.Content,           { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.Content.belongsTo(db.Client,        { foreignKey: 'tenantId' });
 
-db.Client.hasMany(db.ServiceRequest,   { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.ServiceRequest.belongsTo(db.Client, { foreignKey: 'clientId' });
+db.Client.hasMany(db.ServiceRequest,   { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.ServiceRequest.belongsTo(db.Client, { foreignKey: 'tenantId' });
 
-db.Client.hasMany(db.ProcessedMessage, { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.ProcessedMessage.belongsTo(db.Client, { foreignKey: 'clientId' });
+db.Client.hasMany(db.ProcessedMessage, { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.ProcessedMessage.belongsTo(db.Client, { foreignKey: 'tenantId' });
 
-db.Client.hasMany(db.Employee,              { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.Employee.belongsTo(db.Client,            { foreignKey: 'clientId' });
+db.Client.hasMany(db.Employee,              { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.Employee.belongsTo(db.Client,            { foreignKey: 'tenantId' });
 
-db.Client.hasOne(db.ClientGeneralInfo,      { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.ClientGeneralInfo.belongsTo(db.Client,   { foreignKey: 'clientId' });
+db.Client.hasOne(db.ClientGeneralInfo,      { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.ClientGeneralInfo.belongsTo(db.Client,   { foreignKey: 'tenantId' });
 
-db.Client.hasMany(db.FormToken,             { foreignKey: 'clientId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-db.FormToken.belongsTo(db.Client,           { foreignKey: 'clientId' });
+db.Client.hasMany(db.FormToken,             { foreignKey: 'tenantId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+db.FormToken.belongsTo(db.Client,           { foreignKey: 'tenantId' });
 
 // ── Lifecycle hooks ───────────────────────────────────────────────────────────
 Object.keys(db).forEach(modelName => {
@@ -83,22 +83,7 @@ Object.keys(db).forEach(modelName => {
   }
 });
 
-// ── Database sync + RLS bootstrap ────────────────────────────────────────────
-const syncDatabase = async (options = {}) => {
-  try {
-    await sequelize.authenticate();
-    logger.info('Database connection established successfully');
-
-    await sequelize.sync(options);
-    logger.info('Database synchronized successfully');
-
-    await applyRLSPolicies();
-  } catch (error) {
-    logger.error('Unable to connect to the database', { error: error.message });
-    throw error;
-  }
-};
-
+// ── RLS bootstrap ─────────────────────────────────────────────────────────────
 const applyRLSPolicies = async () => {
   try {
     const sql = readFileSync(
@@ -113,4 +98,35 @@ const applyRLSPolicies = async () => {
   }
 };
 
-export default { db, syncDatabase };
+// Used at runtime: verifies the connection and applies RLS policies.
+// Schema changes are handled exclusively by sequelize-cli migrations
+// (run once before the app starts via the docker-compose entrypoint),
+// so calling sequelize.sync() here is intentionally omitted — it would
+// race against other instances starting in parallel.
+const connectDatabase = async () => {
+  try {
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
+    await applyRLSPolicies();
+  } catch (error) {
+    logger.error('Unable to connect to the database', { error: error.message });
+    throw error;
+  }
+};
+
+// Kept for local development / one-off use only. Never call this in production
+// when multiple instances may start simultaneously.
+const syncDatabase = async (options = {}) => {
+  try {
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
+    await sequelize.sync(options);
+    logger.info('Database synchronized successfully');
+    await applyRLSPolicies();
+  } catch (error) {
+    logger.error('Unable to connect to the database', { error: error.message });
+    throw error;
+  }
+};
+
+export default { db, connectDatabase, syncDatabase };

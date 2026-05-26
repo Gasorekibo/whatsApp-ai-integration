@@ -7,7 +7,7 @@ export default (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
-    clientId: {
+    tenantId: {
       type: DataTypes.UUID,
       allowNull: false,
       references: { model: 'clients', key: 'id' },
@@ -27,7 +27,7 @@ export default (sequelize) => {
     tableName: 'processed_messages',
     timestamps: false,
     indexes: [
-      { unique: true, fields: ['client_id', 'message_id'], name: 'idx_processed_messages_client_msg' }
+      { unique: true, fields: ['tenant_id', 'message_id'], name: 'idx_processed_messages_tenant_msg' }
     ]
   });
 

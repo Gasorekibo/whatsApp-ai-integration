@@ -7,9 +7,9 @@ export default {
 
         pinecone: {
             enabled: true,
-            apiKey: process.env.PINECON_API_KEY || process.env.PINECONE_API_KEY,
+            apiKey: process.env.PINECONE_API_KEY,
             environment: process.env.PINECONE_ENVIRONMENT || 'us-east-1',
-            indexName: process.env.PINECON_INDEX_NAME || process.env.PINECONE_INDEX_NAME || 'moyo-tech-chatbot',
+            indexName: process.env.PINECONE_INDEX_NAME || 'moyo-tech-chatbot',
             dimensions: 768, 
             metric: 'cosine',
             cloud: 'aws',
@@ -52,7 +52,7 @@ export default {
     retrieval: {
         topK: 8, 
         minScore: 0.30, // Similarity threshold (0-1)
-	maxContextChunks: 5,
+        maxContextChunks: 5,
         includeMetadata: true,
         includeValues: false,
         maxContextChunks: 5,
@@ -76,20 +76,15 @@ export default {
         },
 
         // Context window budgets (in tokens)
-        maxContextTokens: 2000, // Increased for more context
+        maxContextTokens: 2000,
         baseInstructionTokens: 400,
         dynamicDataTokens: 600,
-        
-        // Query enhancement
+
         queryExpansion: {
             enabled: true,
             synonymsEnabled: true,
             maxExpansionTerms: 3
         },
-        deduplication: {
-        enabled: false,           // turn on if you want automatic dedup
-        similarityThreshold: 0.8  // similarity threshold for deduplication
-    }
     },
 
     // Document Chunking Strategy

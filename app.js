@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
 import bookMeetingHandler from './src/controllers/bookMeeting.js';
@@ -13,9 +14,6 @@ import paymentWebhookHandler from './src/helpers/paymentWebhookHandler.js';
 import syncServicesHandler from './src/helpers/syncServicesHandler.js';
 import googleSheetsWebhookHandler from './src/helpers/googleSheetsWebhookHandler.js';
 import calendarDataHandler from './src/helpers/calendarDataHandler.js';
-import { zohoAuthenticationRedirect } from './src/helpers/zoho/zohoAuthenticationRedirect.js';
-import { zohoAuthCallbackHandler } from './src/helpers/zoho/zohoAuthCallbackHandler.js';
-import { zohoGetAllContactsHandler } from './src/helpers/zoho/zohoGetAllContactsHandler.js';
 import successfulPaymentPageHandler from './src/helpers/successfulPaymentPageHandler.js';
 import knowledgeBaseRoutes from './src/routes/knowledge-base.js';
 import onboardingRoutes from './src/routes/onboarding.routes.js';
@@ -28,6 +26,7 @@ import logger from './src/logger/logger.js';
 import { connectRedis, disconnectRedis } from './src/utils/redis.js';
 
 const app = express();
+app.use(helmet({ contentSecurityPolicy: false }));
 const PORT = process.env.PORT || 3000;
 logger.info('Starting WhatsApp AI Integration Application', {
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -176,10 +175,6 @@ app.get('/oauth/callback', async (req, res) => {
   }
 });
 
-// Zoho OAuth Routes (admin-only — Zoho CRM is a global integration)
-app.get('/auth/zoho', zohoAuthenticationRedirect);
-app.get('/zoho/oauth/callback', zohoAuthCallbackHandler);
-app.get('/api/zoho/contacts', authenticate, setRLSContext, requireAdmin, zohoGetAllContactsHandler);
 
 // Calendar data — requires auth so clientId is always known
 app.post('/calendar-data', authenticate, setRLSContext, calendarDataHandler);
@@ -267,9 +262,9 @@ app.use((err, req, res, next) => {
 (async () => {
   try {
     logger.info('Initializing database connection');
-    await dbConfig.syncDatabase({ alter: false });
+    await dbConfig.connectDatabase();
 
-    logger.info('Database synced and RLS policies applied successfully');
+    logger.info('Database connected and RLS policies applied successfully');
 
     await connectRedis();
 

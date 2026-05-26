@@ -139,15 +139,11 @@ export default function Clients() {
       <SyncModal
         open={!!syncFor}
         onClose={() => setSyncFor(null)}
-        clients={clients}
-        defaultClientId={syncFor?.id || ''}
       />
 
       <CalendarConnectModal
         open={!!calFor}
         onClose={() => setCalFor(null)}
-        clients={clients}
-        defaultClientId={calFor || ''}
       />
     </div>
   )
